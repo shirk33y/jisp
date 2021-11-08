@@ -120,15 +120,19 @@ export default function minimal(E: Env) {
           break;
         }
 
-        // multiple forms (for side-effects)
-        case "do":
-          evalOrBind(ast.slice(1, ast.length - 1), env);
-          ast = ast[ast.length - 1];
-          break;
+        // quote (unevaluated)
+        case "`":
+          return ast[1];
 
         // branching conditional
         case "if":
           ast = evalLoop(ast[1], env) ? ast[2] : ast[3];
+          break;
+
+        // multiple forms (for side-effects)
+        case "do":
+          evalOrBind(ast.slice(1, ast.length - 1), env);
+          ast = ast[ast.length - 1];
           break;
 
         // mark as macro
@@ -137,10 +141,6 @@ export default function minimal(E: Env) {
           (f as any)["M"] = 1; // mark as macro
           return f;
         }
-
-        // quote (unevaluated)
-        case "`":
-          return ast[1];
 
         // get or set attribute
         case ".-": {
@@ -190,7 +190,7 @@ export default function minimal(E: Env) {
     throw: (...a: AstNode[]) => {
       throw a[0];
     },
-    
+
     // Console
     log: (...a: any[]) => console.log(...a),
     info: (msg: any, ...a: any[]) => log.info(msg, ...a),
@@ -208,7 +208,7 @@ export default function minimal(E: Env) {
     "**": (a: number, b: number) => Math.pow(a, b),
     "/": (a: number, b: number) => a / b,
     "//": (a: number, b: number) => Math.floor(a / b),
-    
+
     // Type constructors
     str: (a: any) => a?.toString() || "",
     int: (a: any) => parseInt(a, 10),
@@ -225,9 +225,9 @@ export default function minimal(E: Env) {
       }
       return o;
     },
-    
+
     // Type checkers
-    "is-fn": (a: any) => typeof a === 'function',
+    "is-fn": (a: any) => typeof a === "function",
     "is-int": (n: any) => n === +n && n === (n | 0),
     "is-float": (n: any) => n === +n && n !== (n | 0),
     "is-str": (a: any) => typeof a === "string",
@@ -236,10 +236,10 @@ export default function minimal(E: Env) {
       typeof a === "object" && !Array.isArray(a) && a !== null,
 
     // List ops
-    "map":   (a: (...args: any) => any, b: Array<any>) => b.map(x => a(x)),
-    "filter":   (a: (...args: any) => any, b: Array<any>) => b.filter(x => a(x)),
-    "some":   (a: (...args: any) => any, b: Array<any>) => b.some(x => a(x)),
-    "every":   (a: (...args: any) => any, b: Array<any>) => b.every(x => a(x)),
+    map: (a: (...args: any) => any, b: Array<any>) => b.map((x) => a(x)),
+    filter: (a: (...args: any) => any, b: Array<any>) => b.filter((x) => a(x)),
+    some: (a: (...args: any) => any, b: Array<any>) => b.some((x) => a(x)),
+    every: (a: (...args: any) => any, b: Array<any>) => b.every((x) => a(x)),
 
     // Candidates
     // isa: (...a: ScalarOrAst[]) => a[0] instanceof a[1],
