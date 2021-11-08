@@ -1,0 +1,7 @@
+[
+    ["def", "component", ["fn", ["foo", "bar"], ["log",  ["`", "%.2f %b"], "foo", "bar"]]],
+
+    ["component", 123, true],
+
+    ["assert", ["==", ["sprintf", ["`", "%.1f %d"], 1.01, 123.1], ["`", "1.0 123"]]]
+]
