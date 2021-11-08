@@ -1,30 +1,17 @@
 import * as log from "https://deno.land/std@0.113.0/log/mod.ts";
 import {printf, sprintf} from "https://deno.land/std@0.113.0/fmt/printf.ts";
 import docopt from "https://cdn.deno.land/docopt/versions/v1.0.1/raw/dist/docopt.mjs";
-// import _ from "https://deno.land/x/lodash@4.17.19/dist/lodash.js";
 import * as _ from "https://deno.land/x/lodash@4.17.19/dist/lodash.js";
 import {assert} from "https://deno.land/std@0.113.0/testing/asserts.ts";
 
 type Scalar = string | boolean | number | null;
-type SaneScalar = string | boolean | number | null;
-
-// type Atom = string | boolean | number
-
-interface Ast extends Array<Ast | Scalar> {}
-
+type Ast = Array<Ast | Scalar>;
 type AstNode = Scalar | Ast;
-
 interface Env {
   [bind: string]: any;
 }
-
 type Exprs = Array<any>;
 
-// interface ItemArea {
-//     [n: number]: {
-//         name: string
-//     } | ItemArea;
-// };
 function fatal(...msg: any[]) {
   log.error("fatal: ", ...msg);
 
@@ -32,7 +19,6 @@ function fatal(...msg: any[]) {
 }
 
 function at(ast: any, ...[index, ...next]: number[]): any {
-  // const [index, ...nextPath] = path
   if (index === undefined) return ast;
   if (Array.isArray(ast)) return at(ast[index], ...next);
 
@@ -52,8 +38,6 @@ function symbolAt(ast: any, ...path: number[]): string {
 
   throw fatal(`${typeof sym} used as symbol name:`, ast);
 }
-
-function sym(ast: AstNode) {}
 
 export default function minimal(E: Env) {
   // 2 args: eval_ast, 3 args: env_bind
@@ -86,7 +70,6 @@ export default function minimal(E: Env) {
   }
 
   function macroExpand(ast: AstNode, env: Env) {
-    // if (ast && typeof ast[0] !== 'string')
     while (
       Array.isArray(ast) &&
       symbolAt(ast, 0) in env &&
@@ -106,48 +89,11 @@ export default function minimal(E: Env) {
       ast = macroExpand(ast, env);
       if (!Array.isArray(ast)) return evalOrBind(ast, env);
 
-      //   const [a0, a1, a2, a21, a22] =
       switch (ast[0]) {
         // update current environment
         case "def":
           assert(typeof ast[1] === "string");
           return setEnv(env, ast[1], evalLoop(ast[2], env));
-
-        // mark as macro
-        case "~": {
-          const f = evalLoop(ast[1], env); // eval regular function
-          (f as any)["M"] = 1; // mark as macro
-          return f;
-        }
-
-        // quote (unevaluated)
-        case "`":
-          return ast[1];
-
-        // get or set attribute
-        case ".-": {
-          const el = evalOrBind(ast.slice(1), env),
-            x = el[0][el[1]];
-          return 2 in el ? (el[0][el[1]] = el[2]) : x;
-        }
-
-        // call object method
-        case ".": {
-          const el = evalOrBind(ast.slice(1), env),
-            x = el[0][el[1]];
-          return x.apply(el[0], el.slice(2));
-        }
-
-        // try/catch
-        case "try":
-          try {
-            return evalLoop(ast[1], env);
-          } catch (e) {
-            return evalLoop(
-              at(ast, 2, 2),
-              evalOrBind([at(ast, 2, 2)], env, [e])
-            );
-          }
 
         // define new function (lambda)
         case "fn": {
@@ -185,6 +131,42 @@ export default function minimal(E: Env) {
           ast = evalLoop(ast[1], env) ? ast[2] : ast[3];
           break;
 
+        // mark as macro
+        case "~": {
+          const f = evalLoop(ast[1], env); // eval regular function
+          (f as any)["M"] = 1; // mark as macro
+          return f;
+        }
+
+        // quote (unevaluated)
+        case "`":
+          return ast[1];
+
+        // get or set attribute
+        case ".-": {
+          const el = evalOrBind(ast.slice(1), env),
+            x = el[0][el[1]];
+          return 2 in el ? (el[0][el[1]] = el[2]) : x;
+        }
+
+        // call object method
+        case ".": {
+          const el = evalOrBind(ast.slice(1), env),
+            x = el[0][el[1]];
+          return x.apply(el[0], el.slice(2));
+        }
+
+        // try/catch
+        case "try":
+          try {
+            return evalLoop(ast[1], env);
+          } catch (e) {
+            return evalLoop(
+              at(ast, 2, 2),
+              evalOrBind([at(ast, 2, 2)], env, [e])
+            );
+          }
+
         // invoke list form
         default: {
           const el = evalOrBind(ast, env),
@@ -201,18 +183,22 @@ export default function minimal(E: Env) {
   }
 
   E = Object.assign(Object.create(E), {
+    // Core
     js: eval,
     eval: (...a: AstNode[]) => evalLoop(a[0], E),
-    // TODO: figure out why global doesn't have this when non-interactive
-    //"require":     require,
+    assert,
+    throw: (...a: AstNode[]) => {
+      throw a[0];
+    },
+    
+    // Console
+    log: (...a: any[]) => console.log(...a),
     info: (msg: any, ...a: any[]) => log.info(msg, ...a),
     print: (...a: any[]) => console.log(...a),
     printf,
     sprintf,
-    assert,
-    log: (...a: any[]) => console.log(...a),
 
-    // These could all also be interop
+    // Arithmetics
     "==": (a: number, b: number) => a === b,
     "<": (a: number, b: number) => a < b,
     ">": (a: number, b: number) => a > b,
@@ -222,25 +208,45 @@ export default function minimal(E: Env) {
     "**": (a: number, b: number) => Math.pow(a, b),
     "/": (a: number, b: number) => a / b,
     "//": (a: number, b: number) => Math.floor(a / b),
+    
+    // Type constructors
     str: (a: any) => a?.toString() || "",
     int: (a: any) => parseInt(a, 10),
     float: (a: any) => parseFloat(a),
     list: (a: any) => Array.from(a),
-    obj: (...a: AstNode[]) => _.fromEntries(),
+    obj: (...a: AstNode[]) => {
+      const o: Record<string, any> = {};
+      for (let i = 0; i < a?.length; i++) {
+        if (i % 2) {
+          const [k, v] = [a[i - 1], a[i]];
+          assert(typeof k === "string");
+          o[k] = v;
+        }
+      }
+      return o;
+    },
+    
+    // Type checkers
+    "is-fn": (a: any) => typeof a === 'function',
     "is-int": (n: any) => n === +n && n === (n | 0),
     "is-float": (n: any) => n === +n && n !== (n | 0),
     "is-str": (a: any) => typeof a === "string",
     "is-list": (a: any) => Array.isArray(a),
+    "is-obj": (a: any) =>
+      typeof a === "object" && !Array.isArray(a) && a !== null,
 
+    // List ops
+    "map":   (a: (...args: any) => any, b: Array<any>) => b.map(x => a(x)),
+    "filter":   (a: (...args: any) => any, b: Array<any>) => b.filter(x => a(x)),
+    "some":   (a: (...args: any) => any, b: Array<any>) => b.some(x => a(x)),
+    "every":   (a: (...args: any) => any, b: Array<any>) => b.every(x => a(x)),
+
+    // Candidates
     // isa: (...a: ScalarOrAst[]) => a[0] instanceof a[1],
     // type: (...a: ScalarOrAst[]) => typeof a[0],
     // new: (...a: AstNode[]) => new (a[0].bind(...a))(),
     // del: (...a: ScalarOrAst[]) => delete a[0][a[1]],
     // "list":  (...a: AstNode[]) => a,
-    //"map":   (...a: ScalarOrAst[]) => a[1].map(x => a[0](x)),
-    throw: (...a: AstNode[]) => {
-      throw a[0];
-    },
     // read: (...a: ScalarOrAst[]) => JSON.parse(a[0]),
     // rep: (...a: ScalarOrAst[]) => JSON.stringify(EVAL(JSON.parse(a[0]), E)),
   });
@@ -255,11 +261,11 @@ const doc = `
 MiniMAL interpreter
 
 Usage:
-  ${prog} eval <expr>...
-  ${prog} run <file>...
-  ${prog} fmt <file>... [-o=<format>]
-  ${prog} -h | --help
-  ${prog} --version
+  ${prog} run <file>...                Run scripts in single env
+  ${prog} eval <expr>...               Evaluate expression from argv
+  ${prog} fmt <file>... [-o=<format>]  Format the code 
+  ${prog} -h | --help                  Show usage
+  ${prog} --version                    Show version
 
 Options:
   -h --help           Show this screen.
@@ -282,6 +288,11 @@ if (import.meta.main) {
   try {
     opts = docopt(doc) as Opts;
   } catch (error) {
+    if (Deno.args.length === 0) {
+      log.error(`No command supplied`);
+    } else {
+      log.error("Invalid options");
+    }
     console.log(error.message);
     Deno.exit(1);
   }
