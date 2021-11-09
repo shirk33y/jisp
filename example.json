@@ -1,10 +1,28 @@
 [
-    ["def", "component", ["fn", ["foo", "bar"], ["log",  ["`", "%.2f %b"], "foo", "bar"]]],
+  [
+    "def",
+    "component",
+    ["fn", ["foo", "bar"], ["log", ["`", "%.2f %b"], "foo", "bar"]]
+  ],
 
-    ["component", 123, true],
+  ["component", 123, true],
 
-    ["print",  ["sprintf", ["`", "%.1f %d"], 1.01, 123.1], ["`", "1.0 123"]],
-    ["def", "o", ["obj", ["`", "foo"], ["`", "bar"], ["`", "baz"], 123]],
-    ["def", "l", ["list", 1, 2, 3]],
-    ["print", "o", ["is-obj", "o"], ["is-obj", "l"]]
+  ["print", ["sprintf", ["`", "%.1f %d"], 1.01, 123.1], ["`", "1.0 123"]],
+  ["def", "o", ["obj", ["`", "foo"], ["`", "bar"], ["`", "baz"], 123]],
+  ["def", "l", ["list", 1, 2, 3]],
+  ["print", "o", ["obj/is", "o"], ["obj/is", "l"]],
+
+  [
+    "state/def",
+    "my-ui-state",
+    [
+      "obj",
+      ["`", "db-url"],
+      ["`", "localhost:8811"],
+      ["`", "name"],
+      ["`", "Foo bar baz 123 xyz abc"]
+    ]
+  ],
+
+  ["state/reduce", "my-ui-state", ["fn", ["action", "state"] ]]
 ]
