@@ -1,6 +1,6 @@
 import * as log from "https://deno.land/std@0.113.0/log/mod.ts";
 import {printf, sprintf} from "https://deno.land/std@0.113.0/fmt/printf.ts";
-import docopt from "https://cdn.deno.land/docopt/versions/v1.0.1/raw/dist/docopt.mjs";
+import docopt from "https://cdn.deno.land/docopt/versions/v1.0.7/raw/dist/docopt.mjs";
 import * as _ from "https://deno.land/x/lodash@4.17.19/dist/lodash.js";
 import {assert} from "https://deno.land/std@0.113.0/testing/asserts.ts";
 
@@ -192,7 +192,6 @@ export default function minimal(E: Env) {
     },
 
     // Console
-    log: (...a: any[]) => console.log(...a),
     info: (msg: any, ...a: any[]) => log.info(msg, ...a),
     print: (...a: any[]) => console.log(...a),
     printf,
@@ -208,6 +207,22 @@ export default function minimal(E: Env) {
     "**": (a: number, b: number) => Math.pow(a, b),
     "/": (a: number, b: number) => a / b,
     "//": (a: number, b: number) => Math.floor(a / b),
+    "%": (a: number, b: number) => a % b,
+
+    // More math
+    log: (a: number, b: number) => Math.log(a) / Math.log(b),
+    floor: Math.floor,
+    ceil: Math.ceil,
+    round: Math.round,
+    random: Math.random,
+    sin: Math.sin,
+    sinh: Math.sinh,
+    cos: Math.cos,
+    cosh: Math.cosh,
+    atan: Math.atan,
+    atan2: Math.atan2,
+    
+    "num/cos": "tbd?",
 
     // Type constructors
     str: (a: any) => a?.toString() || "",
@@ -227,20 +242,138 @@ export default function minimal(E: Env) {
     },
 
     // Type checkers
-    "is-fn": (a: any) => typeof a === "function",
-    "is-int": (n: any) => n === +n && n === (n | 0),
-    "is-float": (n: any) => n === +n && n !== (n | 0),
-    "is-str": (a: any) => typeof a === "string",
-    "is-list": (a: any) => Array.isArray(a),
-    "is-obj": (a: any) =>
+    "is/fn": (a: any) => typeof a === "function",
+    "is/int": (n: any) => n === +n && n === (n | 0),
+    "is/float": (n: any) => n === +n && n !== (n | 0),
+    "is/str": (a: any) => typeof a === "string",
+    "is/list": (a: any) => Array.isArray(a),
+    "is/obj": (a: any) =>
       typeof a === "object" && !Array.isArray(a) && a !== null,
 
-    // List ops
-    map: (a: (...args: any) => any, b: Array<any>) => b.map((x) => a(x)),
-    filter: (a: (...args: any) => any, b: Array<any>) => b.filter((x) => a(x)),
-    some: (a: (...args: any) => any, b: Array<any>) => b.some((x) => a(x)),
-    every: (a: (...args: any) => any, b: Array<any>) => b.every((x) => a(x)),
+    // String ops
+    "str/new": (s: any = "") => `${s}`,
+    "str/is": (s: any) => typeof s === "string",
+    "str/cat": (...s: string[]) => s.join(""),
+    "str/fmt": (f: string, ...a: any[]) => sprintf(f, ...a),
+    "str/len": (f: string) => f.length,
+    "str/upper": (f: string) => f.toUpperCase(),
+    "str/lower": (f: string) => f.toLowerCase(),
+    "str/to-json": (s: string) => JSON.stringify(s),
 
+    // List ops
+    "list/map": (a: (...args: any) => any, b: Array<any>) => b.map((x) => a(x)),
+    "list/filter": (a: (...args: any) => any, b: Array<any>) =>
+      b.filter((x) => a(x)),
+    "list/some": (a: (...args: any) => any, b: Array<any>) =>
+      b.some((x) => a(x)),
+    "list/every": (a: (...args: any) => any, b: Array<any>) =>
+      b.every((x) => a(x)),
+    "list/join": (delim: string, ...arr: string[]) => arr.join(delim),
+    "list/has": (l: any[], item: any) => l.includes(item),
+    "list/cat": (l: any[], ...c: any[][]) => l.concat(...c),
+    "list/to-json": (l: any[]) => JSON.stringify(l),
+
+    "#": (...a: AstNode[]) => 'really this is obj?',
+
+    // Object ops
+    "obj/new": (...a: AstNode[]) => {
+      const o: Record<string, any> = {};
+      for (let i = 0; i < a?.length; i++) {
+        if (i % 2) {
+          const [k, v] = [a[i - 1], a[i]];
+          assert(typeof k === "string");
+          o[k] = v;
+        }
+      }
+      return o;
+    },
+    "obj/is": (a: any) =>
+      typeof a === "object" && !Array.isArray(a) && a !== null,
+    "obj/entries": (o: object) => Object.entries(o),
+    "obj/get": (o: object, ...p: string[]) => _.get(o, p),
+    "obj/keys": (o: object) => Object.keys(o),
+    "obj/values": (o: object) => Object.values(o),
+    "obj/has": (o: object, k: any) => k in o,
+    "obj/cat": (o: object, ...c: object[]) => Object.assign(o, ...c),
+    "obj/to-json": (o: object) => JSON.stringify(o),
+
+    // Date ops
+    "date/new": (ts: number) => new Date(ts),
+    "date/from-str": (s: string, f: string) => {
+      throw "tbd";
+    },
+    "date/is": (d: any) => d instanceof Date,
+    "date/+": (d: Date, i: number, p: string) => {
+      throw "tbd";
+    },
+    "date/-": (d: Date, i: number, p: string) => {
+      throw "tbd";
+    },
+    "date/fmt": (d: Date, f: string) => {
+      throw "tbd";
+    },
+    
+    // File ops
+    "file/new": () => null,
+    "file/read": () => null,
+    "file/read-line": () => null,
+    "file/open": () => null,
+    "file/exists": () => null,
+    "file/close": () => null,
+    "file/write": () => null,
+    "file/delete": () => null,
+    "file/touch": () => null,
+    "file/move": () => null,
+    
+    // Path ops
+    "path/new": () => null,
+    "path/base": () => null,
+    "path/dir": () => null,
+    "path/rel": () => null,
+    "path/abs": () => null,
+    "path/join": () => null,
+    
+    // Url ops
+    // in fact url = file/* + path/*
+    "url/new": () => null,
+    "url/from-path": () => null,
+    "url/base": () => null,
+    "url/dir": () => null,
+    "url/join": () => null,
+    "url/host": () => null,
+    "url/port": () => null,
+    "url/scheme": () => null,
+    "url/path": () => null,
+    "url/query": () => null,
+    "url/param": () => null,
+    "url/params": () => null,
+    "url/fragment": () => null,
+    "url/fetch": () => null,
+    "url/head": () => null,
+    "url/get": () => null,
+    "url/post": () => null,
+    "url/put": () => null,
+    "url/options": () => null,
+    "url/delete": () => null,
+    
+    // RPC
+    "rpc/new": 'tbd',
+    "rpc/send": 'tbd',
+    "rpc/recv": 'tbd',
+    
+    // UI / Web Component
+    "ui/new": "tbd",
+    "ui/render": "tbd",
+    "ui/effect": "tbd",
+    "ui/state": "tbd",
+    "ui/dispatch": "tbd",
+
+    "store/new": "tbd",
+    "store/get": "tbd",
+    "store/dispatch": "tbd",
+    "store/reduce": "tbd",
+    "store/saga": "tbd",
+    "store/run": "tbd",
     // Candidates
     // isa: (...a: ScalarOrAst[]) => a[0] instanceof a[1],
     // type: (...a: ScalarOrAst[]) => typeof a[0],
@@ -261,11 +394,12 @@ const doc = `
 MiniMAL interpreter
 
 Usage:
-  ${prog} run <file>...                Run scripts in single env
+  ${prog} run <file>...
+  ${prog} start [<file>...]            Start jsonrpc server
   ${prog} eval <expr>...               Evaluate expression from argv
   ${prog} fmt <file>... [-o=<format>]  Format the code 
   ${prog} -h | --help                  Show usage
-  ${prog} --version                    Show version
+  ${prog} -v | --version               Show version
 
 Options:
   -h --help           Show this screen.
