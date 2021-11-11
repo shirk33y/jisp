@@ -1,10 +1,12 @@
-import * as log from "https://deno.land/std@0.113.0/log/mod.ts";
-import {printf, sprintf} from "https://deno.land/std@0.113.0/fmt/printf.ts";
+import * as log from "https://deno.land/std@0.114.0/log/mod.ts";
+import {printf, sprintf} from "https://deno.land/std@0.114.0/fmt/printf.ts";
 import docopt from "https://cdn.deno.land/docopt/versions/v1.0.7/raw/dist/docopt.mjs";
 import * as _ from "https://deno.land/x/lodash@4.17.19/dist/lodash.js";
-import {assert} from "https://deno.land/std@0.113.0/testing/asserts.ts";
+import {assert} from "https://deno.land/std@0.114.0/testing/asserts.ts";
+import * as yaml from "https://deno.land/std@0.114.0/encoding/yaml.ts";
 
-type Scalar = string | boolean | number | null;
+type Fn = {(): any; _MACRO?: number; _AST?: Ast};
+type Scalar = string | boolean | number | null | Fn | Env;
 type Ast = Array<Ast | Scalar>;
 type AstNode = Scalar | Ast;
 interface Env {
@@ -18,115 +20,93 @@ function fatal(...msg: any[]) {
   return new Error(msg.map((m) => `${m}`).join(" "));
 }
 
-function at(ast: any, ...[index, ...next]: number[]): any {
-  if (index === undefined) return ast;
-  if (Array.isArray(ast)) return at(ast[index], ...next);
-
-  throw fatal("expecting array, got:", ast);
-}
-
-// function cast()
-
-function symbolAt(ast: any, ...path: number[]): string {
-  const sym = at(ast, ...path);
-
-  if (typeof sym === "string") return sym;
-  if (typeof sym === "boolean") {
-    log.warning(`boolean used as symbol name:`, ast);
-    return `${sym}`;
-  }
-
-  throw fatal(`${typeof sym} used as symbol name:`, ast);
-}
-
 export default function minimal(E: Env) {
   // 2 args: eval_ast, 3 args: env_bind
-  const evalOrBind = function (ast: AstNode, env: Env, exprs?: Exprs) {
+  function evalOrBind(ast: AstNode, env: Env, exprs?: Exprs) {
     if (exprs) {
       // Return new Env with symbols in ast bound to
       // corresponding values in exprs
       if (!Array.isArray(ast)) throw fatal(`args must be array`);
       env = Object.create(env);
+      assert(Array.isArray(ast));
       ast?.some((a: any, i: number) =>
         a == "&"
-          ? (env[symbolAt(ast, i + 1)] = exprs.slice(i))
+          ? (env[ast[i + 1] as string] = exprs.slice(i))
           : ((env[a] = exprs[i]), 0)
       );
       return env;
     }
     // Evaluate the form/ast
     return Array.isArray(ast) // list?
-      ? ast.map((...a: AstNode[]) => evalLoop(a[0], env)) // list
+      ? ast.map((...a: AstNode[]) => loop(a[0], env)) // list
       : typeof ast == "string" // symbol?
       ? ast in env // symbol in env?
         ? env[ast] // lookup symbol
-        : E.throw(ast + " not found") // undefined symbol
-      : ///: null[ast]                          // undefined symbol
-        ast; // ast unchanged
-  };
+        : E.throw(`undefined symbol: ${ast}`) // undefined symbol
+      : ast; // ast unchanged
+  }
 
   function setEnv(env: Env, key: string, value: any) {
     return (env[key] = value);
   }
 
   function macroExpand(ast: AstNode, env: Env) {
-    while (
-      Array.isArray(ast) &&
-      symbolAt(ast, 0) in env &&
-      env[symbolAt(ast, 0)].M
-    ) {
-      ast = env[symbolAt(ast, 0)](...ast.slice(1));
+    assert(Array.isArray(ast));
+    const [a0, ...a$] = ast;
+    assert(typeof a0 === "string");
+
+    while (a0 in env && env[a0]._MACRO) {
+      ast = env[a0](a$);
     }
     return ast;
   }
 
-  function evalLoop(ast: AstNode, env: Env): AstNode {
+  function loop(ast: AstNode, env: Env): AstNode {
     while (true) {
-      //console.log("EVAL:", ast)
+      log.debug(`eval: ${ast}`);
       if (!Array.isArray(ast)) return evalOrBind(ast, env);
 
       // apply
       ast = macroExpand(ast, env);
       if (!Array.isArray(ast)) return evalOrBind(ast, env);
 
-      switch (ast[0]) {
+      const [a0, a1, a2, a3] = [...ast];
+
+      switch (a0) {
         // update current environment
         case "def":
-          assert(typeof ast[1] === "string");
-          return setEnv(env, ast[1], evalLoop(ast[2], env));
+          assert(typeof a1 === "string");
+          return setEnv(env, a1, loop(a2, env));
 
         // define new function (lambda)
+        //   fn [arg1 arg2 & rest] body
         case "fn": {
-          const f = (...a: any[]) =>
-            evalLoop(at(ast, 2), evalOrBind(at(ast, 1), env, a));
+          const f: Fn = (...a: any[]) => loop(a2, evalOrBind(a1, env, a));
 
-          f["A"] = [ast[2], env, ast[1]];
-          return f as any;
+          f._AST = [a2, env, a1];
+          return f;
         }
 
         // new environment with bindings
         case "let": {
-          if (ast.length < 2) throw fatal(`let: expected array len=2: ${ast}`);
-          if (!Array.isArray(ast[1]))
-            throw fatal(`let: expected array at [1]: ${ast}`);
-
+          assert(Array.isArray(a1));
           env = Object.create(env);
-          for (let i = 0; i < ast[1]?.length; i++) {
+
+          for (let i = 0; i < a1.length; i++) {
             if (i % 2) {
-              env[symbolAt(ast, 1, i - 1)] = evalLoop(symbolAt(ast, 1, i), env);
+              const k = a1[i - 1];
+              assert(typeof k === "string");
+              const v = a1[i];
+              env[k] = loop(v, env);
             }
           }
-          ast = ast[2];
+          ast = a2;
           break;
         }
 
-        // quote (unevaluated)
-        case "`":
-          return ast[1];
-
         // branching conditional
         case "if":
-          ast = evalLoop(ast[1], env) ? ast[2] : ast[3];
+          ast = loop(a1, env) ? a2 : a3;
           break;
 
         // multiple forms (for side-effects)
@@ -135,47 +115,52 @@ export default function minimal(E: Env) {
           ast = ast[ast.length - 1];
           break;
 
+        // quote (unevaluated)
+        case "str":
+        case "`":
+          return a1;
+
         // mark as macro
         case "~": {
-          const f = evalLoop(ast[1], env); // eval regular function
-          (f as any)["M"] = 1; // mark as macro
-          return f;
+          const fn: Fn = loop(a1, env) as Fn; // eval regular function
+          fn._MACRO = 1; // mark as macro
+          return fn;
         }
 
         // get or set attribute
         case ".-": {
-          const el = evalOrBind(ast.slice(1), env),
-            x = el[0][el[1]];
-          return 2 in el ? (el[0][el[1]] = el[2]) : x;
+          const [e0, e1, e2] = evalOrBind(ast.slice(1), env);
+
+          return e2 !== undefined
+            ? (e0[e1] = e2) // set
+            : e0[e1]; // get;
         }
 
         // call object method
         case ".": {
-          const el = evalOrBind(ast.slice(1), env),
-            x = el[0][el[1]];
-          return x.apply(el[0], el.slice(2));
+          const [e0, e1, ...e$] = evalOrBind(ast.slice(1), env);
+
+          return e0[e1].apply(e0, e$);
         }
 
         // try/catch
         case "try":
           try {
-            return evalLoop(ast[1], env);
-          } catch (e) {
-            return evalLoop(
-              at(ast, 2, 2),
-              evalOrBind([at(ast, 2, 2)], env, [e])
-            );
+            return loop(a1, env);
+          } catch (err) {
+            assert(Array.isArray(a2));
+            return loop(a2[2], evalOrBind([a2[2]], env, [err]));
           }
 
         // invoke list form
         default: {
-          const el = evalOrBind(ast, env),
-            f = el[0];
-          if (f.A) {
-            ast = f.A[0];
-            env = evalOrBind(f.A[2], f.A[1], el.slice(1));
+          const [e0, ...e$] = evalOrBind(ast, env);
+
+          if (e0._AST) {
+            ast = e0._AST[0];
+            env = evalOrBind(e0._AST[2], e0._AST[1], e$);
           } else {
-            return f(...el.slice(1));
+            return e0(...e$);
           }
         }
       }
@@ -185,7 +170,7 @@ export default function minimal(E: Env) {
   E = Object.assign(Object.create(E), {
     // Core
     js: eval,
-    eval: (...a: AstNode[]) => evalLoop(a[0], E),
+    eval: (...a: AstNode[]) => loop(a[0], E),
     assert,
     throw: (...a: AstNode[]) => {
       throw a[0];
@@ -194,7 +179,7 @@ export default function minimal(E: Env) {
     // Console
     info: (msg: any, ...a: any[]) => log.info(msg, ...a),
     print: (...a: any[]) => console.log(...a),
-    printf,
+    printf: (fmt: string, ...a: any[]) => console.log(sprintf(fmt, ...a)),
     sprintf,
 
     // Arithmetics
@@ -221,7 +206,7 @@ export default function minimal(E: Env) {
     cosh: Math.cosh,
     atan: Math.atan,
     atan2: Math.atan2,
-    
+
     "num/cos": "tbd?",
 
     // Type constructors
@@ -273,7 +258,7 @@ export default function minimal(E: Env) {
     "list/cat": (l: any[], ...c: any[][]) => l.concat(...c),
     "list/to-json": (l: any[]) => JSON.stringify(l),
 
-    "#": (...a: AstNode[]) => 'really this is obj?',
+    "#": (...a: AstNode[]) => "really this is obj?",
 
     // Object ops
     "obj/new": (...a: AstNode[]) => {
@@ -289,7 +274,7 @@ export default function minimal(E: Env) {
     },
     "obj/is": (a: any) =>
       typeof a === "object" && !Array.isArray(a) && a !== null,
-    "obj/entries": (o: object) => Object.entries(o),
+    "obj/items": (o: object) => Object.entries(o),
     "obj/get": (o: object, ...p: string[]) => _.get(o, p),
     "obj/keys": (o: object) => Object.keys(o),
     "obj/values": (o: object) => Object.values(o),
@@ -312,7 +297,7 @@ export default function minimal(E: Env) {
     "date/fmt": (d: Date, f: string) => {
       throw "tbd";
     },
-    
+
     // File ops
     "file/new": () => null,
     "file/read": () => null,
@@ -324,7 +309,7 @@ export default function minimal(E: Env) {
     "file/delete": () => null,
     "file/touch": () => null,
     "file/move": () => null,
-    
+
     // Path ops
     "path/new": () => null,
     "path/base": () => null,
@@ -332,7 +317,7 @@ export default function minimal(E: Env) {
     "path/rel": () => null,
     "path/abs": () => null,
     "path/join": () => null,
-    
+
     // Url ops
     // in fact url = file/* + path/*
     "url/new": () => null,
@@ -355,12 +340,12 @@ export default function minimal(E: Env) {
     "url/put": () => null,
     "url/options": () => null,
     "url/delete": () => null,
-    
+
     // RPC
-    "rpc/new": 'tbd',
-    "rpc/send": 'tbd',
-    "rpc/recv": 'tbd',
-    
+    "rpc/new": "tbd",
+    "rpc/send": "tbd",
+    "rpc/recv": "tbd",
+
     // UI / Web Component
     "ui/new": "tbd",
     "ui/render": "tbd",
@@ -395,16 +380,13 @@ MiniMAL interpreter
 
 Usage:
   ${prog} run <file>...
-  ${prog} start [<file>...]            Start jsonrpc server
-  ${prog} eval <expr>...               Evaluate expression from argv
-  ${prog} fmt <file>... [-o=<format>]  Format the code 
   ${prog} -h | --help                  Show usage
   ${prog} -v | --version               Show version
 
 Options:
-  -h --help           Show this screen.
-  -o --output-format  Any of: yaml, json, lisp.
-  --version           Show version.
+  -h --help         Show this screen.
+  -o --out-format   Any of: yaml, json, lisp.
+  --version         Show version.
 
 `;
 
@@ -437,7 +419,7 @@ if (import.meta.main) {
     m.eval(opts["<expr>"]);
   } else if (opts.run) {
     for (const file of opts["<file>"]) {
-      const code = JSON.parse(await Deno.readTextFile(file));
+      const code: any = yaml.parse(await Deno.readTextFile(file));
       for (const expr of code) {
         m.eval(expr);
       }
