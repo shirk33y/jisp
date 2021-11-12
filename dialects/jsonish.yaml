@@ -1,0 +1,59 @@
+$id: example-module
+$schema: module.yaml
+
+# $import:
+#   https://deno.land/std@0.114.0/fmt/printf.ts: {printf, sprintf: fmt}
+#   lodash:
+#     printf:
+#     sprintf: fmt
+#   log: {"*": deno-log}
+
+# $export:
+#   main:
+#   some: alias
+
+# or just:
+import-map:
+  lodash: http://lodash.io/lib/lodash.ts
+  yaml: pip://js-yaml#2.3.1
+
+$module:
+  $: {main, run-once, eval-js}
+  lodash: {to-object, merge-deep-by, get-char}
+
+main:
+  [
+    fn,
+    [arg1, arg2],
+    [
+      let,
+      [x, 11, y, 22, foo, "bar"],
+      [run-service, [+, x, y], [fmt, "%s %d", foo]],
+    ],
+  ]
+
+main2: {
+    fn,
+    {arg1, arg2: {array, string}},
+    {
+      let,
+      {x: str, 11, y: str, 22, foo: bar},
+      {
+        run-service,
+        # {+, x, y},
+        [x, +, y],
+        {fmt, "%s", foo},
+        {call-service, 911, {date, now}},
+      },
+    },
+  }
+
+render: {
+  div, 
+}
+
+main-py: |
+  import yaml
+
+  def main():
+    return yaml.load('foo.yaml')
