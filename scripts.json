@@ -1,0 +1,15 @@
+{
+  "$schema": "https://deno.land/x/denon@2.4.9/schema.json",
+  "scripts": {
+    "start": {
+      "cmd": "deno run minimal.ts run example.yaml",
+      "allow": ["env", "write", "read"],
+      "unstable": true,
+      "importmap": "importmap.json"
+    }
+  },
+  "watcher": {
+    "interval": 350,
+    "exts": ["ts", "yaml", "json"]
+  }
+}
