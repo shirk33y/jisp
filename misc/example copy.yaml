@@ -1,0 +1,41 @@
+[
+  [
+    def,
+    component,
+    [fn, [foo, bar], [log, ["`", "%.2f %b"], foo, bar]],
+  ],
+  
+  [log, ["`", "%s"], 123, 456],
+
+  [
+    "def",
+    "unless",
+    ["~", ["fn", ["p", "a", "b"], ["list", ["`", "if"], "p", "b", "a"]]],
+  ],
+
+  {"foo": ["component", 123, true]},
+
+  # ["import", "yaml", "https://deno.land/std@0.114.0/encoding/yaml.ts"],
+
+  ["log", ["sprintf", ["`", "%.1f %d"], 1.01, 123.1], ["`", "1.0 123"]],
+  ["def", "o", ["obj", ["`", "foo"], ["`", "bar"], ["`", "baz"], 123]],
+  ["def", "l", ["list", 1, 2, 3]],
+  ["log", "o", ["obj/is", "o"], ["obj/is", "l"]],
+
+  {
+    "#":
+      [
+        "state/def",
+        "my-ui-state",
+        [
+          "obj",
+          ["`", "db-url"],
+          ["`", "localhost:8811"],
+          ["`", "name"],
+          ["`", "Foo bar baz 123 xyz abc"],
+        ],
+      ],
+  },
+
+  {"#": ["state/reduce", "my-ui-state", ["fn", ["action", "state"]]]},
+]

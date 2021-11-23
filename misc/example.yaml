@@ -1,0 +1,36 @@
+[
+  [
+    ui,
+    sidebar,
+    {foo, bar},
+    [
+      tw,
+      {
+        div,
+        rounded-2xl,
+        px-5,
+        mx-4,
+        lg:mx-2,
+        [
+          tw,
+          {ul, mx-15},
+          [list.map, items, {item, i}, [item, authors, i, name]],
+        ],
+        [
+          tw,
+          {ul},
+          [
+            list.map,
+            items,
+            {item, i},
+            [
+              tw,
+              {a, href: [item, i, link]},
+              [tw, {li, rounded-full}, ["item", "authors", i, "name"]],
+            ],
+          ],
+        ],
+      },
+    ],
+  ],
+]

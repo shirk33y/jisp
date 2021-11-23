@@ -32,21 +32,25 @@ main:
     ],
   ]
 
-main2: {
-    fn,
-    {arg1, arg2: {array, string}},
-    {
-      let,
-      {x: str, 11, y: str, 22, foo: bar},
-      {
-        run-service,
-        # {+, x, y},
-        [x, +, y],
-        {fmt, "%s", foo},
-        {call-service, 911, {date, now}},
-      },
-    },
-  }
+# main2: {
+#     fn,
+#     {arg1, arg2: {array, string}},
+#     {
+#       let,
+#       {x: str, 11, y: str, 22, foo: bar},
+#       {
+#         run-service,
+#         # {+, x, y},
+#         [x, +, y],
+#         {fmt, "%s", foo},
+#         # {call-service, 911, {date, now}},
+#       },
+#     },
+#   }
+  
+asdf: {
+  { git }
+}
 
 render: {
   div, 

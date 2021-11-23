@@ -1,0 +1,5 @@
+[
+  # [//, this is comment, but why],
+  
+  [def, E, [obj.new, []]]
+]
