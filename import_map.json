@@ -1,6 +1,11 @@
 {
-    "imports": {
-      "/": "./",
-      "./": "./"
-    }
+  "imports": {
+    "lodash": "https://deno.land/x/lodash@4.17.19/dist/lodash.js",
+    "docopt": "https://cdn.deno.land/docopt/versions/v1.0.7/raw/dist/docopt.mjs",
+    "yaml": "https://deno.land/std@0.114.0/encoding/yaml.ts",
+    "log": "https://deno.land/std@0.114.0/log/mod.ts",
+    "std/": "https://deno.land/std@0.114.0/",
+    "/": "./src/",
+    "./": "./"
   }
+}
