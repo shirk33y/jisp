@@ -21,6 +21,9 @@ obj.set E eval
 defn E.log [arg1 arg2 .. args]
   do-something arg1 arg2
   
+defn E.log [arg1 arg2 .. args]
+  do-something # should it be called?
+  
 
 let [foo 123 bar 666]
   do-something arg1 arg2

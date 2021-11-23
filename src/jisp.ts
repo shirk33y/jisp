@@ -14,7 +14,7 @@ import {
 import { evalAst } from "./eval.ts";
 import * as std from "./std.ts";
 
-export function minimal(env: Env) {
+export function jisp(env: Env) {
   env = Object.assign(Object.create(env), {
     ...arythmetics,
     ...constructors,
