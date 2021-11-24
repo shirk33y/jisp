@@ -16,6 +16,11 @@ export function isString(arg: any): arg is string {
   return typeof arg === "string";
 }
 
+export const isFunction = (v: any) => typeof v === "function";
+
+export const isPromise = (v: any) =>
+  typeof v === "object" && typeof v.then === "function";
+
 export function assertArray(arg: any): asserts arg is any[] {
   assert(isArray(arg));
 }
@@ -28,9 +33,9 @@ export class KindError extends Error {
     super();
     this.objects = objects;
   }
-  
+
   get message() {
-    return this.pretty()
+    return this.pretty();
   }
 
   pretty() {

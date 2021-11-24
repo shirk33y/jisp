@@ -2,10 +2,13 @@ import { assert } from "https://deno.land/std@0.114.0/testing/asserts.ts";
 import { AstNode, Env, Exprs, Fn } from "./ast.ts";
 import * as yaml from "yaml";
 import { log } from "./std.ts";
+import {get, set} from "http://esm.sh/lodash?dev";
 import {
   assertArray,
   isArray,
   isString,
+  isPromise,
+  isFunction,
   UndefinedSymbolError,
 } from "./utils.ts";
 
@@ -19,9 +22,10 @@ export async function resolve(ast: AstNode, env: Env) {
     return getEnv(env, ast);
   }
 
-  return ast; // ast unchanged
+  return await ast; // ast unchanged
 }
 
+// console.log(c`red ${c`green ${'blue'.bold}.blue`}.green`.red);
 // Return new Env with symbols in ast bound to
 // corresponding values in exprs
 //
@@ -29,15 +33,29 @@ export async function resolve(ast: AstNode, env: Env) {
 //
 // [fn expr1 expr2]
 //
-export function bindFn(ast: AstNode, env: Env, exprs: Exprs) {
+export async function bindFn(ast: AstNode, env: Env, exprs: Exprs) {
   assertArray(ast);
   env = Object.create(env);
 
-  ast?.some((a: any, i: number) =>
-    a == "..."
-      ? (env[ast[i + 1] as string] = exprs.slice(i))
-      : ((env[a] = exprs[i]), 0)
-  );
+  for (let i = 0; i < ast.length; i++) {
+    if (ast[i] === "...") {
+      await setEnv(env, ast[i + 1] as string, exprs.slice(i));
+      break;
+    }
+    await setEnv(env, ast[i] as string, exprs[i]);
+  }
+
+  // const spreadIdx = ast.indexOf('...');
+  // const args = ast.slice(0, spreadIdx);
+  // const spread = spreadIdx === -1 ? [] : ast.slice(spreadIdx + 1);
+
+  // await Promise.all(
+  //   ast?.some(async (a: any, i: number) =>
+  //     a === "..."
+  //       ? await setEnv(env, ast[i + 1] as string, exprs.slice(i))
+  //       : ((await setEnv(env, a, exprs[1])), 0)
+  //   )
+  // );
   return env;
 }
 
@@ -45,27 +63,48 @@ export function getEnv(env: Env, key: string, default_?: any): any {
   if (key in env) return env[key];
   if (default_ !== undefined) return default_;
 
-  env.throw(new UndefinedSymbolError(key));
+  console.log(Deno.inspect(env).substr(0, 100));
+  // console.table(env);
+
+  throw new UndefinedSymbolError(key);
+  // env.throw(new UndefinedSymbolError(key));
 }
 
-export function setEnv(env: Env, key: string, value: any): Env {
-  return (env[key] = value);
+export async function setEnv(env: Env, key: string, value: any): Promise<Env> {
+  const resolved = await value;
+
+  if (isPromise(value)) {
+    console.error("promise:", value, "resolved:", resolved);
+  }
+
+  if (isFunction(value) && "_BIND" in value) {
+    console.log(" -> ", key, "BIND", value._BIND?.[0]);
+  } else {
+    console.log(" +  ", key, " =  ", typeof value, '   ', value);
+  }
+  // console.log('%c + %c%s %c= %c%s', 'color: orange', 'color: green', key, 'color: gray', 'color: white', value)
+  // console.log('%c%s%c: %c%s')
+  return (env[key] = resolved);
+}
+
+export function hasEnv(env: Env, key: string): boolean {
+  return key in env;
 }
 
 export async function macroExpand(ast: AstNode, env: Env) {
   assertArray(ast);
-  const [a0, ...a$] = ast;
-  assert(typeof a0 === "string");
+  const [symbol, ...args] = ast;
+  assert(typeof symbol === "string");
 
-  while (a0 in env && env[a0]._MACRO) {
-    ast = await env[a0](a$);
+  while (hasEnv(env, symbol) && getEnv(env, symbol)._MACRO) {
+    ast = await getEnv(env, symbol)(args);
   }
   return ast;
 }
 
 export async function evalAst(ast: AstNode, env: Env): Promise<AstNode> {
   while (true) {
-    console.debug("eval", ast);
+    // console.debug("eval", ast);
     // console.debug('keys', Object.keys(env));
     if (!isArray(ast)) return await resolve(ast, env);
 
@@ -74,7 +113,7 @@ export async function evalAst(ast: AstNode, env: Env): Promise<AstNode> {
     if (!isArray(ast)) return await resolve(ast, env);
 
     const [fname, ...fargs] = ast;
-    const [a1, a2, a3] = fargs;
+    const [a1, a2] = fargs;
 
     switch (fname) {
       // def my-symbol 42
@@ -82,7 +121,7 @@ export async function evalAst(ast: AstNode, env: Env): Promise<AstNode> {
         const [name, value] = fargs;
         assert(typeof name === "string");
 
-        return setEnv(env, name, await evalAst(value, env));
+        return await setEnv(env, name, await evalAst(value, env));
       }
 
       // fn [arg1 arg2 ... rest]
@@ -91,10 +130,12 @@ export async function evalAst(ast: AstNode, env: Env): Promise<AstNode> {
         const [args, body] = fargs;
         assert(isArray(args));
 
-        const func: Fn = (...a: any[]) => evalAst(body, bindFn(args, env, a));
-        func._BIND = [body, env, args];
+        const wrapperFn: Fn = async (...a: any[]) =>
+          await evalAst(body, await bindFn(args, env, a));
 
-        return func;
+        wrapperFn._BIND = [body, env, args];
+
+        return wrapperFn;
       }
 
       // let [foo 1 bar 2]
@@ -107,13 +148,16 @@ export async function evalAst(ast: AstNode, env: Env): Promise<AstNode> {
 
         for (let i = 0; i < pairs.length; i++) {
           if (i % 2) {
-            const k = pairs[i - 1];
-            assert(typeof k === "string");
-            const v = pairs[i];
-            env[k] = await evalAst(v, env);
+            const key = pairs[i - 1];
+            assert(typeof key === "string");
+
+            const value = pairs[i];
+
+            await setEnv(env, key, await evalAst(value, env));
           }
         }
         ast = body;
+
         break;
       }
 
@@ -123,9 +167,12 @@ export async function evalAst(ast: AstNode, env: Env): Promise<AstNode> {
       //     print "foo is not 123"
       //     print "so, i'm mad."
       //
-      case "if":
-        ast = (await evalAst(a1, env)) ? a2 : a3;
+      case "if": {
+        const [condition, yes, no] = fargs;
+        ast = (await evalAst(condition, env)) ? yes : no;
+
         break;
+      }
 
       // multiple forms (for side-effects)
       //
@@ -133,10 +180,17 @@ export async function evalAst(ast: AstNode, env: Env): Promise<AstNode> {
       //   fun1 1 2
       //   fun2 "foo"
       //
-      case "do":
-        await resolve(ast.slice(1, ast.length - 1), env);
-        ast = ast[ast.length - 1];
+      case "do": {
+        const rest = [...fargs];
+        const last = rest.pop();
+
+        assert(last);
+
+        await resolve(rest, env);
+        ast = last;
+
         break;
+      }
 
       // quote (unevaluated)
       case "str":
@@ -144,26 +198,47 @@ export async function evalAst(ast: AstNode, env: Env): Promise<AstNode> {
         return a1;
 
       // mark as macro
+      case "macro":
       case "~": {
-        const fn: Fn = (await evalAst(a1, env)) as Fn; // eval regular function
-        fn._MACRO = 1; // mark as macro
-        return fn;
+        const wrapperFn: Fn = (await evalAst(a1, env)) as Fn; // eval regular function
+        wrapperFn._MACRO = 1; // mark as macro
+
+        return wrapperFn;
       }
 
-      // get or set attribute
-      case ".-": {
-        const [e0, e1, e2] = await resolve(ast.slice(1), env);
+      // get  attribute
+      case "get":
+      case ".": {
+        const [object, ...path] = await resolve(fargs, env);
+        // let value = object;
 
-        return e2 !== undefined
-          ? (e0[e1] = e2) // set
-          : e0[e1]; // get;
+        // while (path.length) {
+        //   value = value[path.shift()];
+        // }
+
+        // return value;
+        return get(object, path)
+      }
+
+      // set attribute
+      case "set": {
+        const path = [...await resolve(fargs, env)];
+        const object = path.shift()
+        const value = path.pop()
+        
+        // while (pathval.length > 1) {
+        //   value = value[pathval.shift()];
+        // }
+
+        return set(object, path, value);
       }
 
       // call object method
-      case ".": {
-        const [e0, e1, ...e$] = await resolve(ast.slice(1), env);
+      case "call":
+      case "->": {
+        const [object, method, ...args] = await resolve(fargs, env);
 
-        return e0[e1].apply(e0, e$);
+        return await object[method].apply(object, args);
       }
 
       // case "import": {
@@ -175,7 +250,7 @@ export async function evalAst(ast: AstNode, env: Env): Promise<AstNode> {
           return await evalAst(a1, env);
         } catch (err) {
           assert(isArray(a2));
-          return await evalAst(a2[2], bindFn([a2[2]], env, [err]));
+          return await evalAst(a2[2], await bindFn([a2[2]], env, [err]));
         }
 
       // invoke list form
@@ -187,7 +262,7 @@ export async function evalAst(ast: AstNode, env: Env): Promise<AstNode> {
         if (fn._BIND) {
           const [body, bindEnv, argDef] = fn._BIND;
           ast = body;
-          env = bindFn(argDef, bindEnv, args);
+          env = await bindFn(argDef, bindEnv, args);
         } else {
           return await fn(...args);
         }

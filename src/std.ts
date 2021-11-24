@@ -79,12 +79,16 @@ export const str = {
 // List ops
 export const list = {
   new: (...items: any[]) => items,
-  map: (a: (...args: any) => any, b: Array<any>) => b.map((x) => a(x)),
+  map: (b: Array<any>, a: (...args: any) => any) => b.map((x) => a(x)),
   filter: (a: (...args: any) => any, b: Array<any>) => b.filter((x) => a(x)),
   some: (a: (...args: any) => any, b: Array<any>) => b.some((x) => a(x)),
   every: (a: (...args: any) => any, b: Array<any>) => b.every((x) => a(x)),
   has: (l: any[], item: any) => l.includes(item),
   cat: (l: any[], ...c: any[][]) => l.concat(...c),
+  // append: (l: any[], c: any) => [...l, c],
+  // MUTABLE!
+  append: (l: any[], c: any) => l.push(c),
+  prepend: (l: any[], c: any) => l.unshift(c),
   "to-json": (l: any[]) => JSON.stringify(l),
 };
 
@@ -221,12 +225,15 @@ export const state = {
 
 export const platform = {
   deno: {
-    'eval-js': eval,
+    "eval-js": eval,
     import: (uri: string) => import(uri),
     throw: (err: any) => {
       throw err;
     },
     log: log.info,
+    // log: async (m: any) => {
+    //   return log.info(await Promise.all(m));
+    // },
   },
   python: {
     eval: () => null,

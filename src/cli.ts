@@ -22,7 +22,7 @@ const doc = `
 JISP interpreter & converter
 
 Usage:
-  ${prog} run FILE ...
+  ${prog} run [-s <syntax>] FILE ... 
   ${prog} load [FILE] [-s <syntax>]
   ${prog} dump [FILE] [-s <syntax>]
   ${prog} -h | --help                  Show usage
@@ -55,12 +55,14 @@ function parse(text: string, syntax: Syntax) {
     console.error(`Failed to parse: ${text}`);
     Deno.exit(1);
   }
+
+  return ast;
 }
 
 export async function main(argv = Deno.args) {
   const opts = getopts(argv);
   console.log("opts", opts);
-  const m = jisp({});
+  const m = jisp({document: (window as any)['document']});
 
   for (const file of opts["FILE"]) {
     const code: any = await parse(await Deno.readTextFile(file), opts["-s"]);
