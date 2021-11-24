@@ -3,12 +3,12 @@ $schema: jisp.org/tw.schema.json
 
 # { foo, bar }: [import, "https://deno.land/std/foo.js"]
 
-unless: [macro, { p, a, b }: [list, "if", p, b, a]]
+unless: [macro, {p, a, b}: [list, "if", p, b, a]]
 
 app:
   [
     {},
-    [{ scroll-y, set-scroll-y }: [use-state, -1]],
+    [{scroll-y, set-scroll-y}: [use-state, -1]],
     [
       use-effect,
       {}:
@@ -19,7 +19,7 @@ app:
                 .-,
                 window,
                 "add-event-listener",
-                { e }: [set-scroll-y, [:, e, "target", "scroll-y"]],
+                {e}: [set-scroll-y, [., e, "target", "scroll-y"]],
               ],
           ],
           {}: [.-, window, "remove-event-listener", listener],
@@ -28,14 +28,20 @@ app:
     ],
     [
       handle-scroll:
-        [{ e }, [.-, e, preventDefault], [set-scroll-y, [:, window, scroll-y]]],
+        [{e}, [.-, e, preventDefault], [set-scroll-y, [., window, scroll-y]]],
     ],
-    [html, id: "example", on-scroll: handle-scroll, [head, [meta, link, 'foo:bar'], [meta, foo, 'bar']], [body, class: "modernizr", [div, id: "app"]]],
+    [
+      html,
+      id: "example",
+      on-scroll: handle-scroll,
+      [head, [meta, link, "foo:bar"], [meta, foo, "bar"]],
+      [body, class: "modernizr", [div, id: "app"]],
+    ],
   ]
 
 sidebar:
   [
-    { foo, bar, channel },
+    {foo, bar, channel},
     [dispatch: [use-dispatch]],
     [counter: [use-state, 0]],
     [
@@ -47,39 +53,39 @@ sidebar:
     [
       div,
       rounded-2xl,
-      px-5   ,
+      px-5,
       mx-4,
       lg:mx-2,
       [
         ul,
         mx-15,
-        [li, px-12, visibility: [lt, 1, [:, config, "site", "visible-count"]]],
+        [li, px-12, visibility: [lt, 1, [., config, "site", "visible-count"]]],
       ],
-      [ul, mx-15, [each, items, { item, i }: [:, item, "authors", i, "name"]]],
+      [ul, mx-15, [each, items, {item, i}: [., item, "authors", i, "name"]]],
       [
         ul,
         lg:flex-2,
         flex-col,
         items-center,
         [
-          for ,
+          for,
           items,
-          { item, i }:
+          {item, i}:
             [
               a,
-              href: [:, item, i, link],
+              href: [., item, i, link],
               [
                 li,
                 on-click:
                   [
-                    { e }:
+                    {e}:
                       [
                         [-, e, prevent-default],
-                        [set-foo, [:, e, target, value]],
+                        [set-foo, [., e, target, value]],
                       ],
                   ],
                 rounded-full,
-                [:, "item", "authors", i, "name"],
+                [., "item", "authors", i, "name"],
               ],
             ],
         ],
