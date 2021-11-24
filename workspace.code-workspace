@@ -1,0 +1,21 @@
+{
+	"folders": [
+		{
+			"path": "."
+		},
+		{
+			"path": "../shup"
+		},
+		{
+			"path": "../pm"
+		}
+	],
+	"settings": {
+		"deno.suggest.imports.hosts": {
+			"https://deno.land": false
+		},
+		"deno.enable": true,
+		"deno.lint": true,
+		"deno.unstable": true
+	}
+}

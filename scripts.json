@@ -2,7 +2,7 @@
   "$schema": "https://deno.land/x/denon@2.4.9/schema.json",
   "scripts": {
     "start": {
-      "cmd": "deno run src/cli.ts load misc/example.square.yaml -s curlyml",
+      "cmd": "deno run src/cli.ts load misc/example tw.yaml -s curlyml",
       "allow": ["env", "write", "read", "net"],
       "unstable": true,
       "importmap": "import_map.json"
