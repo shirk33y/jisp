@@ -1,24 +1,31 @@
 {
   "$schema": "https://deno.land/x/denon@2.4.9/schema.json",
   "scripts": {
-    "start": {
-      "cmd": "deno run src/cli.ts run misc/poc.yaml -s curlyml",
+    "start3": {
+      "cmd": "deno run src/cli.ts run misc/poc.yaml -s astfun",
       "allow": ["env", "write", "read", "net"],
       "unstable": true,
       "importmap": "import_map.json"
     },
     "start2": {
-      "cmd": "deno run src/cli.ts load misc/example tw.yaml -s curlyml",
+      "cmd": "deno run src/cli.ts load misc/example tw.yaml -s astfun",
+      "allow": ["env", "write", "read", "net"],
+      "unstable": true,
+      "importmap": "import_map.json"
+    },
+    "start": {
+      "cmd": "deno run src/test.ts",
       "allow": ["env", "write", "read", "net"],
       "unstable": true,
       "importmap": "import_map.json"
     }
   },
   "watcher": {
-    "interval": 350,
+    "interval": 50,
     "exts": ["ts", "yaml", "json"],
     "match": ["**/*.*"],
     "skip": ["*/.git/*"],
     "legacy": true
-  }
+  },
+  "logger": {"quiet": true}
 }

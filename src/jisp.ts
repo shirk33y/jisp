@@ -35,8 +35,9 @@ export function jisp(env: Env) {
     "str.fmt": str.fmt,
     "str.join": str.join,
     "str.cat": str.cat,
-    eval: (a: AstNode) => evalAst(a, env),
     list: (...a: any[]) => a,
+    $$path: [],
+    eval: (a: AstNode) => evalAst(a, env),
     .../* extra env */ {},
   });
   // console.log(env);

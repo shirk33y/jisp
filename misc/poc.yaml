@@ -2,9 +2,15 @@
   [def, react, [import, "https://esm.sh/react?dev"]],
   [def, react-dom, [import, "https://esm.sh/react-dom?dev"]],
   [def, react-dom-server, [import, "http://esm.sh/react-dom/server?dev"]],
+  # [def, tw, [import, "https://esm.sh/tailwindcss"]],
 
-  # [log, react]],
+  # [def, test, [fn, [foo], [let, [mod, [import, "/test.ts"]], [call, mod, "default"] ]]],
+  [def, logger, [import, "/utils/log.ts"]],
+
+  # [test, 1],
+  # [log, logger],
   # [log, [get, react, "isValidElement"]],
+  # [exit, 1],
 
   [
     def,
@@ -14,11 +20,10 @@
       [..., tree],
       [
         let,
-        # [classes, [list], props, [obj], children, [list]],
         [classes, [list], props, [obj], children, [list]],
         [
-          !debug do,
-          [
+          do,
+          &d [
             list.map,
             tree,
             [
@@ -48,13 +53,11 @@
                         ],
                       ],
                     ],
-                    # [obj.merge, props, item],
                   ],
                 ],
               ],
             ],
           ],
-          # [log, props, children],
           [call, react, "createElement", "div", props, children],
         ],
       ],
@@ -64,7 +67,6 @@
   [def, border-green-500, "border-green-500"],
   [def, px-2, "px-2"],
   [def, bg-blue, "bg-blue"],
-  # [def, ],
 
   [
     def,
@@ -73,8 +75,8 @@
     # [tw, bg-blue, [tw, px-2, border-green-500, [tw, title: "title"], [tw]]],
   ],
 
-  [log, App],
-  [log, [call, react-dom-server, "renderToString", App]],
+  # [log, App],
+  # [log, [call, react-dom-server, "renderToString", App]],
 
   [
     def,

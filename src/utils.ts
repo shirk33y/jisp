@@ -25,6 +25,30 @@ export function assertArray(arg: any): asserts arg is any[] {
   assert(isArray(arg));
 }
 
+// console.log(c`red ${c`green ${'blue'.bold}.blue`}.green`.red);
+export function toSpacez(ast: any, { maxLines = 3, colors = true }) {
+
+
+}
+
+
+
+
+
+// if(isDebug && window.console && console.log && console.warn && console.error){
+//   window.debug = {
+//       'log': window.console.log,
+//       'warn': window.console.warn,
+//       'error': window.console.error
+//   };
+// }else{
+//   window.debug = {
+//       'log': function(){},
+//       'warn': function(){},
+//       'error': function(){}
+//   };
+// }
+
 // export class KindError extends Error {
 
 export class KindError extends Error {

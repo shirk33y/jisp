@@ -231,6 +231,7 @@ export const platform = {
       throw err;
     },
     log: log.info,
+    exit: Deno.exit,
     // log: async (m: any) => {
     //   return log.info(await Promise.all(m));
     // },
