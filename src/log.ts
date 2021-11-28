@@ -1,62 +1,141 @@
-/*
- * Copyright 2016, Matthieu Dumas
- * This work is licensed under the Creative Commons Attribution 4.0 International License.
- * To view a copy of this license, visit http://creativecommons.org/licenses/by/4.0/
- */
+import * as log from "https://deno.land/std/log/mod.ts";
+import * as YAML from "yaml2";
+import * as _ from "lodash";
+import {
+  bold,
+  gray,
+  dim,
+  italic,
+  brightBlue,
+  red,
+  brightBlack,
+  brightRed,
+  yellow,
+  white,
+} from "https://deno.land/std@0.106.0/fmt/colors.ts";
+import type {
+  LevelName,
+  HandlerOptions,
+} from "https://deno.land/std/log/mod.ts";
+import { isString } from "/utils.ts";
 
-/* Usage :
- * var log = Logger.get("myModule") // .level(Logger.ALL) implicit
- * log.info("always a string as first argument", then, other, stuff)
- * log.level(Logger.WARN) // or ALL, DEBUG, INFO, WARN, ERROR, OFF
- * log.debug("does not show")
- * log("but this does because direct call on logger is not filtered by level")
- */
-export const logger = (function () {
-  const levels = {
-    ALL: 100,
-    DEBUG: 100,
-    INFO: 200,
-    WARN: 300,
-    ERROR: 400,
-    OFF: 500,
-  };
-  const cache: Record<any, any> = {};
-  const cons = window.console;
-  const noop = function () {};
-  const level = function (this: any, level: any) {
-    this.error =
-      level <= levels.ERROR
-        ? cons.error.bind(cons, "[" + this.id + "] - ERROR - %s")
-        : noop;
-    this.warn =
-      level <= levels.WARN
-        ? cons.warn.bind(cons, "[" + this.id + "] - WARN - %s")
-        : noop;
-    this.info =
-      level <= levels.INFO
-        ? cons.info.bind(cons, "[" + this.id + "] - INFO - %s")
-        : noop;
-    this.debug =
-      level <= levels.DEBUG
-        ? cons.log.bind(cons, "[" + this.id + "] - DEBUG - %s")
-        : noop;
-    this.log = cons.log.bind(cons, "[" + this.id + "] %s");
-    return this;
-  };
-  (levels as any).get = function (id: any) {
-    let res = cache[id];
-    if (!res) {
-      let ctx: any = { id, level }; // create a context
-      ctx.level(log.ALL); // apply level
-      res = ctx.log; // extract the log function, copy context to it and returns it
-      for (const prop in ctx) {
-        res[prop] = ctx[prop];
-      }
-      cache[id] = res;
-    }
-    return res;
-  };
-  return levels; // return levels augmented with "get"
-})();
+class TerminalHandler extends log.handlers.BaseHandler {
+  constructor(levelName: LevelName, options: HandlerOptions = {}) {
+    super(levelName, options);
+    this.log = console.log.bind(console);
+  }
+}
 
-export const log = (logger as any).get(import.meta.url);
+const LEVEL_COLORS = {
+  NOTSET: brightBlack,
+  DEBUG: brightBlue,
+  INFO: white,
+  WARNING: yellow,
+  ERROR: red,
+  CRITICAL: brightRed,
+};
+
+type Paint = (str: string) => string;
+
+const getLevelPaint = (levelName: string): Paint => {
+  return LEVEL_COLORS[levelName as LevelName];
+};
+
+const level = (levelName: string, levelPaint: Paint) => {
+  return bold(levelPaint(levelName.substr(0, 1).toUpperCase()));
+};
+
+const sep = (sep = " | ") => {
+  return dim(gray(sep));
+};
+
+const inspect = (obj: any) =>
+  Deno.inspect(obj, {
+    compact: true,
+    colors: true,
+    depth: 2,
+  });
+
+const prefixLines = (text: string, prefix: string) =>
+  text
+    .split(/\n/)
+    .map((line, i) => (i === 0 ? line : `${prefix}${line}`))
+    .join("\n");
+
+const msg = (msg: any) => {
+  // const data = YAML.parse(msg); 
+  return bold(anything(msg));
+};
+
+const anything = (data: any) => {
+  if (isString(data)) {
+    return data;
+  }
+
+  return inspect(data).trim();
+};
+
+const args = (args: any[]) => {
+  if (args.length === 0) return "";
+
+  const str = args.map((arg) => sep(", ") + anything(arg)).join("");
+
+  return prefixLines(str, "  ");
+};
+
+const loggerName = (name: string) =>
+  [
+    dim(gray("[")),
+    italic(brightBlack(name === "default" ? "" : name)),
+    dim(gray("]")),
+  ].join("");
+
+const prettyFormatter = (rec: log.LogRecord) => {
+  const levelPaint = getLevelPaint(rec.levelName) as any;
+
+  return [
+    level(rec.levelName, levelPaint),
+    " ",
+    loggerName(rec.loggerName),
+    " ",
+    msg(rec.msg),
+    args(rec.args),
+  ].join("");
+};
+
+const jsonFormatter = (rec: log.LogRecord) =>
+  JSON.stringify([
+    rec.datetime,
+    rec.level,
+    rec.loggerName,
+    rec.msg,
+    ...rec.args,
+  ]);
+
+await log.setup({
+  handlers: {
+    console: new TerminalHandler("DEBUG", {
+      formatter: prettyFormatter,
+    }),
+    file: new log.handlers.RotatingFileHandler("INFO", {
+      filename: "./var/a.log",
+      maxBytes: 1500000,
+      maxBackupCount: 5,
+      formatter: jsonFormatter,
+    }),
+  },
+  loggers: {
+    default: {
+      level: "DEBUG",
+      handlers: ["console", "file"],
+    },
+    eval: {
+      level: "DEBUG",
+      handlers: ["console", "file"],
+    },
+  },
+});
+
+export const logger = log.getLogger;
+
+export default log 

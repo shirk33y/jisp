@@ -1,8 +1,7 @@
 import { assert } from "https://deno.land/std@0.114.0/testing/asserts.ts";
 import { AstNode, Env, Exprs, Fn } from "./ast.ts";
-// import * as yaml from "yaml";
-// import { log } from "./std.ts";
-import * as _ from "http://esm.sh/lodash?dev";
+import * as _ from "lodash";
+// import * as _ from "https://deno.land/x/lodash@4.17.19/lodash.js";
 import {
   assertArray,
   isArray,
@@ -11,6 +10,12 @@ import {
   isFunction,
   UndefinedSymbolError,
 } from "./utils.ts";
+
+import { logger } from "/log.ts";
+
+const log = logger("eval");
+
+log.error(_)
 
 export async function resolve(ast: AstNode, env: Env) {
   // list?
@@ -60,6 +65,8 @@ export function getEnv(env: Env, key: string, default_?: any): any {
 
 export async function setEnv(env: Env, key: string, value: any): Promise<Env> {
   const resolved = await value;
+  
+  log.debug('set', key, value)
 
   // if (isPromise(value)) {
   //   console.error("promise:", value, "resolved:", resolved);
@@ -92,7 +99,7 @@ export async function macroExpand(ast: AstNode, env: Env) {
 
 export async function evalAst(ast: AstNode, env: Env): Promise<AstNode> {
   while (true) {
-    // console.debug("eval", ast);
+    log.info("eval", ast);
     // console.debug('keys', Object.keys(env));
     if (!isArray(ast)) return await resolve(ast, env);
 
@@ -115,7 +122,7 @@ export async function evalAst(ast: AstNode, env: Env): Promise<AstNode> {
       //   body
       case "fn": {
         const [args, body] = fargs;
-        
+
         assert(isArray(args));
 
         const wrapperFn: Fn = async (...a: any[]) =>

@@ -1,10 +1,9 @@
 {
   "imports": {
-    "lodash": "https://deno.land/x/lodash@4.17.19/dist/lodash.js",
+    "lodash": "https://deno.land/x/lodash@4.17.15-es/lodash.js",
     "docopt": "https://cdn.deno.land/docopt/versions/v1.0.7/raw/dist/docopt.mjs",
-    "yaml": "https://deno.land/std@0.114.0/encoding/yaml.ts",
-    "yaml2/": "./yaml/src/",
-    "yaml2": "./yaml/src/index.ts",
+    "yaml2/": "./src/yaml/src/",
+    "yaml2": "./src/yaml/src/index.ts",
     "log": "https://deno.land/std@0.114.0/log/mod.ts",
     "std/": "https://deno.land/std@0.114.0/",
     "https://cdn.esm.sh/v57/fsevents@2.3.2/deno/fsevents.js": "./src/fsevents.ts",

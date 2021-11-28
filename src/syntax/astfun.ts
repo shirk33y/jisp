@@ -9,19 +9,14 @@ export function toMinimal(yamlStr: string) {
       //
       // plain     -> symbol  -> "plain"
       // "quoted"  -> string  -> ["`", "quoted"]
-
-      // console.log(YAML.parseDocument("- `\n- " + node.value))
-
       if (typeof node.value === "string") {
         if (
           node.type === YAML.Scalar.QUOTE_DOUBLE ||
           node.type === YAML.Scalar.QUOTE_SINGLE
         ) {
-          return YAML.parseDocument(`- str\n- ${node.value}]`).contents as any;
+          return YAML.parseDocument(`- str\n- ${node.value}`).contents as any;
         }
       }
-
-      // return undefined;
     },
   });
 

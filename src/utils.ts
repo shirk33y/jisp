@@ -1,6 +1,7 @@
 import { assert } from "https://deno.land/std@0.114.0/testing/asserts.ts";
 import * as log from "log";
-import * as yaml from "yaml";
+import * as yaml from "yaml2";
+import * as _ from "lodash";
 
 export function fatal(...msg: any[]) {
   log.error("fatal: ", ...msg);
@@ -16,40 +17,48 @@ export function isString(arg: any): arg is string {
   return typeof arg === "string";
 }
 
+export function isNumber(arg: any): arg is number {
+  // return _.isFinite(arg);
+  return typeof arg === "number";
+}
+
 export const isFunction = (v: any) => typeof v === "function";
 
 export const isPromise = (v: any) =>
   typeof v === "object" && typeof v.then === "function";
 
+// export const isDate = (d: any) => _.isDate(d);
+export const isDate = (d: any) => d instanceof Date && !isNaN(d.valueOf());
+
 export function assertArray(arg: any): asserts arg is any[] {
   assert(isArray(arg));
 }
 
-// console.log(c`red ${c`green ${'blue'.bold}.blue`}.green`.red);
-export function toSpacez(ast: any, { maxLines = 3, colors = true }) {
+export function toSpacez(ast: any, { maxLines = 3, colors = true }) {}
 
+// const digits = (num: number, padWidth = 2) => {
+//   const width = Math.floor(Math.log10(num) + 1);
+//   const pad = new Array(padWidth - width).fill("0").join("");
 
-}
+//   return `${dim(gray(pad))}${dim(white(num.toString()))}`;
+// };
 
+// const padStr = (str: string, width: number, padStr = " ") => {
+//   const trunc = str.substr(0, width);
+//   return trunc + new Array(width - trunc.length).fill(padStr).join("");
+// };
 
+// const date = (date: Date) => {
+//   const colon = dim(gray(":"));
 
-
-
-// if(isDebug && window.console && console.log && console.warn && console.error){
-//   window.debug = {
-//       'log': window.console.log,
-//       'warn': window.console.warn,
-//       'error': window.console.error
-//   };
-// }else{
-//   window.debug = {
-//       'log': function(){},
-//       'warn': function(){},
-//       'error': function(){}
-//   };
-// }
-
-// export class KindError extends Error {
+//   return [
+//     digits(date.getHours()),
+//     colon,
+//     digits(date.getMinutes()),
+//     colon,
+//     digits(date.getSeconds()),
+//   ].join("");
+// };
 
 export class KindError extends Error {
   objects: any[];

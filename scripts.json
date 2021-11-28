@@ -5,19 +5,19 @@
       "cmd": "deno run src/cli.ts run misc/poc.yaml -s astfun",
       "allow": ["env", "write", "read", "net"],
       "unstable": true,
-      "importmap": "import_map.json"
+      "importMap": "import_map.json"
     },
     "start2": {
       "cmd": "deno run src/cli.ts load misc/example tw.yaml -s astfun",
       "allow": ["env", "write", "read", "net"],
       "unstable": true,
-      "importmap": "import_map.json"
+      "importMap": "import_map.json"
     },
     "start": {
-      "cmd": "deno run src/test.ts",
+      "cmd": "deno run src/log.ts",
       "allow": ["env", "write", "read", "net"],
       "unstable": true,
-      "importmap": "import_map.json"
+      "importMap": "import_map.json"
     }
   },
   "watcher": {
@@ -27,5 +27,5 @@
     "skip": ["*/.git/*"],
     "legacy": true
   },
-  "logger": {"quiet": true}
+  "logger": {"quiet": false}
 }

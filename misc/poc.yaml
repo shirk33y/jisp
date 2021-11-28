@@ -1,16 +1,24 @@
 [
-  [def, react, [import, "https://esm.sh/react?dev"]],
-  [def, react-dom, [import, "https://esm.sh/react-dom?dev"]],
-  [def, react-dom-server, [import, "http://esm.sh/react-dom/server?dev"]],
+  [def, react, [import, "https://esm.sh/react?dev" ]],
+  [def, react-dom, [import, "https://esm.sh/react-dom?dev" ]],
+  [def, react-dom-server, [import, "http://esm.sh/react-dom/server?dev" ]],
   # [def, tw, [import, "https://esm.sh/tailwindcss"]],
 
   # [def, test, [fn, [foo], [let, [mod, [import, "/test.ts"]], [call, mod, "default"] ]]],
-  [def, logger, [import, "/utils/log.ts"]],
+  # [def, logger, [import, "/log.ts"]],
 
   # [test, 1],
   # [log, logger],
   # [log, [get, react, "isValidElement"]],
   # [exit, 1],
+  # [
+  #   "def", #intentionally a str,
+  #   "log.format",
+  #   [
+  #     fn,
+  #     [level, time, msg, args],
+  #     [c, blue, underline, [c, dim, "Text"], [fmt, ""]]
+  # ],
 
   [
     def,
@@ -75,8 +83,8 @@
     # [tw, bg-blue, [tw, px-2, border-green-500, [tw, title: "title"], [tw]]],
   ],
 
-  # [log, App],
-  # [log, [call, react-dom-server, "renderToString", App]],
+  [log, App],
+  [log, [call, react-dom-server, "renderToString", App]],
 
   [
     def,

@@ -1,5 +1,5 @@
 import docopt from "https://cdn.deno.land/docopt/versions/v1.0.7/raw/dist/docopt.mjs";
-import * as _ from "https://deno.land/x/lodash@4.17.19/dist/lodash.js";
+import * as _ from "lodash";
 import { jisp } from "./jisp.ts";
 import * as minimal from "./syntax/minimal.ts";
 import * as astfun from "./syntax/astfun.ts";
