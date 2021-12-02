@@ -1,7 +1,0 @@
-# key-is-function: [map: {items, item, i}, select: {item, authors, i: 7, name}]
-# value-is-args:
-#   [fn: {a, b: "Default", c: 15}, {div, border-3, mx-4, href: "foo"}]
-
-[
-  [def, foo, 123]
-]

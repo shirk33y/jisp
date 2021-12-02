@@ -1,19 +1,20 @@
+#!/usr/bin/env -S deno run --allow-env --allow-write --allow-read --allow-net --import-map import_map.json --unstable
 import docopt from "https://cdn.deno.land/docopt/versions/v1.0.7/raw/dist/docopt.mjs";
 import * as _ from "lodash";
 import { jisp } from "./jisp.ts";
+import * as log from "./log.ts";
 import * as minimal from "./syntax/minimal.ts";
 import * as astfun from "./syntax/astfun.ts";
+import { die, stdoutWrite } from "./utils.ts";
 
 const parsers = { minimal, astfun };
 
 type Syntax = keyof typeof parsers;
 
 interface Opts {
-  run: boolean;
-  load: boolean;
-  dump: boolean;
   FILE: string[];
   "-s": Syntax;
+  "-t": Syntax;
 }
 
 const prog = "jisp";
@@ -22,56 +23,104 @@ const doc = `
 JISP interpreter & converter
 
 Usage:
-  ${prog} run [-s <syntax>] FILE ... 
-  ${prog} load [FILE] [-s <syntax>]
-  ${prog} dump [FILE] [-s <syntax>]
+  ${prog} [-s <syntax>] FILE ... 
+  ${prog} -t <target-syntax> [-s <syntax>] FILE ... 
+  
   ${prog} -h | --help                  Show usage
   ${prog} -v | --version               Show version
 
 Options:
-  -s <syntax>       [default: minimal]
-  -h --help         Show this screen.
-  --version         Show version.
+  -s <syntax>         [default: minimal]
+  -t <target-syntax>  Translate to syntax.
+  -h --help           Show this screen.
+  --version           Show version.
 `;
 
 function getopts(argv: string[]) {
   try {
     return docopt(doc, { argv }) as Opts;
   } catch (error) {
-    console.log(error.message);
-    Deno.exit(1);
+    die(1, error.message);
   }
 }
 
 function parse(text: string, syntax: Syntax) {
-  const ast = parsers[syntax]?.toMinimal(text);
+  const parser = parsers[syntax]?.toMinimal;
+
+  if (!parser) {
+    die(32, `Unknown parser`, { syntax, parsers });
+  }
+
+  const ast = parser(text);
 
   if (!ast) {
-    console.error(`Failed to parse: ${text}`);
-    Deno.exit(1);
+    die(15, `Failed to parse ast`, { syntax, text });
   }
 
   return ast;
 }
 
+function translate(
+  file: string,
+  ast: any,
+  syntax: Syntax,
+  targetSyntax: Syntax
+) {
+  if (syntax === targetSyntax) {
+    die(69, `Target syntax equals source syntax`, file, {
+      syntax,
+      targetSyntax,
+    });
+  }
+
+  log.info(`Translating`, file, { syntax, targetSyntax });
+
+  const stringifier = parsers[targetSyntax]?.fromMinimal;
+
+  if (!stringifier) {
+    die(33, `Unsupported syntax`, { targetSyntax, parsers });
+  }
+
+  return stringifier(JSON.stringify(ast));
+}
+
+async function evaluate(
+  file: string,
+  ast: any,
+  syntax: Syntax,
+  m: ReturnType<typeof jisp>
+) {
+  for (const expr of ast) {
+    try {
+      await m.eval(expr);
+    } catch (error) {
+      die(13, `Evaluate error`, error, { file, ast, syntax });
+    }
+  }
+}
+
 export async function main(argv = Deno.args) {
   const opts = getopts(argv);
+  log.debug("Parsed options", opts);
   const m = jisp({});
+  let ast;
 
   for (const file of opts["FILE"]) {
-    let code;
+    log.info("Reading file", file);
+
     try {
-      code= await parse(await Deno.readTextFile(file), opts["-s"]);
+      const text = await Deno.readTextFile(file);
+      ast = await parse(text, opts["-s"]);
     } catch (err: any) {
-      console.log(Object.keys(err), err);
-      continue
+      die(4, `Error reading file`, file, err);
     }
 
-    for (const expr of code) {
-      // await m.eval(expr).catch(console.debug);
-      await m.eval(expr).catch((err: any) => {
-        console.log(Object.keys(err), err);
-      });
+    if (opts["-t"]) {
+      const out = await translate(file, ast, opts["-s"], opts["-t"]);
+      log.info("Translate success", { out });
+      await stdoutWrite(out);
+    } else {
+      await evaluate(file, ast, opts["-s"], m);
     }
   }
 }

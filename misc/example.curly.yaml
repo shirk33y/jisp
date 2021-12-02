@@ -4,7 +4,7 @@ Sidebar:
       {
         div,
         rounded-2xl: {config: {site, rounded-borders}},
-        px-5: {gt, 0, {list.len, items}},
+        px-5: {gt, 0, {list: {foo: {{len: .}}}, items}},
         mx-4,
         lg:mx-2,
         {ul, mx-15, [each: {items, item, i}, [item, authors, i, name]]},

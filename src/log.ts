@@ -22,7 +22,11 @@ import { isString } from "/utils.ts";
 class TerminalHandler extends log.handlers.BaseHandler {
   constructor(levelName: LevelName, options: HandlerOptions = {}) {
     super(levelName, options);
-    this.log = console.log.bind(console);
+  }
+
+  log(msg: string): void {
+    Deno.stderr.write(new TextEncoder().encode(msg));
+    Deno.stderr.write(new TextEncoder().encode("\n"));
   }
 }
 
@@ -63,7 +67,7 @@ const prefixLines = (text: string, prefix: string) =>
     .join("\n");
 
 const msg = (msg: any) => {
-  // const data = YAML.parse(msg); 
+  // const data = YAML.parse(msg);
   return bold(anything(msg));
 };
 
@@ -138,4 +142,12 @@ await log.setup({
 
 export const logger = log.getLogger;
 
-export default log 
+export const defaultLogger = logger("default");
+
+export const info = defaultLogger.info.bind(defaultLogger);
+export const warn = defaultLogger.warning.bind(defaultLogger);
+export const error = defaultLogger.error.bind(defaultLogger);
+export const debug = defaultLogger.debug.bind(defaultLogger);
+export const crit = defaultLogger.critical.bind(defaultLogger);
+
+export default log;
