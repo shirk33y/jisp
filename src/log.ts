@@ -1,5 +1,11 @@
 import * as log from "https://deno.land/std/log/mod.ts";
-import * as YAML from "yaml2";
+import {
+  info,
+  error,
+  warning,
+  critical,
+  debug,
+} from "https://deno.land/std/log/mod.ts";
 import * as _ from "lodash";
 import {
   bold,
@@ -13,13 +19,10 @@ import {
   yellow,
   white,
 } from "https://deno.land/std@0.106.0/fmt/colors.ts";
-import type {
-  LevelName,
-  HandlerOptions,
-} from "https://deno.land/std/log/mod.ts";
+import { LevelName, HandlerOptions } from "https://deno.land/std/log/mod.ts";
 import { isString } from "/utils.ts";
 
-class TerminalHandler extends log.handlers.BaseHandler {
+export class TerminalHandler extends log.handlers.BaseHandler {
   constructor(levelName: LevelName, options: HandlerOptions = {}) {
     super(levelName, options);
   }
@@ -67,7 +70,6 @@ const prefixLines = (text: string, prefix: string) =>
     .join("\n");
 
 const msg = (msg: any) => {
-  // const data = YAML.parse(msg);
   return bold(anything(msg));
 };
 
@@ -90,11 +92,11 @@ const args = (args: any[]) => {
 const loggerName = (name: string) =>
   [
     dim(gray("[")),
-    italic(brightBlack(name === "default" ? "" : name)),
+    italic(brightBlack(name === "default" ? "main" : name)),
     dim(gray("]")),
   ].join("");
 
-const prettyFormatter = (rec: log.LogRecord) => {
+export const prettyFormatter = (rec: log.LogRecord) => {
   const levelPaint = getLevelPaint(rec.levelName) as any;
 
   return [
@@ -107,7 +109,7 @@ const prettyFormatter = (rec: log.LogRecord) => {
   ].join("");
 };
 
-const jsonFormatter = (rec: log.LogRecord) =>
+export const jsonFormatter = (rec: log.LogRecord) =>
   JSON.stringify([
     rec.datetime,
     rec.level,
@@ -116,38 +118,36 @@ const jsonFormatter = (rec: log.LogRecord) =>
     ...rec.args,
   ]);
 
-await log.setup({
-  handlers: {
-    console: new TerminalHandler("DEBUG", {
-      formatter: prettyFormatter,
-    }),
-    file: new log.handlers.RotatingFileHandler("INFO", {
-      filename: "./var/a.log",
-      maxBytes: 1500000,
-      maxBackupCount: 5,
-      formatter: jsonFormatter,
-    }),
-  },
-  loggers: {
-    default: {
-      level: "DEBUG",
-      handlers: ["console", "file"],
+export const defaultSetup = async (level: LevelName) => {
+  await log.setup({
+    handlers: {
+      console: new TerminalHandler(level, {
+        formatter: prettyFormatter,
+      }),
+      // file: new log.handlers.RotatingFileHandler("INFO", {
+      //   filename: "./var/a.log",
+      //   maxBytes: 1500000,
+      //   maxBackupCount: 5,
+      //   formatter: jsonFormatter,
+      // }),
     },
-    eval: {
-      level: "DEBUG",
-      handlers: ["console", "file"],
+    loggers: {
+      default: {
+        level: "DEBUG",
+        handlers: ["console"],
+        // handlers: ["console", "file"],
+      },
+      eval: {
+        level: "DEBUG",
+        handlers: ["console"],
+        // handlers: ["console", "file"],
+      },
     },
-  },
-});
+  });
+};
 
-export const logger = log.getLogger;
+await defaultSetup('ERROR')
 
-export const defaultLogger = logger("default");
+export type { LevelName };
 
-export const info = defaultLogger.info.bind(defaultLogger);
-export const warn = defaultLogger.warning.bind(defaultLogger);
-export const error = defaultLogger.error.bind(defaultLogger);
-export const debug = defaultLogger.debug.bind(defaultLogger);
-export const crit = defaultLogger.critical.bind(defaultLogger);
-
-export default log;
+export { log, debug, info, error, warning, critical };

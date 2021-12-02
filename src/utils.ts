@@ -4,7 +4,9 @@ import * as yaml from "yaml2";
 import * as _ from "lodash";
 
 export function die(code: number, msg: any, ...args: any[]) : never {
-  log.crit(msg, ...args);
+  log.critical(msg, ...args);
+  //TODO: is this best solution?
+  Deno.stdout.writeSync(new TextEncoder().encode("\n"));
   Deno.exit(code);
 }
 

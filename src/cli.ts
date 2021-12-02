@@ -1,8 +1,9 @@
-#!/usr/bin/env -S deno run --allow-env --allow-write --allow-read --allow-net --import-map import_map.json --unstable
+#!/usr/bin/env -S denon run --allow-env --allow-write --allow-read --allow-net --import-map import_map.json --unstable
+// #!/usr/bin/env -S deno run --allow-env --allow-write --allow-read --allow-net --import-map import_map.json --unstable
 import docopt from "https://cdn.deno.land/docopt/versions/v1.0.7/raw/dist/docopt.mjs";
+import * as log from "./log.ts";
 import * as _ from "lodash";
 import { jisp } from "./jisp.ts";
-import * as log from "./log.ts";
 import * as minimal from "./syntax/minimal.ts";
 import * as astfun from "./syntax/astfun.ts";
 import { die, stdoutWrite } from "./utils.ts";
@@ -15,6 +16,7 @@ interface Opts {
   FILE: string[];
   "-s": Syntax;
   "-t": Syntax;
+  "-l": string;
 }
 
 const prog = "jisp";
@@ -23,15 +25,16 @@ const doc = `
 JISP interpreter & converter
 
 Usage:
-  ${prog} [-s <syntax>] FILE ... 
-  ${prog} -t <target-syntax> [-s <syntax>] FILE ... 
+  ${prog} [-l <log-level>] [-s <syntax>] FILE ... 
+  ${prog} [-l <log-level>] -t <target-syntax> [-s <syntax>] FILE ... 
   
   ${prog} -h | --help                  Show usage
-  ${prog} -v | --version               Show version
+  ${prog} --version                    Show version
 
 Options:
   -s <syntax>         [default: minimal]
   -t <target-syntax>  Translate to syntax.
+  -l <log-level>      [default: INFO]
   -h --help           Show this screen.
   --version           Show version.
 `;
@@ -102,8 +105,13 @@ async function evaluate(
 export async function main(argv = Deno.args) {
   const opts = getopts(argv);
   log.debug("Parsed options", opts);
+  console.log("Parsed options", opts);
   const m = jisp({});
   let ast;
+
+  await log.defaultSetup(opts["-l"] as log.LevelName);
+
+  log.warning("Log level", opts["-l"]);
 
   for (const file of opts["FILE"]) {
     log.info("Reading file", file);

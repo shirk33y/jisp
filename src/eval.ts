@@ -11,11 +11,8 @@ import {
   UndefinedSymbolError,
 } from "./utils.ts";
 
-import { logger } from "/log.ts";
+import * as log from "/log.ts";
 
-const log = logger("eval");
-
-log.error(_)
 
 export async function resolve(ast: AstNode, env: Env) {
   // list?
@@ -99,7 +96,7 @@ export async function macroExpand(ast: AstNode, env: Env) {
 
 export async function evalAst(ast: AstNode, env: Env): Promise<AstNode> {
   while (true) {
-    log.info("eval", ast);
+    log.debug("eval", ast);
     // console.debug('keys', Object.keys(env));
     if (!isArray(ast)) return await resolve(ast, env);
 

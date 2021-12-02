@@ -1,8 +1,8 @@
 [
-  [def, new, [fn, [a, "&", b], [., Reflect, "construct", a, b]]],
+  [def, new, [fn, [a, ..., b], [., Reflect, "construct", a, b]]],
   [def, del, [fn, [a, b], [., Reflect, "deleteProperty", a, b]]],
   [def, map, [fn, [a, b], [., b, "map", [fn, [x], [a, x]]]]],
-  [def, list, [fn, ["&", a], a]],
+  [def, list, [fn, [..., a], a]],
   [def, ">=", [fn, [a, b], [if, [<, a, b], false, true]]],
   [
     def,
@@ -62,17 +62,17 @@
       ],
     ],
   ],
-  [def, pr-str, [fn, ["&", a], [pr-list*, a, " ", true]]],
-  [def, str, [fn, ["&", a], [pr-list*, a, "", false]]],
+  [def, pr-str, [fn, [..., a], [pr-list*, a, " ", true]]],
+  [def, str, [fn, [..., a], [pr-list*, a, "", false]]],
   [
     def,
     prn,
-    [fn, ["&", a], [do, [., console, "log", [pr-list*, a, " ", true]], null]],
+    [fn, [..., a], [do, [., console, "log", [pr-list*, a, " ", true]], null]],
   ],
   [
     def,
     println,
-    [fn, ["&", a], [do, [., console, "log", [pr-list*, a, " ", false]], null]],
+    [fn, [..., a], [do, [., console, "log", [pr-list*, a, " ", false]], null]],
   ],
   [def, list?, [fn, [a], [., Array, "isArray", a]]],
   [def, contains?, [fn, [a, b], [., a, "hasOwnProperty", b]]],
@@ -84,7 +84,7 @@
   [
     def,
     concat,
-    [fn, ["&", a], [., [.-, [list], "concat"], "apply", [list], a]],
+    [fn, [..., a], [., [.-, [list], "concat"], "apply", [list], a]],
   ],
   [def, nth, get],
   [def, first, [fn, [a], [if, [">", [.-, a, "length"], 0], [nth, a, 0], null]]],
@@ -109,13 +109,13 @@
     slice,
     [
       fn,
-      [a, b, "&", end],
+      [a, b, ..., end],
       [
         .,
         a,
         "slice",
         b,
-        [if, [">", [count, end], 0], [get, end, 0], [.-, a, "length"]],
+        [if, [gt, [count, end], 0], [get, end, 0], [.-, a, "length"]],
       ],
     ],
   ],
@@ -125,7 +125,7 @@
     apply,
     [
       fn,
-      [f, "&", b],
+      [f, ..., b],
       [., f, "apply", f, [concat, [slice, b, 0, -1], [last, b]]],
     ],
   ],
@@ -136,7 +136,7 @@
       "~",
       [
         fn,
-        ["&", xs],
+        [..., xs],
         [
           if,
           [empty?, xs],
@@ -153,7 +153,7 @@
                 list,
                 "if",
                 "and_FIXME",
-                [concat, ["`", [and]], [rest, xs]],
+                [concat, [list, [and]], [rest, xs]],
                 "and_FIXME",
               ],
             ],
@@ -169,7 +169,7 @@
       "~",
       [
         fn,
-        ["&", xs],
+        [..., xs],
         [
           if,
           [empty?, xs],
