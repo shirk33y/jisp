@@ -104,13 +104,12 @@ async function evaluate(
 
 export async function main(argv = Deno.args) {
   const opts = getopts(argv);
-  log.debug("Parsed options", opts);
-  console.log("Parsed options", opts);
   const m = jisp({});
   let ast;
 
   await log.defaultSetup(opts["-l"] as log.LevelName);
 
+  log.debug("Parsed options", opts);
   log.warning("Log level", opts["-l"]);
 
   for (const file of opts["FILE"]) {
