@@ -380,6 +380,24 @@ fn emit_rust_detailed_rejects_unsupported_shapes_without_runtime_fallback() {
 }
 
 #[test]
+fn emit_rust_detailed_rejects_bigint_without_runtime_fallback() {
+    let error = match jisp::emit_rust_as_detailed(
+        "main.lisp",
+        Syntax::Lisp,
+        r#"(export main (fn () (bigint "32849384983498230592309502398509388908203986232306")))"#,
+    ) {
+        Ok(_) => panic!("expected unsupported bigint codegen"),
+        Err(error) => error.error,
+    };
+
+    assert!(matches!(error, jisp::Error::Codegen(_)), "{error}");
+    assert!(
+        error.to_string().contains("bigint type emission"),
+        "{error}"
+    );
+}
+
+#[test]
 fn emit_rust_detailed_emits_native_file_imports() {
     let dir = fixture_dir("native-file-imports");
     let main = dir.join("main.lisp");

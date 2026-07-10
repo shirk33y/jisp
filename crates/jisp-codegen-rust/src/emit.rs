@@ -605,6 +605,7 @@ fn collect_object_shapes(
         | Type::Null
         | Type::Bool
         | Type::Int
+        | Type::BigInt
         | Type::Float
         | Type::Str => {}
     }
@@ -700,6 +701,7 @@ fn type_signature(ty: &Type) -> Result<String, CodegenError> {
         Type::Null => "null".to_owned(),
         Type::Bool => "bool".to_owned(),
         Type::Int => "int".to_owned(),
+        Type::BigInt => "bigint".to_owned(),
         Type::Float => "float".to_owned(),
         Type::Str => "str".to_owned(),
         Type::List(item) => format!("list<{}>", type_signature(item)?),
@@ -734,6 +736,7 @@ fn emit_type(
         Type::Null => Ok(quote! { () }),
         Type::Bool => Ok(quote! { bool }),
         Type::Int => Ok(quote! { i64 }),
+        Type::BigInt => Err(CodegenError::Unsupported("bigint type emission")),
         Type::Float => Ok(quote! { f64 }),
         Type::Str => Ok(quote! { String }),
         Type::List(item) => {

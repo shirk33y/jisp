@@ -32,13 +32,10 @@ This is the single authoritative list of intentionally unfinished work.
 
 ## P2 — language completeness
 
-- Add arbitrary-precision `bigint` values, with an explicit constructor form
-  such as `(bigint "32849384983498230592309502398509388908203986232306")`
-  before deciding whether plain integer literals may exceed `i64`.
 - Add native backend support for first-class function values, nested functions,
   variadic user functions, generic named types from prelude such as
-  `result<T,E>`, `obj.get`, dynamic object helpers/open rows, dynamic field
-  access, and the remaining typed prelude helpers such as `str.slice` and
+  `result<T,E>`, `bigint`, `obj.get`, dynamic object helpers/open rows, dynamic
+  field access, and the remaining typed prelude helpers such as `str.slice` and
   `list.get`.
 - Add `use` desugaring.
 - Build a minimal UI proof prototype once P1 validates the data shape, starting

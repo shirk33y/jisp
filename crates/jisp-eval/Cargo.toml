@@ -9,6 +9,8 @@ indexmap.workspace = true
 jisp-core.workspace = true
 jisp-ir.workspace = true
 jisp-runtime.workspace = true
+num-bigint.workspace = true
+num-traits.workspace = true
 thiserror.workspace = true
 
 [build-dependencies]

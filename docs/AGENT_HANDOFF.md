@@ -37,8 +37,9 @@ object-row prelude schemes, plus static-key refinements for `obj.get`,
 `obj.len`, `obj.has`, `obj.keys`, `obj.set`, `obj.del`, `obj.values`, and
 `obj.cat`; `obj.get` still depends on the P2 generic `result<T,E>` native
 layout. The prelude also has fixed-arity stdlib functions plus simple runtime
-helpers such as predicates, `result.recover`, numeric overloads, `io.println`,
-and basic object introspection. P0 is complete: `jisp-types` exposes
+helpers such as predicates, `result.recover`, numeric overloads including
+explicit `(bigint "...")` values, `io.println`, and basic object introspection.
+P0 is complete: `jisp-types` exposes
 `TypedModule`, and `jisp-codegen-rust::generate` accepts it as the native
 backend contract. Native token emission P1 covers monomorphic scalar/function
 definitions, list literals, closed structural objects, field access, string
@@ -74,8 +75,9 @@ evaluation, skipped Result callbacks, Unicode character slicing, negative list
 and string indices, empty rest bindings, and stable object update order.
 
 Numeric semantics are now specified in `SPEC.md`: integers are checked `i64`,
-float arithmetic is `f64`, numeric builtins do not coerce int/float operands,
-division by zero is an error, and NaN is not equal to itself.
+bigints are explicit arbitrary-precision values, float arithmetic is `f64`,
+numeric builtins do not coerce numeric types, division by zero is an error, and
+NaN is not equal to itself.
 
 `jisp-expand` runs after parsing and before lowering through the `jisp` facade.
 It expands `quote`, `quasiquote`/`` ` ``, `unquote`/`,`, and
@@ -115,8 +117,9 @@ multi-line spans.
   codegen; the backend still lacks source-ranged remapping for runtime failures
   inside generated Rust.
 - P1 UI-language work is proof-of-shape/spec and feature pressure for native
-  Jisp. A real renderer/prototype, formatter, richer portable test UX, bigint,
-  project-aware schema, and fine-grained generated diagnostics are P2.
+  Jisp. A real renderer/prototype, formatter, richer portable test UX, native
+  bigint emission, project-aware schema, and fine-grained generated diagnostics
+  are P2.
 - P1 is complete as of the native imports, UI data-shape, and static object
   helper milestones. Remaining native gaps are P2 unless they are regressions
   inside the documented P1 subset.

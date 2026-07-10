@@ -327,6 +327,7 @@ impl PrefixRewriter<'_> {
             Type::Null => Type::Null,
             Type::Bool => Type::Bool,
             Type::Int => Type::Int,
+            Type::BigInt => Type::BigInt,
             Type::Float => Type::Float,
             Type::Str => Type::Str,
             Type::List(item) => Type::List(Box::new(self.ty(item))),

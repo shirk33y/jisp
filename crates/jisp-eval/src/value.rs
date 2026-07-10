@@ -4,6 +4,7 @@ use std::rc::Rc;
 use indexmap::IndexMap;
 use jisp_core::Span;
 use jisp_ir::Expr;
+use num_bigint::BigInt;
 
 use crate::{Env, Evaluator, RuntimeError};
 
@@ -34,6 +35,7 @@ pub enum Value {
     Null,
     Bool(bool),
     Int(i64),
+    BigInt(BigInt),
     Float(f64),
     Str(Rc<str>),
     List(Vec<Value>),
@@ -59,6 +61,7 @@ impl Value {
             Self::Null => "null",
             Self::Bool(_) => "bool",
             Self::Int(_) => "int",
+            Self::BigInt(_) => "bigint",
             Self::Float(_) => "float",
             Self::Str(_) => "str",
             Self::List(_) => "list",
@@ -75,6 +78,7 @@ impl Value {
             Self::Null => "null".to_owned(),
             Self::Bool(value) => value.to_string(),
             Self::Int(value) => value.to_string(),
+            Self::BigInt(value) => value.to_string(),
             Self::Float(value) => value.to_string(),
             Self::Str(value) => value.to_string(),
             Self::List(values) => {
@@ -114,6 +118,7 @@ impl Value {
             (Self::Null, Self::Null) => Ok(true),
             (Self::Bool(a), Self::Bool(b)) => Ok(a == b),
             (Self::Int(a), Self::Int(b)) => Ok(a == b),
+            (Self::BigInt(a), Self::BigInt(b)) => Ok(a == b),
             (Self::Float(a), Self::Float(b)) => Ok(a == b),
             (Self::Str(a), Self::Str(b)) => Ok(a == b),
             (Self::List(a), Self::List(b)) => {

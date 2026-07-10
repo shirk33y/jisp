@@ -27,6 +27,8 @@ authors = ["Jisp contributors"]
 anyhow = "1"
 clap = { version = "4", features = ["derive"] }
 indexmap = "2"
+num-bigint = "0.4"
+num-traits = "0.2"
 proc-macro2 = "1"
 quote = "1"
 serde = { version = "1", features = ["derive", "rc"] }

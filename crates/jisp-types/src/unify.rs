@@ -84,6 +84,7 @@ impl Unifier {
             (Type::Null, Type::Null) => Ok(Type::Null),
             (Type::Bool, Type::Bool) => Ok(Type::Bool),
             (Type::Int, Type::Int) => Ok(Type::Int),
+            (Type::BigInt, Type::BigInt) => Ok(Type::BigInt),
             (Type::Float, Type::Float) => Ok(Type::Float),
             (Type::Str, Type::Str) => Ok(Type::Str),
             (Type::List(a), Type::List(b)) => Ok(Type::List(Box::new(self.unify(*a, *b)?))),

@@ -21,6 +21,7 @@ pub fn environment() -> BTreeMap<String, Scheme> {
         scheme(vec![0], fun(vec![var(0)], option(var(0)))),
     );
     add(&mut env, "none", scheme(vec![0], option(var(0))));
+    add(&mut env, "bigint", mono(fun(vec![Type::Str], Type::BigInt)));
 
     for name in ["+", "-", "*", "/", "//", "%"] {
         add(
@@ -329,6 +330,7 @@ pub(crate) fn overloads() -> BTreeMap<String, Vec<Scheme>> {
             name,
             vec![
                 mono(fun(vec![Type::Int, Type::Int], Type::Int)),
+                mono(fun(vec![Type::BigInt, Type::BigInt], Type::BigInt)),
                 mono(fun(vec![Type::Float, Type::Float], Type::Float)),
             ],
         );
@@ -340,6 +342,7 @@ pub(crate) fn overloads() -> BTreeMap<String, Vec<Scheme>> {
             name,
             vec![
                 mono(fun(vec![Type::Int, Type::Int], Type::Bool)),
+                mono(fun(vec![Type::BigInt, Type::BigInt], Type::Bool)),
                 mono(fun(vec![Type::Float, Type::Float], Type::Bool)),
                 mono(fun(vec![Type::Str, Type::Str], Type::Bool)),
             ],
@@ -351,19 +354,29 @@ pub(crate) fn overloads() -> BTreeMap<String, Vec<Scheme>> {
         "math.abs",
         vec![
             mono(fun(vec![Type::Int], Type::Int)),
+            mono(fun(vec![Type::BigInt], Type::BigInt)),
             mono(fun(vec![Type::Float], Type::Float)),
         ],
     );
-    for name in ["math.min", "math.max", "math.pow"] {
+    for name in ["math.min", "math.max"] {
         add_overloads(
             &mut env,
             name,
             vec![
                 mono(fun(vec![Type::Int, Type::Int], Type::Int)),
+                mono(fun(vec![Type::BigInt, Type::BigInt], Type::BigInt)),
                 mono(fun(vec![Type::Float, Type::Float], Type::Float)),
             ],
         );
     }
+    add_overloads(
+        &mut env,
+        "math.pow",
+        vec![
+            mono(fun(vec![Type::Int, Type::Int], Type::Int)),
+            mono(fun(vec![Type::Float, Type::Float], Type::Float)),
+        ],
+    );
 
     env
 }

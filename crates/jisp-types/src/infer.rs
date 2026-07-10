@@ -343,6 +343,7 @@ impl Inferencer {
             "null" => Type::Null,
             "bool" => Type::Bool,
             "int" => Type::Int,
+            "bigint" => Type::BigInt,
             "float" => Type::Float,
             "str" | "string" => Type::Str,
             _ if is_parenthesized(text) => {
@@ -379,6 +380,8 @@ impl Inferencer {
             Literal::Null => Type::Null,
             Literal::Bool(_) => Type::Bool,
             Literal::Int(_) => Type::Int,
+            // Plain integer literals intentionally stay checked i64. Use
+            // `(bigint "...")` when a value must exceed that range.
             Literal::Float(_) => Type::Float,
             Literal::String(_) => Type::Str,
         }
@@ -1433,7 +1436,13 @@ fn collect_type_vars(ty: &Type, vars: &mut BTreeSet<TypeVar>) {
                 collect_type_vars(argument, vars);
             }
         }
-        Type::Never | Type::Null | Type::Bool | Type::Int | Type::Float | Type::Str => {}
+        Type::Never
+        | Type::Null
+        | Type::Bool
+        | Type::Int
+        | Type::BigInt
+        | Type::Float
+        | Type::Str => {}
     }
 }
 

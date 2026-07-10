@@ -113,6 +113,7 @@ fn parse_declared_type(text: &str) -> Result<Type, CodegenError> {
         "null" => Type::Null,
         "bool" => Type::Bool,
         "int" => Type::Int,
+        "bigint" => Type::BigInt,
         "float" => Type::Float,
         "str" | "string" => Type::Str,
         _ if is_parenthesized(text) => {

@@ -1,5 +1,8 @@
 use indexmap::IndexMap;
 use jisp_core::Span;
+use num_bigint::BigInt;
+use num_traits::{Signed, Zero};
+use std::str::FromStr;
 
 use crate::value::BuiltinFn;
 use crate::{Evaluator, RuntimeError, Value};
@@ -17,6 +20,7 @@ pub fn install_builtins(evaluator: &mut Evaluator) {
         ("/", divide),
         ("//", floor_divide),
         ("%", modulo),
+        ("bigint", bigint),
         ("=", equal),
         ("<", less),
         (">", greater),
@@ -116,6 +120,16 @@ fn expect_int(value: &Value, span: Span) -> Result<i64, RuntimeError> {
     }
 }
 
+fn expect_bigint<'a>(value: &'a Value, span: Span) -> Result<&'a BigInt, RuntimeError> {
+    match value {
+        Value::BigInt(value) => Ok(value),
+        other => Err(RuntimeError::at(
+            span,
+            format!("expected bigint, got {}", other.type_name()),
+        )),
+    }
+}
+
 fn expect_float(value: &Value, span: Span) -> Result<f64, RuntimeError> {
     match value {
         Value::Float(value) => Ok(*value),
@@ -159,6 +173,14 @@ fn expect_obj<'a>(
     }
 }
 
+fn bigint(_: &mut Evaluator, args: &[Value], span: Span) -> Result<Value, RuntimeError> {
+    arity(args, 1, span)?;
+    let value = expect_str(&args[0], span)?;
+    BigInt::from_str(value)
+        .map(Value::BigInt)
+        .map_err(|_| RuntimeError::at(span, "invalid bigint literal"))
+}
+
 fn add(_: &mut Evaluator, args: &[Value], span: Span) -> Result<Value, RuntimeError> {
     min_arity(args, 2, span)?;
     match &args[0] {
@@ -169,6 +191,12 @@ fn add(_: &mut Evaluator, args: &[Value], span: Span) -> Result<Value, RuntimeEr
                     .ok_or_else(|| RuntimeError::at(span, "integer overflow"))
             })
             .map(Value::Int),
+        Value::BigInt(_) => args
+            .iter()
+            .try_fold(BigInt::zero(), |acc, value| {
+                Ok(acc + expect_bigint(value, span)?)
+            })
+            .map(Value::BigInt),
         Value::Float(_) => args
             .iter()
             .try_fold(0.0, |acc, value| Ok(acc + expect_float(value, span)?))
@@ -190,6 +218,12 @@ fn subtract(_: &mut Evaluator, args: &[Value], span: Span) -> Result<Value, Runt
                     .ok_or_else(|| RuntimeError::at(span, "integer overflow"))
             })
             .map(Value::Int),
+        Value::BigInt(first) => args[1..]
+            .iter()
+            .try_fold(first.clone(), |acc, value| {
+                Ok(acc - expect_bigint(value, span)?)
+            })
+            .map(Value::BigInt),
         Value::Float(first) => args[1..]
             .iter()
             .try_fold(*first, |acc, value| Ok(acc - expect_float(value, span)?))
@@ -211,6 +245,12 @@ fn multiply(_: &mut Evaluator, args: &[Value], span: Span) -> Result<Value, Runt
                     .ok_or_else(|| RuntimeError::at(span, "integer overflow"))
             })
             .map(Value::Int),
+        Value::BigInt(_) => args
+            .iter()
+            .try_fold(BigInt::from(1), |acc, value| {
+                Ok(acc * expect_bigint(value, span)?)
+            })
+            .map(Value::BigInt),
         Value::Float(_) => args
             .iter()
             .try_fold(1.0, |acc, value| Ok(acc * expect_float(value, span)?))
@@ -229,6 +269,10 @@ fn divide(_: &mut Evaluator, args: &[Value], span: Span) -> Result<Value, Runtim
             .checked_div(*right)
             .map(Value::Int)
             .ok_or_else(|| RuntimeError::at(span, "division by zero or integer overflow")),
+        (Value::BigInt(left), Value::BigInt(right)) if !right.is_zero() => {
+            Ok(Value::BigInt(left / right))
+        }
+        (Value::BigInt(_), Value::BigInt(_)) => Err(RuntimeError::at(span, "division by zero")),
         (Value::Float(left), Value::Float(right)) if *right != 0.0 => {
             Ok(Value::Float(left / right))
         }
@@ -246,6 +290,9 @@ fn floor_divide(_: &mut Evaluator, args: &[Value], span: Span) -> Result<Value, 
         (Value::Int(left), Value::Int(right)) => jisp_runtime::math::floor_div_i64(*left, *right)
             .map(Value::Int)
             .ok_or_else(|| RuntimeError::at(span, "division by zero or integer overflow")),
+        (Value::BigInt(left), Value::BigInt(right)) => div_euclid_bigint(left, right)
+            .map(Value::BigInt)
+            .ok_or_else(|| RuntimeError::at(span, "division by zero")),
         (Value::Float(left), Value::Float(right)) if *right != 0.0 => {
             Ok(Value::Float((left / right).floor()))
         }
@@ -262,6 +309,9 @@ fn modulo(_: &mut Evaluator, args: &[Value], span: Span) -> Result<Value, Runtim
         (Value::Int(left), Value::Int(right)) => jisp_runtime::math::modulo_i64(*left, *right)
             .map(Value::Int)
             .ok_or_else(|| RuntimeError::at(span, "modulo by zero or integer overflow")),
+        (Value::BigInt(left), Value::BigInt(right)) => mod_euclid_bigint(left, right)
+            .map(Value::BigInt)
+            .ok_or_else(|| RuntimeError::at(span, "modulo by zero")),
         (Value::Float(left), Value::Float(right)) if *right != 0.0 => {
             Ok(Value::Float(left.rem_euclid(*right)))
         }
@@ -269,6 +319,39 @@ fn modulo(_: &mut Evaluator, args: &[Value], span: Span) -> Result<Value, Runtim
             span,
             "% requires two values of the same numeric type",
         )),
+    }
+}
+
+fn div_euclid_bigint(left: &BigInt, right: &BigInt) -> Option<BigInt> {
+    if right.is_zero() {
+        return None;
+    }
+    let quotient = left / right;
+    let remainder = left % right;
+    if remainder.is_negative() {
+        if right.is_positive() {
+            Some(quotient - 1)
+        } else {
+            Some(quotient + 1)
+        }
+    } else {
+        Some(quotient)
+    }
+}
+
+fn mod_euclid_bigint(left: &BigInt, right: &BigInt) -> Option<BigInt> {
+    if right.is_zero() {
+        return None;
+    }
+    let remainder = left % right;
+    if remainder.is_negative() {
+        if right.is_positive() {
+            Some(remainder + right)
+        } else {
+            Some(remainder - right)
+        }
+    } else {
+        Some(remainder)
     }
 }
 
@@ -281,12 +364,14 @@ fn compare(
     args: &[Value],
     span: Span,
     int: impl FnOnce(i64, i64) -> bool,
+    bigint: impl FnOnce(&BigInt, &BigInt) -> bool,
     float: impl FnOnce(f64, f64) -> bool,
     string: impl FnOnce(&str, &str) -> bool,
 ) -> Result<Value, RuntimeError> {
     arity(args, 2, span)?;
     match (&args[0], &args[1]) {
         (Value::Int(a), Value::Int(b)) => Ok(Value::Bool(int(*a, *b))),
+        (Value::BigInt(a), Value::BigInt(b)) => Ok(Value::Bool(bigint(a, b))),
         (Value::Float(a), Value::Float(b)) => Ok(Value::Bool(float(*a, *b))),
         (Value::Str(a), Value::Str(b)) => Ok(Value::Bool(string(a, b))),
         _ => Err(RuntimeError::at(
@@ -297,16 +382,44 @@ fn compare(
 }
 
 fn less(_: &mut Evaluator, args: &[Value], span: Span) -> Result<Value, RuntimeError> {
-    compare(args, span, |a, b| a < b, |a, b| a < b, |a, b| a < b)
+    compare(
+        args,
+        span,
+        |a, b| a < b,
+        |a, b| a < b,
+        |a, b| a < b,
+        |a, b| a < b,
+    )
 }
 fn greater(_: &mut Evaluator, args: &[Value], span: Span) -> Result<Value, RuntimeError> {
-    compare(args, span, |a, b| a > b, |a, b| a > b, |a, b| a > b)
+    compare(
+        args,
+        span,
+        |a, b| a > b,
+        |a, b| a > b,
+        |a, b| a > b,
+        |a, b| a > b,
+    )
 }
 fn less_equal(_: &mut Evaluator, args: &[Value], span: Span) -> Result<Value, RuntimeError> {
-    compare(args, span, |a, b| a <= b, |a, b| a <= b, |a, b| a <= b)
+    compare(
+        args,
+        span,
+        |a, b| a <= b,
+        |a, b| a <= b,
+        |a, b| a <= b,
+        |a, b| a <= b,
+    )
 }
 fn greater_equal(_: &mut Evaluator, args: &[Value], span: Span) -> Result<Value, RuntimeError> {
-    compare(args, span, |a, b| a >= b, |a, b| a >= b, |a, b| a >= b)
+    compare(
+        args,
+        span,
+        |a, b| a >= b,
+        |a, b| a >= b,
+        |a, b| a >= b,
+        |a, b| a >= b,
+    )
 }
 
 fn math_abs(_: &mut Evaluator, args: &[Value], span: Span) -> Result<Value, RuntimeError> {
@@ -316,6 +429,7 @@ fn math_abs(_: &mut Evaluator, args: &[Value], span: Span) -> Result<Value, Runt
             .checked_abs()
             .map(Value::Int)
             .ok_or_else(|| RuntimeError::at(span, "integer overflow")),
+        Value::BigInt(ref value) => Ok(Value::BigInt(value.abs())),
         Value::Float(value) => Ok(Value::Float(value.abs())),
         ref other => Err(RuntimeError::at(
             span,
@@ -328,6 +442,7 @@ fn math_min(_: &mut Evaluator, args: &[Value], span: Span) -> Result<Value, Runt
     arity(args, 2, span)?;
     match (&args[0], &args[1]) {
         (Value::Int(a), Value::Int(b)) => Ok(Value::Int((*a).min(*b))),
+        (Value::BigInt(a), Value::BigInt(b)) => Ok(Value::BigInt(a.min(b).clone())),
         (Value::Float(a), Value::Float(b)) => Ok(Value::Float(a.min(*b))),
         _ => Err(RuntimeError::at(
             span,
@@ -340,6 +455,7 @@ fn math_max(_: &mut Evaluator, args: &[Value], span: Span) -> Result<Value, Runt
     arity(args, 2, span)?;
     match (&args[0], &args[1]) {
         (Value::Int(a), Value::Int(b)) => Ok(Value::Int((*a).max(*b))),
+        (Value::BigInt(a), Value::BigInt(b)) => Ok(Value::BigInt(a.max(b).clone())),
         (Value::Float(a), Value::Float(b)) => Ok(Value::Float(a.max(*b))),
         _ => Err(RuntimeError::at(
             span,

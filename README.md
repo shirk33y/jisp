@@ -48,7 +48,8 @@ Implemented or substantially wired:
 - quote, quasiquote, unquote, and unquote-splicing expansion before lowering;
 - syntax-independent Core IR and lowering;
 - lexical evaluator with closures, recursive definitions, enum constructors,
-  `case`, lists, objects, string templates, imports, and builtins;
+  `case`, lists, objects, string templates, imports, arbitrary-precision
+  `bigint` values, and builtins;
 - type inference over Core IR, including module schemes and the `TypedModule`
   contract consumed by the native backend;
 - limited native Rust token emission for monomorphic scalar definitions,
@@ -76,7 +77,7 @@ Still incomplete and tracked as P2:
   and the remaining typed prelude helpers such as `str.slice` and `list.get`;
 - richer `case` patterns and exhaustiveness, including guards, alternatives,
   aliases, and nested/literal variant-field refinements;
-- arbitrary-precision `bigint` values;
+- native Rust emission for `bigint` values;
 - package tooling beyond the current local module/import resolver;
 - P2 rustc diagnostic remapping through Jisp source maps;
 - P2 formatter, richer portable `.lisp` test runner UX, UI renderer prototype,
