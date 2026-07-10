@@ -1,0 +1,18 @@
+[package]
+name = "jisp"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+jisp-core.workspace = true
+jisp-syntax-json.workspace = true
+jisp-syntax-yaml.workspace = true
+jisp-syntax-lisp.workspace = true
+jisp-ir.workspace = true
+jisp-eval.workspace = true
+jisp-macros.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true

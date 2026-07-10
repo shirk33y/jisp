@@ -1,0 +1,60 @@
+//! Public facade for parsing, lowering, and interpreting Jisp modules.
+
+use std::path::Path;
+
+use jisp_core::{detect_syntax, SourceMap, Syntax, SyntaxParser};
+use jisp_eval::{Evaluator, LoadedModule, RuntimeError, Value};
+use jisp_ir::{LowerError, Lowerer, Module};
+use thiserror::Error;
+
+pub use jisp_core;
+pub use jisp_eval;
+pub use jisp_ir;
+pub use jisp_macros::{file, json_file, lisp_file, yaml_file};
+
+#[derive(Debug, Error)]
+pub enum Error {
+    #[error("unknown Jisp syntax for `{0}`")]
+    UnknownSyntax(String),
+    #[error(transparent)]
+    Parse(#[from] jisp_core::ParseError),
+    #[error(transparent)]
+    Lower(#[from] LowerError),
+    #[error(transparent)]
+    Runtime(#[from] RuntimeError),
+}
+
+pub struct ParsedModule {
+    pub sources: SourceMap,
+    pub module: Module,
+}
+
+pub fn parse(path: impl AsRef<Path>, text: &str) -> Result<ParsedModule, Error> {
+    let path = path.as_ref();
+    let syntax = detect_syntax(path)
+        .ok_or_else(|| Error::UnknownSyntax(path.display().to_string()))?;
+    parse_as(path.display().to_string(), syntax, text)
+}
+
+pub fn parse_as(name: impl Into<String>, syntax: Syntax, text: &str) -> Result<ParsedModule, Error> {
+    let name = name.into();
+    let mut sources = SourceMap::default();
+    let source = sources.add(name, text.to_owned());
+    let nodes = match syntax {
+        Syntax::Json => jisp_syntax_json::JsonParser.parse_module(source, text)?,
+        Syntax::Yaml => jisp_syntax_yaml::YamlParser.parse_module(source, text)?,
+        Syntax::Lisp => jisp_syntax_lisp::LispParser.parse_module(source, text)?,
+    };
+    let module = Lowerer.lower_module(&nodes)?;
+    Ok(ParsedModule { sources, module })
+}
+
+pub fn evaluate(path: impl AsRef<Path>, text: &str) -> Result<LoadedModule, Error> {
+    let parsed = parse(path, text)?;
+    Ok(Evaluator::new().load_module(&parsed.module)?)
+}
+
+pub fn run_main(path: impl AsRef<Path>, text: &str) -> Result<Value, Error> {
+    let parsed = parse(path, text)?;
+    Ok(Evaluator::new().run_main(&parsed.module)?)
+}

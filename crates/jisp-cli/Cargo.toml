@@ -1,0 +1,16 @@
+[package]
+name = "jisp-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "jisp"
+path = "src/main.rs"
+
+[dependencies]
+anyhow.workspace = true
+clap.workspace = true
+jisp.workspace = true
+jisp-core.workspace = true
+serde_json.workspace = true

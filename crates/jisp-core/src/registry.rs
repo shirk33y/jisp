@@ -1,0 +1,138 @@
+#[derive(Clone, Copy, Debug)]
+pub struct SpecialFormSpec {
+    pub name: &'static str,
+    pub aliases: &'static [&'static str],
+    pub min_args: usize,
+    pub max_args: Option<usize>,
+    pub top_level: bool,
+    pub summary: &'static str,
+}
+
+pub const SPECIAL_FORMS: &[SpecialFormSpec] = &[
+    SpecialFormSpec {
+        name: "def",
+        aliases: &[],
+        min_args: 2,
+        max_args: Some(2),
+        top_level: true,
+        summary: "Define a private module binding.",
+    },
+    SpecialFormSpec {
+        name: "export",
+        aliases: &[],
+        min_args: 1,
+        max_args: Some(2),
+        top_level: true,
+        summary: "Export an existing binding or define and export a binding.",
+    },
+    SpecialFormSpec {
+        name: "import",
+        aliases: &[],
+        min_args: 1,
+        max_args: Some(2),
+        top_level: true,
+        summary: "Import a module, optionally under an alias.",
+    },
+    SpecialFormSpec {
+        name: "type",
+        aliases: &[],
+        min_args: 2,
+        max_args: None,
+        top_level: true,
+        summary: "Define an algebraic data type.",
+    },
+    SpecialFormSpec {
+        name: "fn",
+        aliases: &[],
+        min_args: 2,
+        max_args: None,
+        top_level: false,
+        summary: "Create a closure.",
+    },
+    SpecialFormSpec {
+        name: "let",
+        aliases: &[],
+        min_args: 2,
+        max_args: None,
+        top_level: false,
+        summary: "Create sequential lexical bindings.",
+    },
+    SpecialFormSpec {
+        name: "do",
+        aliases: &[],
+        min_args: 1,
+        max_args: None,
+        top_level: false,
+        summary: "Evaluate expressions from left to right.",
+    },
+    SpecialFormSpec {
+        name: "if",
+        aliases: &[],
+        min_args: 2,
+        max_args: Some(3),
+        top_level: false,
+        summary: "Conditional expression.",
+    },
+    SpecialFormSpec {
+        name: "case",
+        aliases: &[],
+        min_args: 2,
+        max_args: None,
+        top_level: false,
+        summary: "Exhaustive pattern matching.",
+    },
+    SpecialFormSpec {
+        name: "use",
+        aliases: &[],
+        min_args: 3,
+        max_args: None,
+        top_level: false,
+        summary: "Pass the remaining body as the final callback argument.",
+    },
+    SpecialFormSpec {
+        name: "quote",
+        aliases: &[],
+        min_args: 1,
+        max_args: Some(1),
+        top_level: false,
+        summary: "Return syntax as data.",
+    },
+    SpecialFormSpec {
+        name: "quasiquote",
+        aliases: &["`"],
+        min_args: 1,
+        max_args: Some(1),
+        top_level: false,
+        summary: "Quote syntax while permitting unquote forms.",
+    },
+    SpecialFormSpec {
+        name: "unquote",
+        aliases: &[","],
+        min_args: 1,
+        max_args: Some(1),
+        top_level: false,
+        summary: "Evaluate inside quasiquote or string templates.",
+    },
+    SpecialFormSpec {
+        name: "unquote-splicing",
+        aliases: &[",@"],
+        min_args: 1,
+        max_args: Some(1),
+        top_level: false,
+        summary: "Splice a list inside quasiquote or string templates.",
+    },
+    SpecialFormSpec {
+        name: "macro",
+        aliases: &["~"],
+        min_args: 1,
+        max_args: Some(1),
+        top_level: false,
+        summary: "Mark a compile-time transformer.",
+    },
+];
+
+pub fn special_form(name: &str) -> Option<&'static SpecialFormSpec> {
+    SPECIAL_FORMS
+        .iter()
+        .find(|form| form.name == name || form.aliases.contains(&name))
+}

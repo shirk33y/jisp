@@ -1,0 +1,11 @@
+[package]
+name = "jisp-codegen-rust"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+jisp-ir.workspace = true
+proc-macro2.workspace = true
+quote.workspace = true
+thiserror.workspace = true

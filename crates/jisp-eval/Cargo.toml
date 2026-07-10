@@ -1,0 +1,17 @@
+[package]
+name = "jisp-eval"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+indexmap.workspace = true
+jisp-core.workspace = true
+jisp-ir.workspace = true
+jisp-runtime.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+jisp-syntax-json.workspace = true
+jisp-syntax-lisp.workspace = true
+jisp-syntax-yaml.workspace = true

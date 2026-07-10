@@ -1,0 +1,46 @@
+[workspace]
+resolver = "2"
+members = [
+  "crates/jisp",
+  "crates/jisp-core",
+  "crates/jisp-syntax-json",
+  "crates/jisp-syntax-yaml",
+  "crates/jisp-syntax-lisp",
+  "crates/jisp-ir",
+  "crates/jisp-types",
+  "crates/jisp-runtime",
+  "crates/jisp-eval",
+  "crates/jisp-codegen-rust",
+  "crates/jisp-macros",
+  "crates/jisp-cli",
+]
+
+[workspace.package]
+version = "0.0.1"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+repository = "https://example.invalid/jisp"
+authors = ["Jisp contributors"]
+
+[workspace.dependencies]
+anyhow = "1"
+clap = { version = "4", features = ["derive"] }
+indexmap = "2"
+proc-macro2 = "1"
+quote = "1"
+serde = { version = "1", features = ["derive", "rc"] }
+serde_json = "1"
+syn = { version = "2", features = ["full"] }
+thiserror = "2"
+
+jisp = { path = "crates/jisp" }
+jisp-core = { path = "crates/jisp-core" }
+jisp-syntax-json = { path = "crates/jisp-syntax-json" }
+jisp-syntax-yaml = { path = "crates/jisp-syntax-yaml" }
+jisp-syntax-lisp = { path = "crates/jisp-syntax-lisp" }
+jisp-ir = { path = "crates/jisp-ir" }
+jisp-types = { path = "crates/jisp-types" }
+jisp-runtime = { path = "crates/jisp-runtime" }
+jisp-eval = { path = "crates/jisp-eval" }
+jisp-codegen-rust = { path = "crates/jisp-codegen-rust" }
+jisp-macros = { path = "crates/jisp-macros" }

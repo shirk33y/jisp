@@ -1,0 +1,41 @@
+# Agent handoff
+
+Start by reading `SPEC.md`, `ARCHITECTURE.md`, and repository-root `TODO.md`.
+Do not redesign syntax before completing the existing seams.
+
+## Repository context
+
+This workspace is a Rust rewrite of an earlier TypeScript implementation plus
+syntax experiments and related prototypes. Treat the previous code as reference
+material only. It is available in git history and on the `old` branch when
+recovering intent, APIs, tests, or syntax examples.
+
+## Recommended first task
+
+Implement `Inferencer::infer_expr` over `jisp_ir::Expr` and add integration tests
+for polymorphic identity, lists, object fields, enum constructors, `Result`, and
+branch unification. Then make `jisp::parse` optionally run inference.
+
+## Useful existing seams
+
+- New syntax: implement `jisp_core::SyntaxParser` only.
+- New special form: update the special-form registry and lowerer; regenerate
+  schema snapshots.
+- New stdlib function: add one reusable runtime operation, evaluator wrapper,
+  and type scheme.
+- Native compilation: implement only `jisp-codegen-rust::generate`; do not move
+  parsing or type logic into proc macros.
+
+## Acceptance criteria for the MVP
+
+- Equivalent programs in all three syntaxes produce equivalent IR and values.
+- `type` constructors and `case` are statically checked and exhaustive.
+- Errors are source-ranged in original files.
+- Imports resolve directory modules independent of file order.
+- Proc macro emits native Rust tokens and tracks all imported source files.
+- No ordinary program value is represented as a catch-all dynamic enum in
+  compiled output.
+
+## Do not implement yet
+
+See `TODO.md`, especially `{}` metadata and FFI.
