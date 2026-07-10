@@ -3,6 +3,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use jisp_ir::{CaseBranch, Expr, ExprKind, Import, Literal, Module, Pattern, StringPart, TypeDecl};
 use thiserror::Error;
 
+use crate::top_level::definition_groups;
 use crate::{ObjectRow, Scheme, Type, TypeVar, Unifier, UnifyError};
 
 pub type ImportTypeEnvironments = BTreeMap<String, BTreeMap<String, Scheme>>;
@@ -86,34 +87,39 @@ impl Inferencer {
     ) -> Result<BTreeMap<String, Scheme>, InferError> {
         self.install_imports(&module.imports, imports)?;
         self.install_type_constructors(&module.types)?;
-        let base_environment = self.environment.clone();
-        let mut placeholders = BTreeMap::new();
-
-        for definition in &module.definitions {
-            let ty = self.fresh_type();
-            self.define(&definition.name, Scheme::mono(ty.clone()));
-            placeholders.insert(definition.name.clone(), ty);
-        }
-
-        for definition in &module.definitions {
-            let value = self.infer_expr(&definition.value)?;
-            let placeholder = placeholders
-                .get(&definition.name)
-                .expect("definition placeholders are installed first")
-                .clone();
-            self.unify(placeholder, value)?;
-        }
-
         let mut schemes = BTreeMap::new();
-        for definition in &module.definitions {
-            let ty = self.apply(
-                placeholders
-                    .get(&definition.name)
-                    .expect("definition placeholders are installed first"),
-            );
-            let scheme = generalize_with_environment(&ty, &base_environment);
-            self.define(definition.name.clone(), scheme.clone());
-            schemes.insert(definition.name.clone(), scheme);
+        for group in definition_groups(&module.definitions) {
+            let outer_environment = self.environment.clone();
+            let mut placeholders = BTreeMap::new();
+
+            for index in &group {
+                let definition = &module.definitions[*index];
+                let ty = self.fresh_type();
+                self.define(&definition.name, Scheme::mono(ty.clone()));
+                placeholders.insert(*index, ty);
+            }
+
+            for index in &group {
+                let definition = &module.definitions[*index];
+                let value = self.infer_expr(&definition.value)?;
+                let placeholder = placeholders
+                    .get(index)
+                    .expect("definition placeholders are installed first")
+                    .clone();
+                self.unify(placeholder, value)?;
+            }
+
+            for index in &group {
+                let definition = &module.definitions[*index];
+                let ty = self.apply(
+                    placeholders
+                        .get(index)
+                        .expect("definition placeholders are installed first"),
+                );
+                let scheme = generalize_with_environment(&ty, &outer_environment);
+                self.define(definition.name.clone(), scheme.clone());
+                schemes.insert(definition.name.clone(), scheme);
+            }
         }
 
         Ok(schemes)

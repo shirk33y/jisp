@@ -141,6 +141,75 @@ fn generalizes_top_level_definitions() {
 }
 
 #[test]
+fn generalizes_top_level_dependencies_before_dependents() {
+    let mut inferencer = Inferencer::default();
+    let identity = expr(ExprKind::Lambda {
+        params: vec!["value".to_owned()],
+        rest: None,
+        body: Box::new(name("value")),
+    });
+    let main = expr(ExprKind::Do(vec![
+        expr(ExprKind::Call {
+            callee: Box::new(name("id")),
+            arguments: vec![int(1)],
+        }),
+        expr(ExprKind::Call {
+            callee: Box::new(name("id")),
+            arguments: vec![string("ok")],
+        }),
+    ]));
+    let schemes = inferencer
+        .infer_module(&module(vec![
+            definition("main", main),
+            definition("id", identity),
+        ]))
+        .unwrap();
+
+    assert_eq!(schemes["main"].body, Type::Str);
+    assert_eq!(schemes["id"].variables.len(), 1);
+}
+
+#[test]
+fn preserves_recursive_top_level_placeholders() {
+    let mut inferencer = Inferencer::with_prelude();
+    let fact = expr(ExprKind::Lambda {
+        params: vec!["n".to_owned()],
+        rest: None,
+        body: Box::new(expr(ExprKind::If {
+            condition: Box::new(expr(ExprKind::Call {
+                callee: Box::new(name("=")),
+                arguments: vec![name("n"), int(0)],
+            })),
+            then_branch: Box::new(int(1)),
+            else_branch: Box::new(expr(ExprKind::Call {
+                callee: Box::new(name("*")),
+                arguments: vec![
+                    name("n"),
+                    expr(ExprKind::Call {
+                        callee: Box::new(name("fact")),
+                        arguments: vec![expr(ExprKind::Call {
+                            callee: Box::new(name("-")),
+                            arguments: vec![name("n"), int(1)],
+                        })],
+                    }),
+                ],
+            })),
+        })),
+    });
+    let schemes = inferencer
+        .infer_module(&module(vec![definition("fact", fact)]))
+        .unwrap();
+
+    assert_eq!(
+        schemes["fact"].body,
+        Type::Function {
+            parameters: vec![Type::Int],
+            result: Box::new(Type::Int),
+        }
+    );
+}
+
+#[test]
 fn installs_enum_constructor_schemes() {
     let mut inferencer = Inferencer::default();
     let result_decl = TypeDecl {

@@ -4,8 +4,8 @@ This is the single authoritative list of intentionally unfinished work.
 
 ## P0 — make the MVP production-usable
 
-- Implement full type inference over `jisp-ir`, including let-generalisation,
-  recursive SCCs, enums, structural objects, exhaustive `case`, and stdlib schemes.
+- Implement full type inference over `jisp-ir`, including structural objects,
+  richer exhaustive `case`, and stdlib schemes.
 - Implement a hygienic macro expander for quote/quasiquote/unquote/splicing.
 - Implement directory-as-module loading, qualified imports, aliases, exports,
   cycle detection, and mixed `.json`/`.yaml`/`.lisp` modules.

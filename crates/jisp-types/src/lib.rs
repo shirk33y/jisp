@@ -1,5 +1,6 @@
 mod infer;
 mod prelude;
+mod top_level;
 mod types;
 mod unify;
 
