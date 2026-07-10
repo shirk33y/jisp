@@ -225,8 +225,39 @@ pub fn environment() -> BTreeMap<String, Scheme> {
     );
     add(
         &mut env,
+        "obj.get",
+        scheme(
+            vec![0, 1],
+            fun(vec![object_row(1), Type::Str], result(var(0), Type::Str)),
+        ),
+    );
+    add(
+        &mut env,
+        "obj.set",
+        scheme(
+            vec![0, 1],
+            fun(vec![object_row(0), Type::Str, var(1)], object_row(0)),
+        ),
+    );
+    add(
+        &mut env,
+        "obj.del",
+        scheme(vec![0], fun(vec![object_row(0), Type::Str], object_row(0))),
+    );
+    add(
+        &mut env,
         "obj.keys",
         scheme(vec![0], fun(vec![object_row(0)], list(Type::Str))),
+    );
+    add(
+        &mut env,
+        "obj.values",
+        scheme(vec![0, 1], fun(vec![object_row(1)], list(var(0)))),
+    );
+    add(
+        &mut env,
+        "obj.cat",
+        scheme(vec![0], variadic_fun(vec![], object_row(0), object_row(0))),
     );
 
     add(

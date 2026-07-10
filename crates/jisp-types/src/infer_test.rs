@@ -767,19 +767,91 @@ fn prelude_infers_runtime_predicates_and_conversions() {
 #[test]
 fn prelude_infers_basic_object_helpers() {
     let mut inferencer = Inferencer::with_prelude();
+    let object = || {
+        expr(ExprKind::Object(vec![
+            (string("name"), string("Ada")),
+            (string("age"), int(37)),
+        ]))
+    };
 
     let keys = expr(ExprKind::Call {
         callee: Box::new(name("obj.keys")),
-        arguments: vec![expr(ExprKind::Object(vec![(
-            string("name"),
-            string("Ada"),
-        )]))],
+        arguments: vec![object()],
     });
 
     assert_eq!(
         inferencer.infer_expr(&keys).unwrap(),
         Type::List(Box::new(Type::Str))
     );
+
+    let get = expr(ExprKind::Case {
+        subject: Box::new(expr(ExprKind::Call {
+            callee: Box::new(name("obj.get")),
+            arguments: vec![object(), string("age")],
+        })),
+        branches: vec![
+            branch(
+                Pattern::Variant {
+                    tag: "ok".to_owned(),
+                    fields: vec![Pattern::Bind("age".to_owned())],
+                },
+                expr(ExprKind::Call {
+                    callee: Box::new(name("+")),
+                    arguments: vec![name("age"), int(1)],
+                }),
+            ),
+            branch(
+                Pattern::Variant {
+                    tag: "err".to_owned(),
+                    fields: vec![Pattern::Wildcard],
+                },
+                int(0),
+            ),
+        ],
+    });
+    assert_eq!(inferencer.infer_expr(&get).unwrap(), Type::Int);
+
+    let set_len = expr(ExprKind::Call {
+        callee: Box::new(name("obj.len")),
+        arguments: vec![expr(ExprKind::Call {
+            callee: Box::new(name("obj.set")),
+            arguments: vec![object(), string("active"), bool_(true)],
+        })],
+    });
+    assert_eq!(inferencer.infer_expr(&set_len).unwrap(), Type::Int);
+
+    let del_keys = expr(ExprKind::Call {
+        callee: Box::new(name("obj.keys")),
+        arguments: vec![expr(ExprKind::Call {
+            callee: Box::new(name("obj.del")),
+            arguments: vec![object(), string("name")],
+        })],
+    });
+    assert_eq!(
+        inferencer.infer_expr(&del_keys).unwrap(),
+        Type::List(Box::new(Type::Str))
+    );
+
+    let values_len = expr(ExprKind::Call {
+        callee: Box::new(name("list.len")),
+        arguments: vec![expr(ExprKind::Call {
+            callee: Box::new(name("obj.values")),
+            arguments: vec![object()],
+        })],
+    });
+    assert_eq!(inferencer.infer_expr(&values_len).unwrap(), Type::Int);
+
+    let cat_len = expr(ExprKind::Call {
+        callee: Box::new(name("obj.len")),
+        arguments: vec![expr(ExprKind::Call {
+            callee: Box::new(name("obj.cat")),
+            arguments: vec![
+                expr(ExprKind::Object(vec![(string("name"), string("Ada"))])),
+                expr(ExprKind::Object(vec![(string("active"), bool_(true))])),
+            ],
+        })],
+    });
+    assert_eq!(inferencer.infer_expr(&cat_len).unwrap(), Type::Int);
 }
 
 #[test]

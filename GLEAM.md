@@ -104,9 +104,10 @@ Status after review:
   import visibility, finite `bool`/`null`/variant exhaustiveness foundations,
   conservative list/object exhaustiveness for irrefutable patterns, and
   variadic function schemes for lambda rest parameters plus runtime-variadic
-  `str.cat`/`list.cat`.
+  `str.cat`/`list.cat`, with broad object-row schemes for runtime object
+  helpers.
 - Still actionable in P0: richer `case` checking, source-range rendering through
-  macro origins, object-row stdlib schemes, and dependency tracking for imported
+  macro origins, structural object refinements, and dependency tracking for imported
   source files in native/proc-macro compilation.
 - Later work: native compiler dependency tracking should use the existing
   resolver seam rather than a second import implementation. If the proc macro
