@@ -45,8 +45,9 @@ exported-only visibility, cycle detection, and imported source dependency
 listing through `jisp::import_dependencies` and `jisp check --deps`. Mixed
 `.lisp`/`.json`/`.yaml` directory modules, exported-only visibility, and
 extensionless/directory/transitive dependency lists are covered by regression
-tests. The next module-system step is proc-macro/native dependency tracking
-around the same resolver seam.
+tests. `jisp-macros` consumes the same `jisp::import_dependencies` seam during
+macro expansion and emits generated `include_str!` entries for transitive
+imports before its current native-codegen scaffold `compile_error!`.
 
 Portable Lisp fixture tests now live under `tests/language/` and are registered
 as Cargo-visible tests by `crates/jisp-eval/build.rs`. The generated tests call
@@ -77,8 +78,9 @@ multi-line spans.
   schema snapshots.
 - New stdlib function: add one reusable runtime operation, evaluator wrapper,
   and type scheme.
-- Native compilation: implement only `jisp-codegen-rust::generate`; do not move
-  parsing or type logic into proc macros.
+- Native compilation: implement only `jisp-codegen-rust::generate`; proc macros
+  may call the facade for dependency tracking but must not own parsing or type
+  logic.
 
 ## Acceptance criteria for the MVP
 

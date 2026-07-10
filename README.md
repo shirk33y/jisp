@@ -42,7 +42,8 @@ Implemented or substantially wired:
 - reusable type/unification data structures;
 - generated core JSON Schema;
 - CLI skeleton;
-- file proc-macro scaffolds with Cargo dependency tracking;
+- file proc-macro scaffolds with Cargo dependency tracking for transitive Jisp
+  imports;
 - detailed language, architecture, diagnostics, schema, stdlib, and FFI notes;
 - unit and integration tests.
 
@@ -89,8 +90,9 @@ mapping, rationale, local checkout, and CMM project.
   runtime errors, and portable language fixture tests.
 - `jisp-codegen-rust` is the native Rust backend seam and currently remains a
   scaffold until typed IR emission is implemented.
-- `jisp-macros` exposes Rust proc-macro entry points that track Cargo
-  dependencies and currently fail clearly until native code generation is ready.
+- `jisp-macros` exposes Rust proc-macro entry points that track direct and
+  imported source dependencies through the facade resolver and currently fail
+  clearly until native code generation is ready.
 - `jisp-cli` is the command-line frontend for `check`, `run`, `schema`, and the
   future `emit-rust` flow.
 
@@ -155,9 +157,10 @@ dates, and YAML 1.1 booleans are not accepted.
 
 ## Rust embedding
 
-The public facade already supports parsing, lowering, and interpreter execution.
-The file proc macros currently only track source dependencies and deliberately
-fail with a clear message until native Rust code generation is implemented.
+The public facade already supports parsing, lowering, interpreter execution, and
+dependency listing. The `jisp-macros` crate tracks direct and imported source
+files for Cargo, then deliberately fails with a clear message until native Rust
+code generation is implemented.
 
 ## CLI shape
 

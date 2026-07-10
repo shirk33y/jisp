@@ -152,7 +152,6 @@ dependencies = [
  "jisp-eval",
  "jisp-expand",
  "jisp-ir",
- "jisp-macros",
  "jisp-syntax-json",
  "jisp-syntax-lisp",
  "jisp-syntax-yaml",
@@ -228,6 +227,7 @@ dependencies = [
 name = "jisp-macros"
 version = "0.0.1"
 dependencies = [
+ "jisp",
  "proc-macro2",
  "quote",
  "syn",

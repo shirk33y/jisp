@@ -24,11 +24,13 @@ JSON / restricted YAML / Lisp
 - `jisp-expand`: quote/quasiquote/unquote/unquote-splicing expansion and
   origin tracking before lowering.
 - `jisp-ir`: syntax-independent Core IR and lowering.
-- `jisp-types`: type representation and unifier; expression inference pending.
+- `jisp-types`: type representation, unifier, prelude schemes, import
+  environments, and current expression inference.
 - `jisp-runtime`: reusable pure implementations of math/string/list/object ops.
 - `jisp-eval`: lexical typed-IR-oriented evaluator and tests.
 - `jisp-codegen-rust`: stable native backend seam, currently a scaffold.
-- `jisp-macros`: Cargo dependency-tracking macro scaffold.
+- `jisp-macros`: Cargo dependency-tracking macro scaffold using the facade
+  import resolver.
 - `jisp`: facade API.
 - `jisp-cli`: `check`, `run`, `schema`, `emit-rust` scaffold.
 

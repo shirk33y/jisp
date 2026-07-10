@@ -13,7 +13,6 @@ jisp-expand.workspace = true
 jisp-ir.workspace = true
 jisp-types.workspace = true
 jisp-eval.workspace = true
-jisp-macros.workspace = true
 thiserror.workspace = true
 
 [dev-dependencies]

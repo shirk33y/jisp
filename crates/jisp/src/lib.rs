@@ -17,7 +17,6 @@ pub use jisp_core;
 pub use jisp_eval;
 pub use jisp_expand;
 pub use jisp_ir;
-pub use jisp_macros::{file, json_file, lisp_file, yaml_file};
 pub use jisp_types;
 
 #[derive(Debug, Error)]
