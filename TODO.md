@@ -39,7 +39,8 @@ This is the single authoritative list of intentionally unfinished work.
      `str.slice`, `list.get`, `list.slice`, and the first concrete
      `result<T,E>` / `option<T>` helpers that can compile without a dynamic
      `Value` fallback.
-  3. Add `use` desugaring.
+  3. Done: add `use` desugaring for callback-last flows, including
+     multi-binding callbacks and portable `.lisp` coverage.
   4. Build a minimal UI proof prototype once P1 validates the data shape,
      starting with Jisp structural UI data rendered to a simple HTML/string or
      JSON vnode target before a full renderer.

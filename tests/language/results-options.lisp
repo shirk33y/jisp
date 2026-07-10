@@ -36,6 +36,10 @@
       ((some name) name)
       ((none) "anonymous"))))
 
+(def with-pair
+  (fn (callback)
+    (callback 2 5)))
+
 (test "result map transforms ok and preserves err"
   (assert.equal
     (list (ok 4) (err "bad-count:many"))
@@ -69,3 +73,9 @@
     (ok 3)
     (use value (result.try (parse-count "two"))
       (ok (+ value 1)))))
+
+(test "use supports callback functions with multiple bindings"
+  (assert.equal
+    7
+    (use (left right) (with-pair)
+      (+ left right))))
