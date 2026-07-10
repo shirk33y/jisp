@@ -22,28 +22,41 @@ No Gleam source code is vendored in this repository.
 | `case` expressions over typed patterns | Runtime support exists; static branch typing is partial; exhaustiveness is P0. | [`exhaustiveness.rs`](https://github.com/gleam-lang/gleam/blob/833732c523441043868877d159988ba2d21538cd/compiler-core/src/exhaustiveness.rs#L65-L87), [`missing_patterns.rs`](https://github.com/gleam-lang/gleam/blob/833732c523441043868877d159988ba2d21538cd/compiler-core/src/exhaustiveness/missing_patterns.rs#L11-L24) | Exhaustive matching is the main safety payoff of ADTs and should produce source-ranged, actionable diagnostics. |
 | Hindley-Milner-style inference with an explicit type environment | Partially ported in `jisp-types` for core expressions, modules, let-generalisation, and constructors. | [`environment.rs`](https://github.com/gleam-lang/gleam/blob/833732c523441043868877d159988ba2d21538cd/compiler-core/src/type_/environment.rs#L38-L63), [`hydrator.rs`](https://github.com/gleam-lang/gleam/blob/833732c523441043868877d159988ba2d21538cd/compiler-core/src/type_/hydrator.rs#L30-L47), [`expression.rs`](https://github.com/gleam-lang/gleam/blob/833732c523441043868877d159988ba2d21538cd/compiler-core/src/type_/expression.rs#L409-L420) | Jisp should infer common code without annotations while keeping a stable typed seam for evaluation and Rust codegen. |
 | Top-level dependency ordering and recursive SCCs | Ported as a small Jisp-local dependency pass in `jisp-types`; independent top-level definitions are generalised before dependents, while recursive groups stay monomorphic until the group is solved. | [`call_graph.rs`](https://github.com/gleam-lang/gleam/blob/833732c523441043868877d159988ba2d21538cd/compiler-core/src/call_graph.rs#L530-L587), [`type_.rs`](https://github.com/gleam-lang/gleam/blob/833732c523441043868877d159988ba2d21538cd/compiler-core/src/type_.rs#L1732-L1779), [`analyse.rs`](https://github.com/gleam-lang/gleam/blob/833732c523441043868877d159988ba2d21538cd/compiler-core/src/analyse.rs#L1924-L2009) | This keeps recursive functions possible without preventing polymorphic helpers from being reused at multiple types in later definitions. |
-| Module graph, imports, stale tracking, and cycle checks | Planned P0. | [`module_loader.rs`](https://github.com/gleam-lang/gleam/blob/833732c523441043868877d159988ba2d21538cd/compiler-core/src/build/module_loader.rs#L45-L84), [`project_compiler.rs`](https://github.com/gleam-lang/gleam/blob/833732c523441043868877d159988ba2d21538cd/compiler-core/src/build/project_compiler.rs#L105-L151), [`call_graph.rs`](https://github.com/gleam-lang/gleam/blob/833732c523441043868877d159988ba2d21538cd/compiler-core/src/call_graph.rs#L530-L544) | Directory-as-module loading needs deterministic resolution, useful cycle errors, and future incremental compilation. |
+| Module graph, imports, stale tracking, and cycle checks | Partially ported for facade/type-checking imports and cycle detection; CLI/proc-macro dependency tracking remains. | [`module_loader.rs`](https://github.com/gleam-lang/gleam/blob/833732c523441043868877d159988ba2d21538cd/compiler-core/src/build/module_loader.rs#L45-L84), [`project_compiler.rs`](https://github.com/gleam-lang/gleam/blob/833732c523441043868877d159988ba2d21538cd/compiler-core/src/build/project_compiler.rs#L105-L151), [`call_graph.rs`](https://github.com/gleam-lang/gleam/blob/833732c523441043868877d159988ba2d21538cd/compiler-core/src/call_graph.rs#L530-L544) | Directory-as-module loading needs deterministic resolution, useful cycle errors, and future incremental compilation. |
 | Source-ranged diagnostics | Ported as source-aware AST and diagnostic foundations; rendering needs more work. | [`diagnostic.rs`](https://github.com/gleam-lang/gleam/blob/833732c523441043868877d159988ba2d21538cd/compiler-core/src/diagnostic.rs), [`expression.rs`](https://github.com/gleam-lang/gleam/blob/833732c523441043868877d159988ba2d21538cd/compiler-core/src/type_/expression.rs#L5355-L5395) | Multi-syntax input only works if errors stay attached to original source spans through parsing, lowering, macros, and typing. |
 | Immutable values with backend-friendly representation | Partially ported in evaluator/runtime helpers; native ABI remains intentionally undesigned. | [`typed.rs`](https://github.com/gleam-lang/gleam/blob/833732c523441043868877d159988ba2d21538cd/compiler-core/src/ast/typed.rs), [`project_compiler.rs`](https://github.com/gleam-lang/gleam/blob/833732c523441043868877d159988ba2d21538cd/compiler-core/src/build/project_compiler.rs#L202-L238) | Runtime semantics should remain portable while Rust codegen gets a typed representation instead of mirroring interpreter internals. |
 
-## Agent review notes
+## Agent response review
 
-A read-only review of the Gleam checkout on commit
-`833732c523441043868877d159988ba2d21538cd` found that Jisp should continue
-using Gleam as a seam-level reference, not as a source tree to mirror.
+The agent response recommending Gleam as a source of compiler design patterns
+was reviewed against the pinned checkout on commit
+`833732c523441043868877d159988ba2d21538cd`. The recommendation is accepted with
+one boundary: Jisp should borrow seams and invariants, not copy Gleam's full
+package/compiler architecture.
 
-Adopt for P0:
+Accepted findings:
 
-- ADT constructor schemes from `type` declarations.
-- `case` typing and exhaustiveness for finite domains first: user ADTs, `bool`,
-  `null`, and prelude `result`/`option`.
-- Let-generalisation plus recursive SCC grouping for top-level definitions.
-- Import/type-environment installation by module path with qualified names.
-- Deterministic module resolution and cycle diagnostics before compiler phases
-  depend on imports.
-- Source-ranged missing-pattern and type-error diagnostics.
+- ADT constructor schemes, top-level SCC grouping, and finite-domain
+  exhaustiveness are the right P0 imports from Gleam's type checker.
+- Import/type-environment installation should stay explicit and module-path
+  keyed. Jisp already has the facade/type-checking side of this; native
+  compilation still needs dependency tracking at the same seam.
+- Source-ranged missing-pattern and type-error diagnostics are worth matching in
+  spirit because Jisp has multiple syntaxes and macro expansion.
+- The response correctly separates small compiler invariants from heavyweight
+  build-system machinery.
 
-Defer for now:
+Status after review:
+
+- Already ported: ADT constructor schemes, top-level recursive SCC grouping,
+  module import environments, mixed-syntax resolver behavior, and finite
+  `bool`/`null`/variant exhaustiveness foundations.
+- Still actionable in P0: richer `case` checking, source-range rendering through
+  macro origins, and remaining stdlib schemes.
+- Later work: native compiler dependency tracking should use the existing
+  resolver seam rather than a second import implementation.
+
+Deferred findings:
 
 - Gleam's full package/module loader, stale tracking, and incremental build
   machinery.
