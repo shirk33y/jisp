@@ -13,13 +13,17 @@ This is the single authoritative list of intentionally unfinished work.
 - Decide and specify exact numeric semantics: integer overflow, division, mixed
   integer/float operations, and NaN equality.
 
-## P1 — native compiler
+## P1 — native compiler and product validation
 
 - Implement `jisp-codegen-rust` from typed IR.
 - Replace the compile-error scaffold in `jisp-macros` with validation and native
   token emission.
 - Add optional `emit-rust` output and generated-to-source mapping.
 - Wrap Cargo/rustc JSON diagnostics and remap them to Jisp source ranges.
+- Validate Jisp as a universal UI description language: React-like components,
+  renderer targets, state/event bindings, and Tailwind-like first-class utility
+  class sets where class names are data keys or symbols with boolean activation,
+  not hidden `class`/`className` strings.
 
 ## P2 — language completeness
 
