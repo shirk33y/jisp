@@ -56,7 +56,10 @@ Implemented or substantially wired:
   field access, string templates, simple literal/bind/wildcard `case`, concrete
   native enum constructors, variant `case`, list/object `case` patterns, simple
   arithmetic/comparison prelude intrinsics, and a typed subset of string, list,
-  and math helpers;
+  math, object helpers, and native imports;
+- Cargo-visible portable Lisp fixture tests under `tests/language/`, including
+  regression coverage for control-flow laziness, result callbacks, Unicode
+  strings, list bounds, variadic rests, object updates, and UI-shaped data;
 - generated core JSON Schema;
 - CLI commands for checking, running, schema generation, and limited Rust
   emission;
@@ -64,13 +67,17 @@ Implemented or substantially wired:
   rebuilds and emit native Rust items for the supported subset;
 - language, architecture, diagnostics, schema, stdlib, FFI, and handoff docs.
 
-Still incomplete:
+Still incomplete and tracked as P2:
 
 - compile-time evaluation for user macros;
-- complete package/module loading;
-- broader native Rust code generation for open/generic object rows, generic
-  enum declarations, nested or literal variant-field patterns, imports, and
-  runtime helper calls;
+- broader native Rust code generation for first-class function values, nested
+  functions, variadic user functions, generic named types such as
+  `result<T,E>`, open or dynamic object rows, dynamic field access, `obj.get`,
+  and the remaining typed prelude helpers such as `str.slice` and `list.get`;
+- richer `case` patterns and exhaustiveness, including guards, alternatives,
+  aliases, and nested/literal variant-field refinements;
+- arbitrary-precision `bigint` values;
+- package tooling beyond the current local module/import resolver;
 - P2 rustc diagnostic remapping through Jisp source maps;
 - P2 formatter, richer portable `.lisp` test runner UX, UI renderer prototype,
   LSP, FFI, and binding generation.

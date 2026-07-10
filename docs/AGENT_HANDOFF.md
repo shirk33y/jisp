@@ -68,7 +68,10 @@ as Cargo-visible tests by `crates/jisp-eval/build.rs`. The generated tests call
 top-level `(test "name" (assert.equal expected actual))` form into synthetic
 exports, type-checks the generated module with the prelude, evaluates it
 normally, and compares the exported values structurally. This is intentionally a
-test fixture format, not core language semantics yet.
+test fixture format, not core language semantics yet. The current fixture set
+covers broad P0/P1 behavior plus bug-boundary regressions for short-circuit
+evaluation, skipped Result callbacks, Unicode character slicing, negative list
+and string indices, empty rest bindings, and stable object update order.
 
 Numeric semantics are now specified in `SPEC.md`: integers are checked `i64`,
 float arithmetic is `f64`, numeric builtins do not coerce int/float operands,

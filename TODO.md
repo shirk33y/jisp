@@ -43,7 +43,7 @@ This is the single authoritative list of intentionally unfinished work.
 - Expand `jisp-macros` beyond item-position native file emission.
 - Implement a real UI renderer/prototype once P1 validates the data shape.
 - Add arbitrary-precision `bigint` values, with an explicit constructor form
-  such as `[bigint, "32849384983498230592309502398509388908203986232306"]`
+  such as `(bigint "32849384983498230592309502398509388908203986232306")`
   before deciding whether plain integer literals may exceed `i64`.
 - Broaden the current item-level generated-to-source mapping for `emit-rust`
   output into the granularity needed for diagnostics. The facade already maps
