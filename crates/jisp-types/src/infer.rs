@@ -4,7 +4,7 @@ use jisp_ir::{CaseBranch, Expr, ExprKind, Import, Literal, Module, Pattern, Stri
 use thiserror::Error;
 
 use crate::top_level::definition_groups;
-use crate::{ObjectRow, Scheme, Type, TypeVar, Unifier, UnifyError};
+use crate::{ObjectRow, Scheme, Type, TypeVar, TypedModule, Unifier, UnifyError};
 
 pub type ImportTypeEnvironments = BTreeMap<String, BTreeMap<String, Scheme>>;
 
@@ -87,6 +87,10 @@ impl Inferencer {
         self.infer_module_with_imports(module, &BTreeMap::new())
     }
 
+    pub fn infer_typed_module(&mut self, module: Module) -> Result<TypedModule, InferError> {
+        self.infer_typed_module_with_imports(module, &BTreeMap::new())
+    }
+
     pub fn infer_module_with_imports(
         &mut self,
         module: &Module,
@@ -130,6 +134,15 @@ impl Inferencer {
         }
 
         Ok(schemes)
+    }
+
+    pub fn infer_typed_module_with_imports(
+        &mut self,
+        module: Module,
+        imports: &ImportTypeEnvironments,
+    ) -> Result<TypedModule, InferError> {
+        let schemes = self.infer_module_with_imports(&module, imports)?;
+        Ok(TypedModule { module, schemes })
     }
 
     fn install_imports(

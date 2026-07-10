@@ -1,6 +1,8 @@
 use std::collections::BTreeMap;
 use std::fmt;
 
+use jisp_ir::Module;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct TypeVar(pub u32);
 
@@ -36,6 +38,12 @@ pub struct ObjectRow {
 pub struct Scheme {
     pub variables: Vec<TypeVar>,
     pub body: Type,
+}
+
+#[derive(Clone, Debug)]
+pub struct TypedModule {
+    pub module: Module,
+    pub schemes: BTreeMap<String, Scheme>,
 }
 
 impl Scheme {

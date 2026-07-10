@@ -2,22 +2,18 @@
 
 This is the single authoritative list of intentionally unfinished work.
 
-## P0 — make the MVP production-usable
+## P0 — complete
 
-- Implement full type inference over `jisp-ir`, including structural object
-  refinements and nested/refined `case` exhaustiveness. Basic structural
-  objects, object-row stdlib schemes for runtime object helpers, variadic
-  function types, variadic `str.cat`/`list.cat` schemes, and conservative
-  list/object exhaustiveness are implemented. Static-key `obj.get`, `obj.set`,
-  `obj.del`, homogeneous `obj.values`, and closed-row `obj.cat` refinements are
-  implemented with dynamic-key fallback. Refined exact-list and object-field
-  `case` coverage now handles finite domains such as `bool`, `null`, and enum
-  tags, including nested object fields and redundant refinement detection.
-  Remaining P0 work is a final audit of deeper structural object narrowing and
-  any gaps that block typed IR as the native-codegen input.
+- MVP frontend/type contract is complete enough to hand to native-codegen work:
+  Core IR expression inference is exhaustive over current `ExprKind`, module
+  inference returns top-level schemes, structural object helpers have static-key
+  refinements plus dynamic-key fallback, refined `case` exhaustiveness covers
+  finite `bool`/`null`/enum domains plus exact-list and nested object-field
+  refinements, and `jisp-types` exposes `TypedModule` as the backend input.
+
 ## P1 — native compiler and product validation
 
-- Implement `jisp-codegen-rust` from typed IR.
+- Implement `jisp-codegen-rust` from `jisp_types::TypedModule`.
 - Replace the compile-error scaffold in `jisp-macros` with validation and native
   token emission.
 - Add optional `emit-rust` output and generated-to-source mapping.

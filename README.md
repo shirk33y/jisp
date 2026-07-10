@@ -17,14 +17,14 @@ source file
   -> source-aware AST
   -> macro expansion
   -> module/import resolution
-  -> type inference
   -> Core IR
+  -> type inference / TypedModule
   -> interpreter or Rust codegen
 ```
 
 Today the interpreter path is the useful path. Native Rust code generation and
-proc-macro embedding are intentionally scaffolded behind stable seams until the
-typed IR and backend contract are ready.
+proc-macro embedding are intentionally scaffolded behind stable typed-module
+seams until the backend is implemented.
 
 ## Why This Exists
 
@@ -47,7 +47,8 @@ Implemented or substantially wired:
 - syntax-independent Core IR and lowering;
 - lexical evaluator with closures, recursive definitions, enum constructors,
   `case`, lists, objects, string templates, imports, and builtins;
-- type and unification foundations with current expression inference;
+- type inference over Core IR, including module schemes and the `TypedModule`
+  contract consumed by the future native backend;
 - generated core JSON Schema;
 - CLI commands for checking, running, schema generation, and codegen scaffolding;
 - proc-macro scaffolds that track direct and transitive Jisp source imports for
@@ -56,7 +57,6 @@ Implemented or substantially wired:
 
 Still incomplete:
 
-- full Hindley-Milner inference over Core IR;
 - compile-time evaluation for user macros;
 - complete package/module loading;
 - native Rust code generation;
@@ -77,10 +77,10 @@ before changing language semantics.
 | `jisp-syntax-yaml` | Restricted YAML-like flow reader for concise structured examples without accepting full YAML semantics. |
 | `jisp-expand` | Macro-preparation layer for quote/quasiquote/unquote expansion and generated-to-origin span tracking. |
 | `jisp-ir` | Core IR crate that lowers source AST forms into syntax-independent modules, definitions, expressions, and patterns. |
-| `jisp-types` | Type-system crate for type representations, unification, prelude schemes, dependency grouping, import environments, and current inference logic. |
+| `jisp-types` | Type-system crate for type representations, unification, prelude schemes, dependency grouping, import environments, inference, and typed-module output. |
 | `jisp-runtime` | Pure runtime helper crate for reusable math, string, list, and object operations shared by evaluator and future backends. |
 | `jisp-eval` | Tree interpreter for lowered IR with lexical environments, builtins, imports, runtime errors, and portable fixture tests. |
-| `jisp-codegen-rust` | Native Rust backend seam that will emit Rust from typed IR and currently remains a deliberate scaffold. |
+| `jisp-codegen-rust` | Native Rust backend seam that accepts typed modules and currently remains a deliberate scaffold. |
 | `jisp-macros` | Proc-macro crate that tracks Jisp source dependencies through the facade resolver and fails clearly until native codegen is implemented. |
 | `jisp-cli` | Command-line frontend for checking, running, schema emission, and the future Rust-emission flow. |
 

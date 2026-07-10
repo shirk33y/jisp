@@ -16,7 +16,7 @@ exhaustiveness, diagnostics, and module loading. Read repository-root
 The current local Gleam checkout is indexed as CMM project
 `home-shirk3y-stuff-gleam`; `GLEAM.md` records the commit and feature mapping.
 
-## Current P0 focus
+## Current focus
 
 Type inference now covers core expressions, let-generalisation, top-level
 recursive SCC grouping, enum constructors, `case` pattern typing, minimal
@@ -35,13 +35,14 @@ object-row prelude schemes, plus static-key refinements for `obj.get`,
 `obj.set`, and `obj.del`, homogeneous closed-row `obj.values`, and closed-row
 `obj.cat` with dynamic-key fallback. The prelude also has fixed-arity stdlib
 functions plus simple runtime helpers such as predicates, `result.recover`,
-numeric overloads, `io.println`, and basic object introspection. Remaining
-P0 type-system work is a final audit of deeper structural object narrowing and
-typed-IR completeness for native codegen.
+numeric overloads, `io.println`, and basic object introspection. P0 is complete:
+`jisp-types` exposes `TypedModule`, and `jisp-codegen-rust::generate` accepts it
+as the native backend contract. Native token emission remains P1.
 
-`jisp-types` now exposes `Inferencer::infer_module_with_imports` and
-`ImportTypeEnvironments`. It resolves each `import` by path and installs
-exported schemes as `alias.name` bindings. The `jisp` facade now resolves
+`jisp-types` now exposes `Inferencer::infer_module_with_imports`,
+`Inferencer::infer_typed_module_with_imports`, `ImportTypeEnvironments`, and
+`TypedModule`. It resolves each `import` by path and installs exported schemes
+as `alias.name` bindings. The `jisp` facade now resolves
 imports from files and directories for both `jisp::check` and runtime
 `evaluate`/`run_main`: it supports extensionless
 `.lisp`/`.jisp`/`.json`/`.yaml`/`.yml` imports, mixed syntax directory modules,
@@ -82,11 +83,11 @@ multi-line spans.
   schema snapshots.
 - New stdlib function: add one reusable runtime operation, evaluator wrapper,
   and type scheme.
-- Native compilation: implement only `jisp-codegen-rust::generate`; proc macros
-  may call the facade for dependency tracking but must not own parsing or type
-  logic.
+- Native compilation: implement `jisp-codegen-rust::generate` from
+  `jisp_types::TypedModule`; proc macros may call the facade for dependency
+  tracking but must not own parsing or type logic.
 
-## Acceptance criteria for the MVP
+## P1 native compiler acceptance criteria
 
 - Equivalent programs in all three syntaxes produce equivalent IR and values.
 - `type` constructors and `case` are statically checked and exhaustive.

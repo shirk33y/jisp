@@ -9,9 +9,9 @@ JSON / restricted YAML / Lisp
               ↓
  module/name resolution (TODO)
               ↓
-   type inference (foundation)
+        type inference
               ↓
-         typed Core IR
+     typed Core IR / TypedModule
           ↙          ↘
  tree evaluator    Rust codegen (TODO)
 ```
@@ -25,10 +25,12 @@ JSON / restricted YAML / Lisp
   origin tracking before lowering.
 - `jisp-ir`: syntax-independent Core IR and lowering.
 - `jisp-types`: type representation, unifier, prelude schemes, import
-  environments, and current expression inference.
+  environments, expression/module inference, and `TypedModule` output for
+  backend consumers.
 - `jisp-runtime`: reusable pure implementations of math/string/list/object ops.
 - `jisp-eval`: lexical typed-IR-oriented evaluator and tests.
-- `jisp-codegen-rust`: stable native backend seam, currently a scaffold.
+- `jisp-codegen-rust`: stable native backend seam over `TypedModule`, currently
+  a scaffold.
 - `jisp-macros`: Cargo dependency-tracking macro scaffold using the facade
   import resolver.
 - `jisp`: facade API.

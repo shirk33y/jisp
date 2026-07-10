@@ -211,6 +211,18 @@ fn generalizes_top_level_definitions() {
 }
 
 #[test]
+fn returns_typed_module_for_backend_contract() {
+    let mut inferencer = Inferencer::default();
+    let module = module(vec![definition("main", int(1))]);
+
+    let typed = inferencer.infer_typed_module(module).unwrap();
+
+    assert_eq!(typed.module.definitions.len(), 1);
+    assert_eq!(typed.module.definitions[0].name, "main");
+    assert_eq!(typed.schemes["main"].body, Type::Int);
+}
+
+#[test]
 fn generalizes_top_level_dependencies_before_dependents() {
     let mut inferencer = Inferencer::default();
     let identity = expr(ExprKind::Lambda {

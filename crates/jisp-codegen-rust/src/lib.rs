@@ -4,7 +4,7 @@
 //! stable entry point so an agent can implement code generation without
 //! changing the frontend.
 
-use jisp_ir::Module;
+use jisp_types::TypedModule;
 use proc_macro2::TokenStream;
 use thiserror::Error;
 
@@ -12,6 +12,6 @@ use thiserror::Error;
 #[error("native Rust code generation is not implemented yet")]
 pub struct CodegenError;
 
-pub fn generate(_module: &Module) -> Result<TokenStream, CodegenError> {
+pub fn generate(_module: &TypedModule) -> Result<TokenStream, CodegenError> {
     Err(CodegenError)
 }
