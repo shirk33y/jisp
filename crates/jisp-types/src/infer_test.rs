@@ -470,12 +470,98 @@ fn prelude_infers_list_map() {
 }
 
 #[test]
+fn prelude_infers_runtime_predicates_and_conversions() {
+    let mut inferencer = Inferencer::with_prelude();
+
+    let str_is = expr(ExprKind::Call {
+        callee: Box::new(name("str.is")),
+        arguments: vec![int(1)],
+    });
+    assert_eq!(inferencer.infer_expr(&str_is).unwrap(), Type::Bool);
+
+    let str_from = expr(ExprKind::Call {
+        callee: Box::new(name("str.from")),
+        arguments: vec![bool_(true)],
+    });
+    assert_eq!(inferencer.infer_expr(&str_from).unwrap(), Type::Str);
+
+    let list_is = expr(ExprKind::Call {
+        callee: Box::new(name("list.is")),
+        arguments: vec![string("not a list")],
+    });
+    assert_eq!(inferencer.infer_expr(&list_is).unwrap(), Type::Bool);
+}
+
+#[test]
+fn prelude_infers_basic_object_helpers() {
+    let mut inferencer = Inferencer::with_prelude();
+
+    let keys = expr(ExprKind::Call {
+        callee: Box::new(name("obj.keys")),
+        arguments: vec![expr(ExprKind::Object(vec![(
+            string("name"),
+            string("Ada"),
+        )]))],
+    });
+
+    assert_eq!(
+        inferencer.infer_expr(&keys).unwrap(),
+        Type::List(Box::new(Type::Str))
+    );
+}
+
+#[test]
 fn prelude_infers_result_case() {
     let mut inferencer = Inferencer::with_prelude();
     let expression = expr(ExprKind::Case {
         subject: Box::new(expr(ExprKind::Call {
             callee: Box::new(name("list.get")),
             arguments: vec![expr(ExprKind::List(vec![int(1), int(2)])), int(0)],
+        })),
+        branches: vec![
+            branch(
+                Pattern::Variant {
+                    tag: "ok".to_owned(),
+                    fields: vec![Pattern::Bind("value".to_owned())],
+                },
+                name("value"),
+            ),
+            branch(
+                Pattern::Variant {
+                    tag: "err".to_owned(),
+                    fields: vec![Pattern::Wildcard],
+                },
+                int(0),
+            ),
+        ],
+    });
+
+    assert_eq!(inferencer.infer_expr(&expression).unwrap(), Type::Int);
+}
+
+#[test]
+fn prelude_infers_result_recover() {
+    let mut inferencer = Inferencer::with_prelude();
+    let expression = expr(ExprKind::Case {
+        subject: Box::new(expr(ExprKind::Call {
+            callee: Box::new(name("result.recover")),
+            arguments: vec![
+                expr(ExprKind::Call {
+                    callee: Box::new(name("err")),
+                    arguments: vec![string("bad")],
+                }),
+                expr(ExprKind::Lambda {
+                    params: vec!["error".to_owned()],
+                    rest: None,
+                    body: Box::new(expr(ExprKind::Call {
+                        callee: Box::new(name("ok")),
+                        arguments: vec![expr(ExprKind::Call {
+                            callee: Box::new(name("str.len")),
+                            arguments: vec![name("error")],
+                        })],
+                    })),
+                }),
+            ],
         })),
         branches: vec![
             branch(

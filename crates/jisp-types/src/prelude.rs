@@ -1,6 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 
-use crate::{Scheme, Type, TypeVar};
+use crate::{ObjectRow, Scheme, Type, TypeVar};
 
 pub fn environment() -> BTreeMap<String, Scheme> {
     let mut env = BTreeMap::new();
@@ -53,6 +53,16 @@ pub fn environment() -> BTreeMap<String, Scheme> {
         add(&mut env, name, mono(fun(vec![Type::Float], Type::Float)));
     }
 
+    add(
+        &mut env,
+        "str.is",
+        scheme(vec![0], fun(vec![var(0)], Type::Bool)),
+    );
+    add(
+        &mut env,
+        "str.from",
+        scheme(vec![0], fun(vec![var(0)], Type::Str)),
+    );
     add(&mut env, "str.len", mono(fun(vec![Type::Str], Type::Int)));
     add(
         &mut env,
@@ -92,6 +102,11 @@ pub fn environment() -> BTreeMap<String, Scheme> {
         &mut env,
         "list.len",
         scheme(vec![0], fun(vec![list(var(0))], Type::Int)),
+    );
+    add(
+        &mut env,
+        "list.is",
+        scheme(vec![0], fun(vec![var(0)], Type::Bool)),
     );
     add(
         &mut env,
@@ -185,6 +200,27 @@ pub fn environment() -> BTreeMap<String, Scheme> {
 
     add(
         &mut env,
+        "obj.is",
+        scheme(vec![0], fun(vec![var(0)], Type::Bool)),
+    );
+    add(
+        &mut env,
+        "obj.len",
+        scheme(vec![0], fun(vec![object_row(0)], Type::Int)),
+    );
+    add(
+        &mut env,
+        "obj.has",
+        scheme(vec![0], fun(vec![object_row(0), Type::Str], Type::Bool)),
+    );
+    add(
+        &mut env,
+        "obj.keys",
+        scheme(vec![0], fun(vec![object_row(0)], list(Type::Str))),
+    );
+
+    add(
+        &mut env,
         "result.try",
         scheme(
             vec![0, 1, 2],
@@ -215,6 +251,20 @@ pub fn environment() -> BTreeMap<String, Scheme> {
             vec![0, 1, 2],
             fun(
                 vec![result(var(0), var(1)), fun(vec![var(1)], var(2))],
+                result(var(0), var(2)),
+            ),
+        ),
+    );
+    add(
+        &mut env,
+        "result.recover",
+        scheme(
+            vec![0, 1, 2],
+            fun(
+                vec![
+                    result(var(0), var(1)),
+                    fun(vec![var(1)], result(var(0), var(2))),
+                ],
                 result(var(0), var(2)),
             ),
         ),
@@ -251,6 +301,13 @@ fn var(id: u32) -> Type {
 
 fn list(item: Type) -> Type {
     Type::List(Box::new(item))
+}
+
+fn object_row(rest: u32) -> Type {
+    Type::Object(ObjectRow {
+        fields: BTreeMap::new(),
+        rest: Some(TypeVar(rest)),
+    })
 }
 
 fn fun(parameters: Vec<Type>, result: Type) -> Type {
