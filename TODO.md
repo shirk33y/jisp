@@ -32,6 +32,9 @@ This is the single authoritative list of intentionally unfinished work.
 - Add `use` desugaring.
 - Add compile-time evaluation for user macros.
 - Add case guards, alternative patterns, aliases, and robust exhaustiveness.
+- Add arbitrary-precision `bigint` values, with an explicit constructor form
+  such as `[bigint, "32849384983498230592309502398509388908203986232306"]`
+  before deciding whether plain integer literals may exceed `i64`.
 - Finalise immutable/COW semantics for `list` and `obj` updates.
 - Add project-aware JSON Schema generated from resolved modules.
 - Add formatter, REPL persistence, LSP, and package tooling.
