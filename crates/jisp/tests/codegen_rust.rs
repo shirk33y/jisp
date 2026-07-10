@@ -44,6 +44,42 @@ fn emit_rust_detailed_emits_native_prelude_operators() {
 }
 
 #[test]
+fn emit_rust_detailed_emits_native_prelude_helpers() {
+    let generated = jisp::emit_rust_as_detailed(
+        "main.lisp",
+        Syntax::Lisp,
+        r#"
+(def words (str.split (str "a,b,c") (str ",")))
+(def padded (str.trim (str "  hi  ")))
+(def label (str.cat padded (str ":") (str.join (str "-") words)))
+(def items (list.append (list.prepend (str "z") words) (str "d")))
+
+(export main
+  (fn ()
+    (if (and (str.starts label (str "hi"))
+             (list.has items (str "b")))
+      (+ (str.len label) (list.len (list.rest items)))
+      0)))
+"#,
+    )
+    .unwrap();
+
+    let tokens = generated.tokens.to_string();
+
+    assert!(tokens.contains(". split"));
+    assert!(tokens.contains(". trim () . to_owned ()"));
+    assert!(tokens.contains(". concat ()"));
+    assert!(tokens.contains(". join"));
+    assert!(tokens.contains(". insert (0usize"));
+    assert!(tokens.contains(". push"));
+    assert!(tokens.contains(". starts_with"));
+    assert!(tokens.contains(". contains"));
+    assert!(tokens.contains(". get (1usize ..) . unwrap_or_default () . to_vec ()"));
+    assert!(!tokens.contains("Value"));
+    assert!(!tokens.contains("jisp_eval"));
+}
+
+#[test]
 fn emit_rust_detailed_emits_list_literals_as_vecs() {
     let generated = jisp::emit_rust_as_detailed(
         "main.lisp",

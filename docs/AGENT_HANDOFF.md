@@ -41,7 +41,8 @@ as the native backend contract. Native token emission remains P1; it now covers
 monomorphic scalar/function definitions, list literals, closed structural
 objects, field access, string templates, simple literal/bind/wildcard `case`,
 concrete enum constructors, variant `case`, list/object `case` patterns, and
-the current binary intrinsic subset without a dynamic `Value` ABI fallback.
+the current binary intrinsic plus typed string/list/math helper subset without a
+dynamic `Value` ABI fallback.
 
 `jisp-types` now exposes `Inferencer::infer_module_with_imports`,
 `Inferencer::infer_typed_module_with_imports`, `ImportTypeEnvironments`, and
@@ -100,6 +101,9 @@ multi-line spans.
 - Proc macro emits native Rust tokens and tracks all imported source files.
 - No ordinary program value is represented as a catch-all dynamic enum in
   compiled output.
+- Native helper calls either emit concrete Rust over typed values or fail
+  codegen; the backend still lacks source-ranged remapping for runtime failures
+  inside generated Rust.
 
 ## Do not implement yet
 

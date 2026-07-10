@@ -9,6 +9,9 @@ use crate::enum_types::EnumTypes;
 use crate::patterns::{emit_pattern, emit_variant_match_pattern, PatternEmission, PatternMatch};
 use crate::CodegenError;
 
+#[path = "intrinsics.rs"]
+mod intrinsics;
+
 pub(crate) fn emit_module(module: &TypedModule) -> Result<TokenStream, CodegenError> {
     let names = module
         .module
@@ -160,7 +163,7 @@ impl<'a> EmitContext<'a> {
                 let expression = self.emit_expr(expression, Some(&Type::Bool))?;
                 Ok(quote! { !#expression })
             }
-            ExprKind::Call { callee, arguments } => self.emit_call(callee, arguments),
+            ExprKind::Call { callee, arguments } => self.emit_call(callee, arguments, expected),
             ExprKind::Lambda { .. } => Err(CodegenError::Unsupported("nested functions")),
             ExprKind::List(items) => self.emit_list(items, expected),
             ExprKind::Object(fields) => self.emit_object(fields, expected),
@@ -419,6 +422,7 @@ impl<'a> EmitContext<'a> {
         &mut self,
         callee: &Expr,
         arguments: &[Expr],
+        expected: Option<&Type>,
     ) -> Result<TokenStream, CodegenError> {
         let ExprKind::Name(name) = &callee.kind else {
             return Err(CodegenError::Unsupported("first-class function calls"));
@@ -439,10 +443,7 @@ impl<'a> EmitContext<'a> {
             return Ok(quote! { #enum_ident::#variant_ident(#(#arguments),*) });
         }
         if !self.locals.contains_key(name) && !self.top_level_names.contains(name) {
-            if let Some(operator) = binary_intrinsic_operator(name) {
-                return self.emit_binary_intrinsic(arguments, operator);
-            }
-            return Err(CodegenError::Unsupported("calls outside native module"));
+            return self.emit_native_intrinsic(name, arguments, expected);
         }
         let name = rust_ident(name);
         let parameter_types = self.callee_parameter_types(callee).map(Vec::from);
@@ -461,19 +462,6 @@ impl<'a> EmitContext<'a> {
         Ok(quote! { #name(#(#arguments),*) })
     }
 
-    fn emit_binary_intrinsic(
-        &mut self,
-        arguments: &[Expr],
-        operator: TokenStream,
-    ) -> Result<TokenStream, CodegenError> {
-        let [left, right] = arguments else {
-            return Err(CodegenError::Unsupported("non-binary native intrinsics"));
-        };
-        let left = self.emit_expr(left, None)?;
-        let right = self.emit_expr(right, None)?;
-        Ok(quote! { (#left #operator #right) })
-    }
-
     fn callee_parameter_types(&self, callee: &Expr) -> Option<&[Type]> {
         let ExprKind::Name(name) = &callee.kind else {
             return None;
@@ -487,19 +475,6 @@ impl<'a> EmitContext<'a> {
             Type::Function { parameters, .. } => Some(parameters),
             _ => None,
         }
-    }
-}
-
-fn binary_intrinsic_operator(name: &str) -> Option<TokenStream> {
-    match name {
-        "+" => Some(quote! { + }),
-        "-" => Some(quote! { - }),
-        "*" => Some(quote! { * }),
-        "<" => Some(quote! { < }),
-        ">" => Some(quote! { > }),
-        "<=" => Some(quote! { <= }),
-        ">=" => Some(quote! { >= }),
-        _ => None,
     }
 }
 

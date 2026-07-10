@@ -203,6 +203,165 @@ fn emits_binary_prelude_intrinsics_as_native_operators() {
 }
 
 #[test]
+fn emits_native_string_and_list_prelude_helpers() {
+    let words = definition(
+        "words",
+        false,
+        expr(ExprKind::List(vec![
+            literal(Literal::String("a".to_owned())),
+            literal(Literal::String("b".to_owned())),
+        ])),
+    );
+    let greeting = definition(
+        "greeting",
+        false,
+        expr(ExprKind::Call {
+            callee: Box::new(name("str.cat")),
+            arguments: vec![
+                literal(Literal::String("hi ".to_owned())),
+                expr(ExprKind::Call {
+                    callee: Box::new(name("str.join")),
+                    arguments: vec![literal(Literal::String(",".to_owned())), name("words")],
+                }),
+            ],
+        }),
+    );
+    let numbers = definition(
+        "numbers",
+        false,
+        expr(ExprKind::Call {
+            callee: Box::new(name("list.append")),
+            arguments: vec![
+                expr(ExprKind::Call {
+                    callee: Box::new(name("list.prepend")),
+                    arguments: vec![
+                        literal(Literal::Int(1)),
+                        expr(ExprKind::List(vec![literal(Literal::Int(2))])),
+                    ],
+                }),
+                literal(Literal::Int(3)),
+            ],
+        }),
+    );
+    let main = definition(
+        "main",
+        true,
+        expr(ExprKind::Call {
+            callee: Box::new(name("+")),
+            arguments: vec![
+                expr(ExprKind::Call {
+                    callee: Box::new(name("str.len")),
+                    arguments: vec![name("greeting")],
+                }),
+                expr(ExprKind::Call {
+                    callee: Box::new(name("list.len")),
+                    arguments: vec![expr(ExprKind::Call {
+                        callee: Box::new(name("list.rest")),
+                        arguments: vec![name("numbers")],
+                    })],
+                }),
+            ],
+        }),
+    );
+    let module = typed_module(
+        vec![words, greeting, numbers, main],
+        vec![
+            ("words", Type::List(Box::new(Type::Str))),
+            ("greeting", Type::Str),
+            ("numbers", Type::List(Box::new(Type::Int))),
+            ("main", Type::Int),
+        ],
+    );
+
+    let generated = generate(&module).unwrap().to_string();
+
+    assert!(generated.contains("[String :: from (\"hi \") , words () . join"));
+    assert!(generated.contains(". concat ()"));
+    assert!(generated.contains("let mut __jisp_list = vec ! [2i64]"));
+    assert!(generated.contains("__jisp_list . insert (0usize , 1i64)"));
+    assert!(generated.contains("__jisp_list . push (3i64)"));
+    assert!(generated.contains("greeting () . chars () . count () as i64"));
+    assert!(generated.contains("numbers () . get (1usize ..) . unwrap_or_default () . to_vec ()"));
+    assert!(generated.contains(". len () as i64"));
+    assert!(!generated.contains("Value"));
+    assert!(!generated.contains("jisp_eval"));
+}
+
+#[test]
+fn emits_native_math_and_equality_prelude_helpers() {
+    let module = typed_module(
+        vec![
+            definition(
+                "half",
+                false,
+                expr(ExprKind::Call {
+                    callee: Box::new(name("/")),
+                    arguments: vec![literal(Literal::Int(8)), literal(Literal::Int(2))],
+                }),
+            ),
+            definition(
+                "floor",
+                false,
+                expr(ExprKind::Call {
+                    callee: Box::new(name("//")),
+                    arguments: vec![literal(Literal::Int(7)), literal(Literal::Int(3))],
+                }),
+            ),
+            definition(
+                "remainder",
+                false,
+                expr(ExprKind::Call {
+                    callee: Box::new(name("%")),
+                    arguments: vec![literal(Literal::Int(8)), literal(Literal::Int(3))],
+                }),
+            ),
+            definition(
+                "main",
+                true,
+                expr(ExprKind::If {
+                    condition: Box::new(expr(ExprKind::Call {
+                        callee: Box::new(name("=")),
+                        arguments: vec![
+                            expr(ExprKind::Call {
+                                callee: Box::new(name("math.max")),
+                                arguments: vec![literal(Literal::Int(1)), literal(Literal::Int(2))],
+                            }),
+                            literal(Literal::Int(2)),
+                        ],
+                    })),
+                    then_branch: Box::new(expr(ExprKind::Call {
+                        callee: Box::new(name("math.pow")),
+                        arguments: vec![name("half"), literal(Literal::Int(3))],
+                    })),
+                    else_branch: Box::new(expr(ExprKind::Call {
+                        callee: Box::new(name("math.abs")),
+                        arguments: vec![literal(Literal::Int(-3))],
+                    })),
+                }),
+            ),
+        ],
+        vec![
+            ("half", Type::Int),
+            ("floor", Type::Int),
+            ("remainder", Type::Int),
+            ("main", Type::Int),
+        ],
+    );
+
+    let generated = generate(&module).unwrap().to_string();
+
+    assert!(generated.contains(". checked_div (__jisp_right)"));
+    assert!(generated.contains(". checked_div_euclid (__jisp_right)"));
+    assert!(generated.contains(". checked_rem_euclid (__jisp_right)"));
+    assert!(generated.contains("1i64 . max (2i64) == 2i64"));
+    assert!(generated.contains("if __jisp_exponent < 0i64"));
+    assert!(generated.contains(". checked_pow (__jisp_exponent as u32)"));
+    assert!(generated.contains(". checked_abs ()"));
+    assert!(!generated.contains("Value"));
+    assert!(!generated.contains("jisp_eval"));
+}
+
+#[test]
 fn emits_list_literals_as_vecs() {
     let module = typed_module(
         vec![definition(
