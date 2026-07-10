@@ -592,6 +592,10 @@ impl Inferencer {
             ),
             Type::List(item) => self.check_list_case_exhaustive(item, branches),
             Type::Object(_) => self.check_object_case_exhaustive(&subject_ty, branches),
+            _ if branches.is_empty() => Err(InferError::NonExhaustiveCase {
+                type_name: subject_ty.to_string(),
+                missing: vec!["_".to_owned()],
+            }),
             _ => Ok(()),
         }
     }

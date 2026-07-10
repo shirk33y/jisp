@@ -17,13 +17,15 @@ No Gleam source code is vendored in this repository.
 
 | Feature | Jisp status | Gleam reference | Rationale |
 | --- | --- | --- | --- |
-| Algebraic data types and constructors | Ported in the Core IR and evaluator; type inference now registers constructor schemes from `type` declarations. | [`prelude.rs`](https://github.com/gleam-lang/gleam/blob/833732c523441043868877d159988ba2d21538cd/compiler-core/src/type_/prelude.rs#L425-L436), [`environment.rs`](https://github.com/gleam-lang/gleam/blob/833732c523441043868877d159988ba2d21538cd/compiler-core/src/type_/environment.rs#L499-L544) | ADTs give Jisp precise user data without a catch-all dynamic value model in compiled output. |
+| Algebraic data types and constructors | Ported in the Core IR and evaluator; type inference registers constructor schemes from `type` declarations, including zero-field variants and imported constructor schemes. | [`prelude.rs`](https://github.com/gleam-lang/gleam/blob/833732c523441043868877d159988ba2d21538cd/compiler-core/src/type_/prelude.rs#L425-L436), [`environment.rs`](https://github.com/gleam-lang/gleam/blob/833732c523441043868877d159988ba2d21538cd/compiler-core/src/type_/environment.rs#L499-L544), [`tests.rs`](https://github.com/gleam-lang/gleam/blob/833732c523441043868877d159988ba2d21538cd/compiler-core/src/type_/tests.rs#L2036-L2059) | ADTs give Jisp precise user data without a catch-all dynamic value model in compiled output. |
 | `Result`-style errors as values | Planned as a first-class stdlib convention; current enum machinery can model it. | [`prelude.rs`](https://github.com/gleam-lang/gleam/blob/833732c523441043868877d159988ba2d21538cd/compiler-core/src/type_/prelude.rs#L28-L61), [`expression.rs`](https://github.com/gleam-lang/gleam/blob/833732c523441043868877d159988ba2d21538cd/compiler-core/src/type_/expression.rs#L698-L705) | Keeps ordinary failures visible in types and avoids exception-driven control flow in portable Jisp code. |
 | `case` expressions over typed patterns | Runtime support exists; static branch typing covers core pattern bindings; exhaustiveness covers finite ADT/bool/null domains and conservative list/object irrefutable-pattern coverage. | [`exhaustiveness.rs`](https://github.com/gleam-lang/gleam/blob/833732c523441043868877d159988ba2d21538cd/compiler-core/src/exhaustiveness.rs#L65-L87), [`missing_patterns.rs`](https://github.com/gleam-lang/gleam/blob/833732c523441043868877d159988ba2d21538cd/compiler-core/src/exhaustiveness/missing_patterns.rs#L11-L24) | Exhaustive matching is the main safety payoff of ADTs and should produce source-ranged, actionable diagnostics. |
+| Pattern exhaustiveness and redundancy | Partially ported for finite domains, catch-all redundancy, repeated literals/constructors, empty cases, and nested list/object pattern typing; guards, alternatives, string prefixes, and multi-subject cases remain future design work. | [`exhaustiveness.rs`](https://github.com/gleam-lang/gleam/blob/833732c523441043868877d159988ba2d21538cd/compiler-core/src/type_/tests/exhaustiveness.rs#L822-L920), [`exhaustiveness.rs`](https://github.com/gleam-lang/gleam/blob/833732c523441043868877d159988ba2d21538cd/compiler-core/src/type_/tests/exhaustiveness.rs#L1482-L1854), [`clause_guard_test.gleam`](https://github.com/gleam-lang/gleam/blob/833732c523441043868877d159988ba2d21538cd/test/language/test/language/clause_guard_test.gleam#L4-L220) | Pattern safety needs its own coverage because syntax, type checking, reachability, diagnostics, runtime matching, and future codegen can regress independently. |
 | Hindley-Milner-style inference with an explicit type environment | Partially ported in `jisp-types` for core expressions, modules, let-generalisation, and constructors. | [`environment.rs`](https://github.com/gleam-lang/gleam/blob/833732c523441043868877d159988ba2d21538cd/compiler-core/src/type_/environment.rs#L38-L63), [`hydrator.rs`](https://github.com/gleam-lang/gleam/blob/833732c523441043868877d159988ba2d21538cd/compiler-core/src/type_/hydrator.rs#L30-L47), [`expression.rs`](https://github.com/gleam-lang/gleam/blob/833732c523441043868877d159988ba2d21538cd/compiler-core/src/type_/expression.rs#L409-L420) | Jisp should infer common code without annotations while keeping a stable typed seam for evaluation and Rust codegen. |
 | Top-level dependency ordering and recursive SCCs | Ported as a small Jisp-local dependency pass in `jisp-types`; independent top-level definitions are generalised before dependents, while recursive groups stay monomorphic until the group is solved. | [`call_graph.rs`](https://github.com/gleam-lang/gleam/blob/833732c523441043868877d159988ba2d21538cd/compiler-core/src/call_graph.rs#L530-L587), [`type_.rs`](https://github.com/gleam-lang/gleam/blob/833732c523441043868877d159988ba2d21538cd/compiler-core/src/type_.rs#L1732-L1779), [`analyse.rs`](https://github.com/gleam-lang/gleam/blob/833732c523441043868877d159988ba2d21538cd/compiler-core/src/analyse.rs#L1924-L2009) | This keeps recursive functions possible without preventing polymorphic helpers from being reused at multiple types in later definitions. |
 | Module graph, imports, stale tracking, and cycle checks | Ported for facade/type-checking imports, cycle detection, CLI dependency listing, and proc-macro dependency tracking; native token emission remains P1. | [`module_loader.rs`](https://github.com/gleam-lang/gleam/blob/833732c523441043868877d159988ba2d21538cd/compiler-core/src/build/module_loader.rs#L45-L84), [`project_compiler.rs`](https://github.com/gleam-lang/gleam/blob/833732c523441043868877d159988ba2d21538cd/compiler-core/src/build/project_compiler.rs#L105-L151), [`call_graph.rs`](https://github.com/gleam-lang/gleam/blob/833732c523441043868877d159988ba2d21538cd/compiler-core/src/call_graph.rs#L530-L544) | Directory-as-module loading needs deterministic resolution, useful cycle errors, and future incremental compilation. |
-| Source-ranged diagnostics | Ported as source-aware AST, diagnostic foundations, CLI rendering for parser/lowerer errors, and macro-origin labels through `ExpansionMap`. | [`diagnostic.rs`](https://github.com/gleam-lang/gleam/blob/833732c523441043868877d159988ba2d21538cd/compiler-core/src/diagnostic.rs), [`expression.rs`](https://github.com/gleam-lang/gleam/blob/833732c523441043868877d159988ba2d21538cd/compiler-core/src/type_/expression.rs#L5355-L5395) | Multi-syntax input only works if errors stay attached to original source spans through parsing, lowering, macros, and typing. |
+| Module visibility and private API boundaries | Partially planned; exported-only import visibility exists, while private-type leak prevention and interface publication remain future work. | [`errors.rs`](https://github.com/gleam-lang/gleam/blob/833732c523441043868877d159988ba2d21538cd/compiler-core/src/type_/tests/errors.rs#L835-L892), [`dead_code_detection.rs`](https://github.com/gleam-lang/gleam/blob/833732c523441043868877d159988ba2d21538cd/compiler-core/src/type_/tests/dead_code_detection.rs#L197-L258) | Native compilation and packages need a stable public API boundary rather than exposing every constructor or structural detail by accident. |
+| Source-ranged diagnostics | Ported as source-aware AST, diagnostic foundations, CLI rendering for parser/lowerer errors, and macro-origin labels through `ExpansionMap`; primary/secondary labels and constructor/type mismatch hints remain a quality target. | [`diagnostic.rs`](https://github.com/gleam-lang/gleam/blob/833732c523441043868877d159988ba2d21538cd/compiler-core/src/diagnostic.rs#L88-L135), [`expression.rs`](https://github.com/gleam-lang/gleam/blob/833732c523441043868877d159988ba2d21538cd/compiler-core/src/type_/expression.rs#L5355-L5395), [`exhaustiveness.rs`](https://github.com/gleam-lang/gleam/blob/833732c523441043868877d159988ba2d21538cd/compiler-core/src/type_/tests/exhaustiveness.rs#L1130-L1157) | Multi-syntax input only works if errors stay attached to original source spans through parsing, lowering, macros, and typing. |
 | Immutable values with backend-friendly representation | Partially ported in evaluator/runtime helpers; native ABI remains intentionally undesigned. | [`typed.rs`](https://github.com/gleam-lang/gleam/blob/833732c523441043868877d159988ba2d21538cd/compiler-core/src/ast/typed.rs), [`project_compiler.rs`](https://github.com/gleam-lang/gleam/blob/833732c523441043868877d159988ba2d21538cd/compiler-core/src/build/project_compiler.rs#L202-L238) | Runtime semantics should remain portable while Rust codegen gets a typed representation instead of mirroring interpreter internals. |
 
 ## `case` test reference
@@ -50,6 +52,36 @@ highest-value test ideas to port are empty cases over finite and open subjects,
 duplicate and overlapping alternatives, guarded branches that keep later arms
 reachable, nested list/object/constructor patterns, imported constructor names
 under aliasing and shadowing, and exact source ranges for pattern type errors.
+
+## Jisp test backlog from Gleam
+
+P0-compatible tests, because they match current Jisp semantics:
+
+- `case` over imported ADTs with qualified constructors and inferred branch
+  result type.
+- exhaustive `case` over `result` and `option`-like enums, including zero-field
+  variants;
+- redundant branch detection for catch-all patterns, repeated constructors, and
+  repeated literals;
+- pattern and subject type mismatches with source-ranged diagnostics;
+- nested list, object, and constructor pattern bindings;
+- `case` arm bindings that do not leak out or mutate outer lexical bindings;
+- recursive top-level groups where recursive SCCs stay monomorphic but
+  independent helpers still generalise before dependents;
+- import aliasing and shadowing around constructor names.
+
+Future tests, because they need feature design before implementation:
+
+- guarded `case` branches and guard-sensitive reachability;
+- alternative patterns and overlap diagnostics;
+- multi-subject `case`;
+- string-prefix pattern matching;
+- tuple/record-specific access and update semantics beyond current object rows;
+- private type leak diagnostics for public module APIs;
+- editor-code-action tests for adding missing patterns and removing unreachable
+  clauses;
+- backend-specific matching/codegen shape checks once native Rust emission has
+  typed IR.
 
 ## Agent response review
 

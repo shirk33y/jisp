@@ -379,6 +379,50 @@ fn rejects_case_branch_type_mismatch() {
 }
 
 #[test]
+fn rejects_pattern_type_mismatch_between_subject_and_literal() {
+    let mut inferencer = Inferencer::default();
+    let expression = expr(ExprKind::Case {
+        subject: Box::new(bool_(true)),
+        branches: vec![branch(Pattern::Literal(Literal::Int(1)), int(1))],
+    });
+
+    assert!(matches!(
+        inferencer.infer_expr(&expression),
+        Err(InferError::Unify(UnifyError::Mismatch { .. }))
+    ));
+}
+
+#[test]
+fn rejects_empty_bool_case() {
+    let mut inferencer = Inferencer::default();
+    let expression = expr(ExprKind::Case {
+        subject: Box::new(bool_(true)),
+        branches: vec![],
+    });
+
+    assert!(matches!(
+        inferencer.infer_expr(&expression),
+        Err(InferError::NonExhaustiveCase { type_name, missing })
+            if type_name == "bool" && missing == vec!["false".to_owned(), "true".to_owned()]
+    ));
+}
+
+#[test]
+fn rejects_empty_open_case() {
+    let mut inferencer = Inferencer::default();
+    let expression = expr(ExprKind::Case {
+        subject: Box::new(int(1)),
+        branches: vec![],
+    });
+
+    assert!(matches!(
+        inferencer.infer_expr(&expression),
+        Err(InferError::NonExhaustiveCase { type_name, missing })
+            if type_name == "int" && missing == vec!["_".to_owned()]
+    ));
+}
+
+#[test]
 fn rejects_non_exhaustive_bool_case() {
     let mut inferencer = Inferencer::default();
     let expression = expr(ExprKind::Case {
@@ -532,6 +576,42 @@ fn accepts_exhaustive_list_case_with_empty_and_rest_patterns() {
 }
 
 #[test]
+fn infers_nested_list_case_pattern_bindings() {
+    let mut inferencer = Inferencer::default();
+    let expression = expr(ExprKind::Case {
+        subject: Box::new(expr(ExprKind::List(vec![expr(ExprKind::List(vec![
+            int(1),
+            int(2),
+        ]))]))),
+        branches: vec![
+            branch(
+                Pattern::List {
+                    prefix: vec![],
+                    rest: None,
+                },
+                int(0),
+            ),
+            branch(
+                Pattern::List {
+                    prefix: vec![Pattern::List {
+                        prefix: vec![Pattern::Bind("head".to_owned())],
+                        rest: Some("tail".to_owned()),
+                    }],
+                    rest: Some("outer_tail".to_owned()),
+                },
+                expr(ExprKind::Do(vec![
+                    name("outer_tail"),
+                    name("tail"),
+                    name("head"),
+                ])),
+            ),
+        ],
+    });
+
+    assert_eq!(inferencer.infer_expr(&expression).unwrap(), Type::Int);
+}
+
+#[test]
 fn rejects_non_exhaustive_list_case() {
     let mut inferencer = Inferencer::default();
     let expression = expr(ExprKind::Case {
@@ -594,6 +674,29 @@ fn accepts_exhaustive_object_case_with_required_field_bindings() {
         ]))),
         branches: vec![branch(
             Pattern::Object(vec![("name".to_owned(), Pattern::Bind("name".to_owned()))]),
+            name("name"),
+        )],
+    });
+
+    assert_eq!(inferencer.infer_expr(&expression).unwrap(), Type::Str);
+}
+
+#[test]
+fn infers_nested_object_case_pattern_bindings() {
+    let mut inferencer = Inferencer::default();
+    let expression = expr(ExprKind::Case {
+        subject: Box::new(expr(ExprKind::Object(vec![
+            (
+                string("user"),
+                expr(ExprKind::Object(vec![(string("name"), string("Ada"))])),
+            ),
+            (string("active"), bool_(true)),
+        ]))),
+        branches: vec![branch(
+            Pattern::Object(vec![(
+                "user".to_owned(),
+                Pattern::Object(vec![("name".to_owned(), Pattern::Bind("name".to_owned()))]),
+            )]),
             name("name"),
         )],
     });
