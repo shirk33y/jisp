@@ -42,7 +42,8 @@
 - Add regression tests as soon as a bug or behavior contract is identified.
 - Do not run selective `cargo test` filters in this repo. The workspace test
   suite is fast enough that running all tests saves tool calls and catches
-  cross-crate regressions.
+  cross-crate regressions. When Cargo tests are needed, run the whole allowed
+  suite at once with `cargo test --workspace --exclude jisp-macros --quiet`.
 - Keep test output quiet by default; surface only failures or actionable errors.
 - Integration tests live in `tests/` at the crate root, as in
   `crates/jisp-eval/tests/`.
@@ -63,7 +64,7 @@
 
   ```text
   cargo fmt --all -- --check
-  cargo test --workspace --exclude jisp-macros
+  cargo test --workspace --exclude jisp-macros --quiet
   ```
 
 ## File Size
