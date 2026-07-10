@@ -28,16 +28,17 @@ No Gleam source code is vendored in this repository.
 
 ## Agent response review
 
-The agent response recommending Gleam as a source of compiler design patterns
-was reviewed against the pinned checkout on commit
+An agent response recommending Gleam as a source of compiler design patterns was
+reviewed against the pinned checkout on commit
 `833732c523441043868877d159988ba2d21538cd`. The recommendation is accepted with
-one boundary: Jisp should borrow seams and invariants, not copy Gleam's full
-package/compiler architecture.
+one boundary: Jisp should borrow compiler seams, invariants, and diagnostic
+shape, not Gleam's full package/compiler architecture.
 
 Accepted findings:
 
 - ADT constructor schemes, top-level SCC grouping, and finite-domain
-  exhaustiveness are the right P0 imports from Gleam's type checker.
+  exhaustiveness are the right P0 imports from Gleam's type checker. These map
+  to Jisp's existing `jisp-types` inference seam rather than to parser crates.
 - Import/type-environment installation should stay explicit and module-path
   keyed. Jisp already has the facade/type-checking side of this; native
   compilation still needs dependency tracking at the same seam.
@@ -46,13 +47,28 @@ Accepted findings:
 - The response correctly separates small compiler invariants from heavyweight
   build-system machinery.
 
+Adoption decisions:
+
+- Keep Gleam-style constructor/value environments as the model for user ADTs and
+  stdlib enum conventions such as `result` and `option`.
+- Keep Jisp's facade resolver as the only source of module-loading truth. CLI,
+  proc-macro, and native compilation should consume dependency information from
+  that seam rather than implement their own import scanners.
+- Use Gleam's exhaustiveness work as the reference for missing-pattern and
+  redundant-pattern diagnostics, but only after each Jisp pattern family has
+  stable typing semantics.
+- Use Gleam's diagnostic style as a quality bar: errors should name the failed
+  invariant, point at original source ranges, and preserve macro-origin context.
+
 Status after review:
 
 - Already ported: ADT constructor schemes, top-level recursive SCC grouping,
-  module import environments, mixed-syntax resolver behavior, and finite
-  `bool`/`null`/variant exhaustiveness foundations.
+  module import environments, mixed-syntax resolver behavior, exported-only
+  import visibility, and finite `bool`/`null`/variant exhaustiveness
+  foundations.
 - Still actionable in P0: richer `case` checking, source-range rendering through
-  macro origins, and remaining stdlib schemes.
+  macro origins, remaining stdlib schemes, and dependency tracking for imported
+  source files in native/proc-macro compilation.
 - Later work: native compiler dependency tracking should use the existing
   resolver seam rather than a second import implementation.
 
@@ -64,6 +80,7 @@ Deferred findings:
 - Exhaustiveness over every pattern family before Jisp's object/list pattern
   typing is more complete.
 - Full row-polymorphic/object-heavy typing and advanced overload machinery.
+- Backend-specific assumptions from Gleam's Erlang and JavaScript codegen.
 - Diagnostic polish that depends on richer renderer and source plumbing.
 
 Current risk boundary:
