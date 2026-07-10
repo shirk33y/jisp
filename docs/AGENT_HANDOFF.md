@@ -13,6 +13,8 @@ recovering intent, APIs, tests, or syntax examples.
 Gleam is the primary external compiler reference for ADTs, inference,
 exhaustiveness, diagnostics, and module loading. Read repository-root
 `GLEAM.md` before porting or adapting behavior from it.
+The current local Gleam checkout is indexed as CMM project
+`home-shirk3y-stuff-gleam`; `GLEAM.md` records the commit and feature mapping.
 
 ## Recommended first task
 
