@@ -85,6 +85,28 @@ arguments. Raw `{}` syntax is reserved and currently rejected.
 `[., object, key]` is field/map lookup only. Jisp has no method syntax or
 implicit receiver. A function stored in a field is called normally.
 
+## Numbers
+
+Integers are signed 64-bit values. Integer arithmetic is checked: overflow is a
+runtime error in the evaluator and must remain a compile-time or runtime error
+in native backends. `/` is truncating integer division for integer operands.
+`//` and `%` use Euclidean division and modulo. Division or modulo by zero is an
+error. `i64::MIN / -1`, `i64::MIN // -1`, and `i64::MIN % -1` are overflow
+errors.
+
+Floats are IEEE-754 `f64` values. Float arithmetic follows host `f64`
+semantics except that `/`, `//`, and `%` reject a zero divisor instead of
+producing infinities or NaN from division by zero. Other invalid float
+operations, such as `math.sqrt(-1.0)`, may produce NaN.
+
+Numeric operations do not implicitly coerce between integers and floats. A
+numeric builtin receives either integer operands or float operands. Mixed
+integer/float arguments are type errors in checked code and runtime errors in
+the interpreter.
+
+NaN follows `f64` equality: it is not equal to itself. Structural equality does
+not normalise or canonicalise NaN payloads.
+
 ## Equality and mutability
 
 Equality is structural for data values. Functions and opaque native handles are

@@ -44,6 +44,10 @@ exports, type-checks the generated module with the prelude, evaluates it
 normally, and compares the exported values structurally. This is intentionally a
 test fixture format, not core language semantics yet.
 
+Numeric semantics are now specified in `SPEC.md`: integers are checked `i64`,
+float arithmetic is `f64`, numeric builtins do not coerce int/float operands,
+division by zero is an error, and NaN is not equal to itself.
+
 ## Useful existing seams
 
 - New syntax: implement `jisp_core::SyntaxParser` only.

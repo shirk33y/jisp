@@ -10,8 +10,6 @@ This is the single authoritative list of intentionally unfinished work.
 - Implement directory-as-module loading, qualified imports, aliases, exports,
   cycle detection, and mixed `.json`/`.yaml`/`.lisp` modules.
 - Improve diagnostics rendering and preserve macro-origin chains.
-- Decide and specify exact numeric semantics: integer overflow, division, mixed
-  integer/float operations, and NaN equality.
 
 ## P1 — native compiler and product validation
 

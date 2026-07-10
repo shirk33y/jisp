@@ -245,7 +245,7 @@ fn floor_divide(_: &mut Evaluator, args: &[Value], span: Span) -> Result<Value, 
     match (&args[0], &args[1]) {
         (Value::Int(left), Value::Int(right)) => jisp_runtime::math::floor_div_i64(*left, *right)
             .map(Value::Int)
-            .ok_or_else(|| RuntimeError::at(span, "division by zero")),
+            .ok_or_else(|| RuntimeError::at(span, "division by zero or integer overflow")),
         (Value::Float(left), Value::Float(right)) if *right != 0.0 => {
             Ok(Value::Float((left / right).floor()))
         }
@@ -261,7 +261,7 @@ fn modulo(_: &mut Evaluator, args: &[Value], span: Span) -> Result<Value, Runtim
     match (&args[0], &args[1]) {
         (Value::Int(left), Value::Int(right)) => jisp_runtime::math::modulo_i64(*left, *right)
             .map(Value::Int)
-            .ok_or_else(|| RuntimeError::at(span, "modulo by zero")),
+            .ok_or_else(|| RuntimeError::at(span, "modulo by zero or integer overflow")),
         (Value::Float(left), Value::Float(right)) if *right != 0.0 => {
             Ok(Value::Float(left.rem_euclid(*right)))
         }
