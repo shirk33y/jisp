@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use crate::{Scheme, Type, TypeVar};
 
@@ -223,6 +223,13 @@ pub fn environment() -> BTreeMap<String, Scheme> {
     env
 }
 
+pub fn variants() -> BTreeMap<String, BTreeSet<String>> {
+    BTreeMap::from([
+        ("option".to_owned(), tags(["none", "some"])),
+        ("result".to_owned(), tags(["err", "ok"])),
+    ])
+}
+
 fn add(env: &mut BTreeMap<String, Scheme>, name: &str, scheme: Scheme) {
     env.insert(name.to_owned(), scheme);
 }
@@ -265,4 +272,8 @@ fn option(item: Type) -> Type {
         name: "option".to_owned(),
         arguments: vec![item],
     }
+}
+
+fn tags<const N: usize>(names: [&str; N]) -> BTreeSet<String> {
+    names.into_iter().map(str::to_owned).collect()
 }

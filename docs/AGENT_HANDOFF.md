@@ -19,10 +19,11 @@ The current local Gleam checkout is indexed as CMM project
 ## Current P0 focus
 
 Type inference now covers core expressions, let-generalisation, enum
-constructors, `case` pattern typing, and a conservative prelude for fixed-arity
-stdlib functions. The next type-system task is exhaustiveness checking for
-`case`, followed by richer stdlib schemes for variadic, overloaded, and
-object/row-polymorphic builtins.
+constructors, `case` pattern typing, minimal variant exhaustiveness for
+user-defined ADTs and prelude `result`/`option`, and a conservative prelude for
+fixed-arity stdlib functions. Remaining type-system work includes richer
+exhaustiveness for literals, lists, objects, redundant patterns, and stdlib
+schemes for variadic, overloaded, and object/row-polymorphic builtins.
 
 ## Useful existing seams
 

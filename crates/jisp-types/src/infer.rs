@@ -18,6 +18,12 @@ pub enum InferError {
 
     #[error("pattern binds `{0}` more than once")]
     DuplicatePatternBinding(String),
+
+    #[error("non-exhaustive case for `{type_name}`, missing variants: {missing:?}")]
+    NonExhaustiveCase {
+        type_name: String,
+        missing: Vec<String>,
+    },
 }
 
 /// Reusable state for Hindley–Milner-style inference.
@@ -30,12 +36,14 @@ pub struct Inferencer {
     next_var: u32,
     pub unifier: Unifier,
     pub environment: BTreeMap<String, Scheme>,
+    type_variants: BTreeMap<String, BTreeSet<String>>,
 }
 
 impl Inferencer {
     pub fn with_prelude() -> Self {
         Self {
             environment: crate::prelude::environment(),
+            type_variants: crate::prelude::variants(),
             ..Self::default()
         }
     }
@@ -207,6 +215,15 @@ impl Inferencer {
 
     fn install_type_constructors(&mut self, declarations: &[TypeDecl]) -> Result<(), InferError> {
         for declaration in declarations {
+            self.type_variants.insert(
+                declaration.name.clone(),
+                declaration
+                    .variants
+                    .iter()
+                    .map(|variant| variant.name.clone())
+                    .collect(),
+            );
+
             let mut parameters = TypeParameters::default();
             for variant in &declaration.variants {
                 for field in &variant.field_types {
@@ -380,7 +397,42 @@ impl Inferencer {
             self.unify(result_ty.clone(), body_ty)?;
         }
 
+        self.check_case_exhaustive(&subject_ty, branches)?;
         Ok(result_ty)
+    }
+
+    fn check_case_exhaustive(
+        &self,
+        subject_ty: &Type,
+        branches: &[CaseBranch],
+    ) -> Result<(), InferError> {
+        let Type::Named { name, .. } = self.apply(subject_ty) else {
+            return Ok(());
+        };
+        let Some(variants) = self.type_variants.get(&name) else {
+            return Ok(());
+        };
+
+        let mut covered = BTreeSet::new();
+        for branch in branches {
+            match &branch.pattern {
+                Pattern::Wildcard | Pattern::Bind(_) => return Ok(()),
+                Pattern::Variant { tag, .. } => {
+                    covered.insert(tag.clone());
+                }
+                Pattern::Literal(_) | Pattern::List { .. } | Pattern::Object(_) => {}
+            }
+        }
+
+        let missing = variants.difference(&covered).cloned().collect::<Vec<_>>();
+        if missing.is_empty() {
+            Ok(())
+        } else {
+            Err(InferError::NonExhaustiveCase {
+                type_name: name,
+                missing,
+            })
+        }
     }
 
     fn infer_pattern(

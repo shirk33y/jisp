@@ -270,6 +270,49 @@ fn rejects_case_branch_type_mismatch() {
 }
 
 #[test]
+fn rejects_non_exhaustive_enum_case() {
+    let mut inferencer = Inferencer::default();
+    let result_decl = TypeDecl {
+        name: "result".to_owned(),
+        variants: vec![
+            VariantDecl {
+                name: "ok".to_owned(),
+                field_types: vec!["value".to_owned()],
+                span: span(),
+            },
+            VariantDecl {
+                name: "err".to_owned(),
+                field_types: vec!["error".to_owned()],
+                span: span(),
+            },
+        ],
+        span: span(),
+    };
+    let subject = expr(ExprKind::Call {
+        callee: Box::new(name("ok")),
+        arguments: vec![int(1)],
+    });
+    let case = expr(ExprKind::Case {
+        subject: Box::new(subject),
+        branches: vec![branch(
+            Pattern::Variant {
+                tag: "ok".to_owned(),
+                fields: vec![Pattern::Bind("value".to_owned())],
+            },
+            name("value"),
+        )],
+    });
+    let mut module = module(vec![definition("main", case)]);
+    module.types.push(result_decl);
+
+    assert!(matches!(
+        inferencer.infer_module(&module),
+        Err(InferError::NonExhaustiveCase { type_name, missing })
+            if type_name == "result" && missing == vec!["err".to_owned()]
+    ));
+}
+
+#[test]
 fn rejects_duplicate_pattern_bindings() {
     let mut inferencer = Inferencer::default();
     let expression = expr(ExprKind::Case {
@@ -354,6 +397,30 @@ fn prelude_infers_result_case() {
     });
 
     assert_eq!(inferencer.infer_expr(&expression).unwrap(), Type::Int);
+}
+
+#[test]
+fn prelude_rejects_non_exhaustive_result_case() {
+    let mut inferencer = Inferencer::with_prelude();
+    let expression = expr(ExprKind::Case {
+        subject: Box::new(expr(ExprKind::Call {
+            callee: Box::new(name("list.get")),
+            arguments: vec![expr(ExprKind::List(vec![int(1), int(2)])), int(0)],
+        })),
+        branches: vec![branch(
+            Pattern::Variant {
+                tag: "ok".to_owned(),
+                fields: vec![Pattern::Bind("value".to_owned())],
+            },
+            name("value"),
+        )],
+    });
+
+    assert!(matches!(
+        inferencer.infer_expr(&expression),
+        Err(InferError::NonExhaustiveCase { type_name, missing })
+            if type_name == "result" && missing == vec!["err".to_owned()]
+    ));
 }
 
 #[test]
