@@ -65,10 +65,15 @@ fn check_types_resolves_directory_imports_with_mixed_syntax() {
     )
     .unwrap();
     fs::write(
+        module_dir.join("double.yaml"),
+        r#"[[export, double, [fn, [value], [*, value, 2]]]]"#,
+    )
+    .unwrap();
+    fs::write(
         &main,
         r#"
 (import math "math")
-(export main (fn () (math.dec (math.inc 41))))
+(export main (fn () (math.dec (math.double (math.inc 41)))))
 "#,
     )
     .unwrap();
@@ -95,10 +100,15 @@ fn run_main_resolves_directory_imports_with_mixed_syntax() {
     )
     .unwrap();
     fs::write(
+        module_dir.join("double.yaml"),
+        r#"[[export, double, [fn, [value], [*, value, 2]]]]"#,
+    )
+    .unwrap();
+    fs::write(
         &main,
         r#"
 (import math "math")
-(export main (fn () (math.dec (math.inc 41))))
+(export main (fn () (math.dec (math.double (math.inc 41)))))
 "#,
     )
     .unwrap();
@@ -106,7 +116,7 @@ fn run_main_resolves_directory_imports_with_mixed_syntax() {
     let text = fs::read_to_string(&main).unwrap();
     let value = jisp::run_main(&main, &text).unwrap();
 
-    assert_int(value, 41);
+    assert_int(value, 83);
 }
 
 #[test]
@@ -152,6 +162,55 @@ fn check_types_rejects_import_cycles() {
     };
 
     assert!(matches!(err, jisp::Error::ImportCycle(_)), "{err}");
+}
+
+#[test]
+fn imports_expose_only_exported_names() {
+    let dir = fixture_dir("private-imports");
+    let main = dir.join("main.lisp");
+    fs::write(
+        dir.join("math.lisp"),
+        r#"
+(def hidden 41)
+(export visible 1)
+"#,
+    )
+    .unwrap();
+    fs::write(
+        &main,
+        r#"
+(import math "math.lisp")
+(export main (fn () math.hidden))
+"#,
+    )
+    .unwrap();
+
+    let text = fs::read_to_string(&main).unwrap();
+    let err = match jisp::check(&main, &text) {
+        Ok(_) => panic!("expected private import type error"),
+        Err(err) => err,
+    };
+    assert!(
+        matches!(
+            err,
+            jisp::Error::Type(jisp::jisp_types::InferError::UnknownName(ref name))
+                if name == "math.hidden"
+        ),
+        "{err}"
+    );
+
+    let err = match jisp::run_main(&main, &text) {
+        Ok(_) => panic!("expected private import runtime error"),
+        Err(err) => err,
+    };
+    assert!(
+        matches!(
+            err,
+            jisp::Error::Runtime(jisp::jisp_eval::RuntimeError { ref message, .. })
+                if message == "unknown name `math.hidden`"
+        ),
+        "{err}"
+    );
 }
 
 fn assert_int(value: jisp::jisp_eval::Value, expected: i64) {

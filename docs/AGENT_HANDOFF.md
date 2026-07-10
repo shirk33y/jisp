@@ -33,8 +33,10 @@ exported schemes as `alias.name` bindings. The `jisp` facade now resolves
 imports from files and directories for both `jisp::check` and runtime
 `evaluate`/`run_main`: it supports extensionless
 `.lisp`/`.jisp`/`.json`/`.yaml`/`.yml` imports, mixed syntax directory modules,
-exported-only visibility, and cycle detection. The next module-system step is
-CLI/proc-macro dependency tracking around the same resolver seam.
+exported-only visibility, and cycle detection. Mixed `.lisp`/`.json`/`.yaml`
+directory modules and exported-only visibility are covered by regression tests.
+The next module-system step is CLI/proc-macro dependency tracking around the
+same resolver seam.
 
 Portable Lisp fixture tests now live under `tests/language/` and are registered
 as Cargo-visible tests by `crates/jisp-eval/build.rs`. The generated tests call

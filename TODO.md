@@ -7,8 +7,9 @@ This is the single authoritative list of intentionally unfinished work.
 - Implement full type inference over `jisp-ir`, including structural objects,
   richer exhaustive `case`, and stdlib schemes.
 - Implement a hygienic macro expander for quote/quasiquote/unquote/splicing.
-- Implement directory-as-module loading, qualified imports, aliases, exports,
-  cycle detection, and mixed `.json`/`.yaml`/`.lisp` modules.
+- Wire resolved module dependencies into CLI/proc-macro/native compilation so
+  imported source files are tracked through the same resolver seam used by
+  `jisp::check` and `jisp::run_main`.
 - Improve diagnostics rendering and preserve macro-origin chains.
 
 ## P1 — native compiler and product validation
