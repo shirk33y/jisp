@@ -2,9 +2,7 @@ use std::collections::HashMap;
 
 use indexmap::IndexMap;
 use jisp_core::Span;
-use jisp_ir::{
-    CaseBranch, Expr, ExprKind, Literal, Module, Pattern, StringPart,
-};
+use jisp_ir::{CaseBranch, Expr, ExprKind, Literal, Module, Pattern, StringPart};
 
 use crate::builtins::install_builtins;
 use crate::{Builtin, Closure, Constructor, Env, RuntimeError, Value};
@@ -14,6 +12,8 @@ pub struct LoadedModule {
     pub env: Env,
     pub exports: HashMap<String, Value>,
 }
+
+pub type ImportValues = HashMap<String, HashMap<String, Value>>;
 
 pub struct Evaluator {
     root: Env,
@@ -51,14 +51,27 @@ impl Evaluator {
     }
 
     pub fn load_module(&mut self, module: &Module) -> Result<LoadedModule, RuntimeError> {
-        if let Some(import) = module.imports.first() {
-            return Err(RuntimeError::at(
-                import.span,
-                "module loading is not implemented; import resolution belongs in jisp-core",
-            ));
-        }
+        self.load_module_with_imports(module, &HashMap::new())
+    }
 
+    pub fn load_module_with_imports(
+        &mut self,
+        module: &Module,
+        imports: &ImportValues,
+    ) -> Result<LoadedModule, RuntimeError> {
         let env = self.root.child();
+
+        for import in &module.imports {
+            let exports = imports.get(&import.path).ok_or_else(|| {
+                RuntimeError::at(
+                    import.span,
+                    format!("unresolved import `{}` as `{}`", import.path, import.alias),
+                )
+            })?;
+            for (name, value) in exports {
+                env.define(format!("{}.{}", import.alias, name), value.clone());
+            }
+        }
 
         for declaration in &module.types {
             for variant in &declaration.variants {
@@ -90,11 +103,25 @@ impl Evaluator {
     }
 
     pub fn run_main(&mut self, module: &Module) -> Result<Value, RuntimeError> {
-        let loaded = self.load_module(module)?;
+        self.run_main_with_imports(module, &HashMap::new())
+    }
+
+    pub fn run_main_with_imports(
+        &mut self,
+        module: &Module,
+        imports: &ImportValues,
+    ) -> Result<Value, RuntimeError> {
+        let loaded = self.load_module_with_imports(module, imports)?;
         let main = loaded.env.lookup("main")?;
-        self.apply(main, &[], module.definitions.first().map(|d| d.span).unwrap_or_else(|| {
-            Span::empty(jisp_core::SourceId(0), 0)
-        }))
+        self.apply(
+            main,
+            &[],
+            module
+                .definitions
+                .first()
+                .map(|d| d.span)
+                .unwrap_or_else(|| Span::empty(jisp_core::SourceId(0), 0)),
+        )
     }
 
     pub fn eval_in(&mut self, expr: &Expr, env: &Env) -> Result<Value, RuntimeError> {
@@ -254,7 +281,10 @@ impl Evaluator {
                     env.define(name.clone(), value.clone());
                 }
                 if let Some(rest) = closure.rest {
-                    env.define(rest, Value::List(arguments[closure.params.len()..].to_vec()));
+                    env.define(
+                        rest,
+                        Value::List(arguments[closure.params.len()..].to_vec()),
+                    );
                 }
                 self.eval_in(&closure.body, &env)
             }
@@ -274,15 +304,16 @@ impl Evaluator {
         lines: bool,
         parts: &[StringPart],
         env: &Env,
-        span: Span,
+        _span: Span,
     ) -> Result<Value, RuntimeError> {
         let mut fragments = vec![];
         for part in parts {
             match part {
                 StringPart::Literal(value) => fragments.push(value.clone()),
-                StringPart::Expr(expression) => {
-                    fragments.push(expect_string(self.eval_in(expression, env)?, expression.span)?)
-                }
+                StringPart::Expr(expression) => fragments.push(expect_string(
+                    self.eval_in(expression, env)?,
+                    expression.span,
+                )?),
                 StringPart::Splice(expression) => {
                     let value = self.eval_in(expression, env)?;
                     let Value::List(values) = value else {

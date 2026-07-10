@@ -1,13 +1,13 @@
 //! Public facade for parsing, lowering, and interpreting Jisp modules.
 
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, HashMap},
     fs, io,
     path::{Path, PathBuf},
 };
 
 use jisp_core::{detect_syntax, Node, SourceMap, Syntax, SyntaxParser};
-use jisp_eval::{Evaluator, LoadedModule, RuntimeError, Value};
+use jisp_eval::{Evaluator, ImportValues, LoadedModule, RuntimeError, Value};
 use jisp_ir::{LowerError, Lowerer, Module};
 use jisp_types::{ImportTypeEnvironments, Inferencer, Scheme};
 use thiserror::Error;
@@ -111,13 +111,25 @@ pub fn check(path: impl AsRef<Path>, text: &str) -> Result<ParsedModule, Error> 
 }
 
 pub fn evaluate(path: impl AsRef<Path>, text: &str) -> Result<LoadedModule, Error> {
-    let parsed = parse(path, text)?;
-    Ok(Evaluator::new().load_module(&parsed.module)?)
+    let path = path.as_ref();
+    let mut parsed = parse(path, text)?;
+    let mut evaluator = Evaluator::new();
+    let imports = {
+        let mut resolver = ValueResolver::new(&mut parsed.sources, &mut evaluator);
+        resolver.import_values(path, &parsed.module)?
+    };
+    Ok(evaluator.load_module_with_imports(&parsed.module, &imports)?)
 }
 
 pub fn run_main(path: impl AsRef<Path>, text: &str) -> Result<Value, Error> {
-    let parsed = parse(path, text)?;
-    Ok(Evaluator::new().run_main(&parsed.module)?)
+    let path = path.as_ref();
+    let mut parsed = parse(path, text)?;
+    let mut evaluator = Evaluator::new();
+    let imports = {
+        let mut resolver = ValueResolver::new(&mut parsed.sources, &mut evaluator);
+        resolver.import_values(path, &parsed.module)?
+    };
+    Ok(evaluator.run_main_with_imports(&parsed.module, &imports)?)
 }
 
 struct TypeResolver<'a> {
@@ -142,7 +154,7 @@ impl<'a> TypeResolver<'a> {
     ) -> Result<ImportTypeEnvironments, Error> {
         let mut environments = BTreeMap::new();
         for import in &module.imports {
-            let path = self.resolve_import(importer, &import.path)?;
+            let path = resolve_import(importer, &import.path)?;
             let exports = self.infer_exported(&path)?;
             environments.insert(import.path.clone(), exports);
         }
@@ -159,7 +171,7 @@ impl<'a> TypeResolver<'a> {
         }
 
         self.stack.push(key.clone());
-        let module = self.load_module(&key)?;
+        let module = load_module(self.sources, &key)?;
         let imports = self.import_environments(&key, &module)?;
         let schemes = Inferencer::with_prelude().infer_module_with_imports(&module, &imports)?;
         let exports = exported_schemes(&module, &schemes);
@@ -168,54 +180,102 @@ impl<'a> TypeResolver<'a> {
         self.cache.insert(key, exports.clone());
         Ok(exports)
     }
+}
 
-    fn load_module(&mut self, path: &Path) -> Result<Module, Error> {
-        let mut nodes = vec![];
-        if path.is_dir() {
-            for file in module_files(path)? {
-                nodes.extend(self.parse_file(&file)?);
-            }
-        } else {
-            nodes.extend(self.parse_file(path)?);
+struct ValueResolver<'a, 'b> {
+    sources: &'a mut SourceMap,
+    evaluator: &'b mut Evaluator,
+    cache: BTreeMap<PathBuf, HashMap<String, Value>>,
+    stack: Vec<PathBuf>,
+}
+
+impl<'a, 'b> ValueResolver<'a, 'b> {
+    fn new(sources: &'a mut SourceMap, evaluator: &'b mut Evaluator) -> Self {
+        Self {
+            sources,
+            evaluator,
+            cache: BTreeMap::new(),
+            stack: vec![],
         }
-        Ok(Lowerer.lower_module(&nodes)?)
     }
 
-    fn parse_file(&mut self, path: &Path) -> Result<Vec<Node>, Error> {
-        let syntax =
-            detect_syntax(path).ok_or_else(|| Error::UnknownSyntax(path.display().to_string()))?;
-        let text = fs::read_to_string(path).map_err(|source| Error::Read {
-            path: path.display().to_string(),
-            source,
-        })?;
-        let source = self.sources.add(path.display().to_string(), text.clone());
-        parse_nodes(source, syntax, &text)
+    fn import_values(&mut self, importer: &Path, module: &Module) -> Result<ImportValues, Error> {
+        let mut values = HashMap::new();
+        for import in &module.imports {
+            let path = resolve_import(importer, &import.path)?;
+            let exports = self.evaluate_exported(&path)?;
+            values.insert(import.path.clone(), exports);
+        }
+        Ok(values)
     }
 
-    fn resolve_import(&self, importer: &Path, import: &str) -> Result<PathBuf, Error> {
-        let base = if importer.is_dir() {
-            importer
-        } else {
-            importer.parent().unwrap_or_else(|| Path::new("."))
-        };
-        let raw = Path::new(import);
-        let candidate = if raw.is_absolute() {
-            raw.to_path_buf()
-        } else {
-            base.join(raw)
-        };
-
-        for path in import_candidates(&candidate) {
-            if path.is_dir() || path.is_file() && detect_syntax(&path).is_some() {
-                return canonicalize(&path);
-            }
+    fn evaluate_exported(&mut self, path: &Path) -> Result<HashMap<String, Value>, Error> {
+        let key = canonicalize(path)?;
+        if let Some(exports) = self.cache.get(&key) {
+            return Ok(exports.clone());
+        }
+        if self.stack.contains(&key) {
+            return Err(Error::ImportCycle(format_cycle(&self.stack, &key)));
         }
 
-        Err(Error::ImportNotFound {
-            import: import.to_owned(),
-            from: importer.display().to_string(),
-        })
+        self.stack.push(key.clone());
+        let module = load_module(self.sources, &key)?;
+        let imports = self.import_values(&key, &module)?;
+        let loaded = self.evaluator.load_module_with_imports(&module, &imports)?;
+        let exports = loaded.exports;
+        self.stack.pop();
+
+        self.cache.insert(key, exports.clone());
+        Ok(exports)
     }
+}
+
+fn resolve_import(importer: &Path, import: &str) -> Result<PathBuf, Error> {
+    let base = if importer.is_dir() {
+        importer
+    } else {
+        importer.parent().unwrap_or_else(|| Path::new("."))
+    };
+    let raw = Path::new(import);
+    let candidate = if raw.is_absolute() {
+        raw.to_path_buf()
+    } else {
+        base.join(raw)
+    };
+
+    for path in import_candidates(&candidate) {
+        if path.is_dir() || path.is_file() && detect_syntax(&path).is_some() {
+            return canonicalize(&path);
+        }
+    }
+
+    Err(Error::ImportNotFound {
+        import: import.to_owned(),
+        from: importer.display().to_string(),
+    })
+}
+
+fn load_module(sources: &mut SourceMap, path: &Path) -> Result<Module, Error> {
+    let mut nodes = vec![];
+    if path.is_dir() {
+        for file in module_files(path)? {
+            nodes.extend(parse_file(sources, &file)?);
+        }
+    } else {
+        nodes.extend(parse_file(sources, path)?);
+    }
+    Ok(Lowerer.lower_module(&nodes)?)
+}
+
+fn parse_file(sources: &mut SourceMap, path: &Path) -> Result<Vec<Node>, Error> {
+    let syntax =
+        detect_syntax(path).ok_or_else(|| Error::UnknownSyntax(path.display().to_string()))?;
+    let text = fs::read_to_string(path).map_err(|source| Error::Read {
+        path: path.display().to_string(),
+        source,
+    })?;
+    let source = sources.add(path.display().to_string(), text.clone());
+    parse_nodes(source, syntax, &text)
 }
 
 fn parse_nodes(

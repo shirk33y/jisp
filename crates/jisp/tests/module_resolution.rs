@@ -25,6 +25,30 @@ fn check_types_resolves_file_imports() {
 }
 
 #[test]
+fn run_main_resolves_file_imports() {
+    let dir = fixture_dir("runtime-file-imports");
+    let main = dir.join("main.lisp");
+    fs::write(
+        dir.join("math.lisp"),
+        "(export inc (fn (value) (+ value 1)))",
+    )
+    .unwrap();
+    fs::write(
+        &main,
+        r#"
+(import math "math")
+(export main (fn () (math.inc 41)))
+"#,
+    )
+    .unwrap();
+
+    let text = fs::read_to_string(&main).unwrap();
+    let value = jisp::run_main(&main, &text).unwrap();
+
+    assert_int(value, 42);
+}
+
+#[test]
 fn check_types_resolves_directory_imports_with_mixed_syntax() {
     let dir = fixture_dir("directory-imports");
     let module_dir = dir.join("math");
@@ -52,6 +76,37 @@ fn check_types_resolves_directory_imports_with_mixed_syntax() {
     let text = fs::read_to_string(&main).unwrap();
 
     jisp::check(&main, &text).unwrap();
+}
+
+#[test]
+fn run_main_resolves_directory_imports_with_mixed_syntax() {
+    let dir = fixture_dir("runtime-directory-imports");
+    let module_dir = dir.join("math");
+    fs::create_dir_all(&module_dir).unwrap();
+    let main = dir.join("main.lisp");
+    fs::write(
+        module_dir.join("inc.lisp"),
+        "(export inc (fn (value) (+ value 1)))",
+    )
+    .unwrap();
+    fs::write(
+        module_dir.join("dec.json"),
+        r#"[["export","dec",["fn",["value"],["-","value",1]]]]"#,
+    )
+    .unwrap();
+    fs::write(
+        &main,
+        r#"
+(import math "math")
+(export main (fn () (math.dec (math.inc 41))))
+"#,
+    )
+    .unwrap();
+
+    let text = fs::read_to_string(&main).unwrap();
+    let value = jisp::run_main(&main, &text).unwrap();
+
+    assert_int(value, 41);
 }
 
 #[test]
@@ -90,6 +145,20 @@ fn check_types_rejects_import_cycles() {
     };
 
     assert!(matches!(err, jisp::Error::ImportCycle(_)), "{err}");
+
+    let err = match jisp::run_main(&main, &text) {
+        Ok(_) => panic!("expected import cycle"),
+        Err(err) => err,
+    };
+
+    assert!(matches!(err, jisp::Error::ImportCycle(_)), "{err}");
+}
+
+fn assert_int(value: jisp::jisp_eval::Value, expected: i64) {
+    match value {
+        jisp::jisp_eval::Value::Int(actual) => assert_eq!(actual, expected),
+        other => panic!("expected int {expected}, got {}", other.display_string()),
+    }
 }
 
 fn fixture_dir(name: &str) -> PathBuf {
