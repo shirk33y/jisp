@@ -315,6 +315,31 @@ fn emit_rust_detailed_emits_native_object_case_patterns() {
 }
 
 #[test]
+fn emit_rust_detailed_emits_ui_data_shape_as_static_structs() {
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../examples/ui_button.lisp");
+    let text = fs::read_to_string(&path).unwrap();
+    let generated = jisp::emit_rust_detailed(&path, &text).unwrap();
+    let tokens = generated.tokens.to_string();
+
+    assert!(tokens.contains("pub fn main () -> JispObject"));
+    assert!(tokens.contains("pub children : Vec < JispObject"));
+    assert!(tokens.contains("pub classes : JispObject"));
+    assert!(tokens.contains("pub bg_emerald_600 : bool"));
+    assert!(tokens.contains("pub opacity_50 : bool"));
+    assert!(tokens.contains("pub px_4 : bool"));
+    assert!(tokens.contains("pub py_2 : bool"));
+    assert!(tokens.contains("pub tag : String"));
+    assert!(tokens.contains("pub value : String"));
+    assert!(tokens.contains("id :"));
+    assert!(tokens.contains("String :: from (\"save-button\")"));
+    assert!(tokens.contains("title : blog_title ()"));
+    assert!(tokens.contains("bg_emerald_600 : (user_active () && ! saving ())"));
+    assert!(tokens.contains("children : vec ! [JispObject"));
+    assert!(!tokens.contains("Value"));
+    assert!(!tokens.contains("jisp_eval"));
+}
+
+#[test]
 fn emit_rust_detailed_rejects_unsupported_shapes_without_runtime_fallback() {
     let error = match jisp::emit_rust_as_detailed(
         "main.lisp",
