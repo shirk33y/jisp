@@ -14,6 +14,9 @@ This is the single authoritative list of intentionally unfinished work.
 ## P1 — native compiler and product validation
 
 - Implement `jisp-codegen-rust` from `jisp_types::TypedModule`.
+- Follow `.agents/plans/0004-p1-runtime-abi-validation.md`: generated Rust must
+  use concrete typed layouts or fail codegen explicitly, never a universal
+  dynamic `Value` for ordinary program values.
 - Replace the compile-error scaffold in `jisp-macros` with validation and native
   token emission.
 - Add optional `emit-rust` output and generated-to-source mapping.
