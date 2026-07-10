@@ -293,6 +293,70 @@ fn rejects_duplicate_pattern_bindings() {
 }
 
 #[test]
+fn prelude_infers_fixed_arity_numeric_builtins() {
+    let mut inferencer = Inferencer::with_prelude();
+    let expression = expr(ExprKind::Call {
+        callee: Box::new(name("+")),
+        arguments: vec![int(1), int(2)],
+    });
+
+    assert_eq!(inferencer.infer_expr(&expression).unwrap(), Type::Int);
+}
+
+#[test]
+fn prelude_infers_list_map() {
+    let mut inferencer = Inferencer::with_prelude();
+    let expression = expr(ExprKind::Call {
+        callee: Box::new(name("list.map")),
+        arguments: vec![
+            expr(ExprKind::Lambda {
+                params: vec!["value".to_owned()],
+                rest: None,
+                body: Box::new(expr(ExprKind::Call {
+                    callee: Box::new(name("+")),
+                    arguments: vec![name("value"), int(1)],
+                })),
+            }),
+            expr(ExprKind::List(vec![int(1), int(2)])),
+        ],
+    });
+
+    assert_eq!(
+        inferencer.infer_expr(&expression).unwrap(),
+        Type::List(Box::new(Type::Int))
+    );
+}
+
+#[test]
+fn prelude_infers_result_case() {
+    let mut inferencer = Inferencer::with_prelude();
+    let expression = expr(ExprKind::Case {
+        subject: Box::new(expr(ExprKind::Call {
+            callee: Box::new(name("list.get")),
+            arguments: vec![expr(ExprKind::List(vec![int(1), int(2)])), int(0)],
+        })),
+        branches: vec![
+            branch(
+                Pattern::Variant {
+                    tag: "ok".to_owned(),
+                    fields: vec![Pattern::Bind("value".to_owned())],
+                },
+                name("value"),
+            ),
+            branch(
+                Pattern::Variant {
+                    tag: "err".to_owned(),
+                    fields: vec![Pattern::Wildcard],
+                },
+                int(0),
+            ),
+        ],
+    });
+
+    assert_eq!(inferencer.infer_expr(&expression).unwrap(), Type::Int);
+}
+
+#[test]
 fn rejects_imports_until_module_resolution_has_type_environments() {
     let mut inferencer = Inferencer::default();
     let module = Module {

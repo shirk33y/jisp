@@ -33,6 +33,13 @@ pub struct Inferencer {
 }
 
 impl Inferencer {
+    pub fn with_prelude() -> Self {
+        Self {
+            environment: crate::prelude::environment(),
+            ..Self::default()
+        }
+    }
+
     pub fn fresh_type(&mut self) -> Type {
         let var = TypeVar(self.next_var);
         self.next_var += 1;

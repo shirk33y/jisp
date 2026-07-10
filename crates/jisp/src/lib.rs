@@ -78,7 +78,7 @@ pub fn parse_as_with_options(
     };
     let module = Lowerer.lower_module(&nodes)?;
     let types = if options.infer_types {
-        Some(Inferencer::default().infer_module(&module)?)
+        Some(Inferencer::with_prelude().infer_module(&module)?)
     } else {
         None
     };

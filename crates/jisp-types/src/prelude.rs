@@ -1,0 +1,268 @@
+use std::collections::BTreeMap;
+
+use crate::{Scheme, Type, TypeVar};
+
+pub fn environment() -> BTreeMap<String, Scheme> {
+    let mut env = BTreeMap::new();
+
+    add(
+        &mut env,
+        "ok",
+        scheme(vec![0, 1], fun(vec![var(0)], result(var(0), var(1)))),
+    );
+    add(
+        &mut env,
+        "err",
+        scheme(vec![0, 1], fun(vec![var(1)], result(var(0), var(1)))),
+    );
+    add(
+        &mut env,
+        "some",
+        scheme(vec![0], fun(vec![var(0)], option(var(0)))),
+    );
+    add(&mut env, "none", scheme(vec![0], option(var(0))));
+
+    for name in ["+", "-", "*", "/", "//", "%"] {
+        add(
+            &mut env,
+            name,
+            mono(fun(vec![Type::Int, Type::Int], Type::Int)),
+        );
+    }
+    add(
+        &mut env,
+        "=",
+        scheme(vec![0], fun(vec![var(0), var(0)], Type::Bool)),
+    );
+    for name in ["<", ">", "<=", ">="] {
+        add(
+            &mut env,
+            name,
+            mono(fun(vec![Type::Int, Type::Int], Type::Bool)),
+        );
+    }
+    add(&mut env, "math.abs", mono(fun(vec![Type::Int], Type::Int)));
+    for name in ["math.min", "math.max", "math.pow"] {
+        add(
+            &mut env,
+            name,
+            mono(fun(vec![Type::Int, Type::Int], Type::Int)),
+        );
+    }
+    for name in ["math.sqrt", "math.floor", "math.ceil", "math.round"] {
+        add(&mut env, name, mono(fun(vec![Type::Float], Type::Float)));
+    }
+
+    add(&mut env, "str.len", mono(fun(vec![Type::Str], Type::Int)));
+    add(
+        &mut env,
+        "str.join",
+        mono(fun(vec![Type::Str, list(Type::Str)], Type::Str)),
+    );
+    add(
+        &mut env,
+        "str.split",
+        mono(fun(vec![Type::Str, Type::Str], list(Type::Str))),
+    );
+    for name in ["str.trim", "str.upper", "str.lower"] {
+        add(&mut env, name, mono(fun(vec![Type::Str], Type::Str)));
+    }
+    for name in ["str.has", "str.starts", "str.ends"] {
+        add(
+            &mut env,
+            name,
+            mono(fun(vec![Type::Str, Type::Str], Type::Bool)),
+        );
+    }
+    add(
+        &mut env,
+        "str.replace",
+        mono(fun(vec![Type::Str, Type::Str, Type::Str], Type::Str)),
+    );
+    add(
+        &mut env,
+        "str.slice",
+        mono(fun(
+            vec![Type::Str, Type::Int, Type::Int],
+            result(Type::Str, Type::Str),
+        )),
+    );
+
+    add(
+        &mut env,
+        "list.len",
+        scheme(vec![0], fun(vec![list(var(0))], Type::Int)),
+    );
+    add(
+        &mut env,
+        "list.get",
+        scheme(
+            vec![0],
+            fun(vec![list(var(0)), Type::Int], result(var(0), Type::Str)),
+        ),
+    );
+    for name in ["list.first", "list.last"] {
+        add(
+            &mut env,
+            name,
+            scheme(vec![0], fun(vec![list(var(0))], result(var(0), Type::Str))),
+        );
+    }
+    add(
+        &mut env,
+        "list.rest",
+        scheme(vec![0], fun(vec![list(var(0))], list(var(0)))),
+    );
+    add(
+        &mut env,
+        "list.slice",
+        scheme(
+            vec![0],
+            fun(
+                vec![list(var(0)), Type::Int, Type::Int],
+                result(list(var(0)), Type::Str),
+            ),
+        ),
+    );
+    add(
+        &mut env,
+        "list.map",
+        scheme(
+            vec![0, 1],
+            fun(vec![fun(vec![var(0)], var(1)), list(var(0))], list(var(1))),
+        ),
+    );
+    add(
+        &mut env,
+        "list.filter",
+        scheme(
+            vec![0],
+            fun(
+                vec![fun(vec![var(0)], Type::Bool), list(var(0))],
+                list(var(0)),
+            ),
+        ),
+    );
+    add(
+        &mut env,
+        "list.fold",
+        scheme(
+            vec![0, 1],
+            fun(
+                vec![fun(vec![var(1), var(0)], var(1)), var(1), list(var(0))],
+                var(1),
+            ),
+        ),
+    );
+    for name in ["list.some", "list.every"] {
+        add(
+            &mut env,
+            name,
+            scheme(
+                vec![0],
+                fun(
+                    vec![fun(vec![var(0)], Type::Bool), list(var(0))],
+                    Type::Bool,
+                ),
+            ),
+        );
+    }
+    add(
+        &mut env,
+        "list.has",
+        scheme(vec![0], fun(vec![list(var(0)), var(0)], Type::Bool)),
+    );
+    add(
+        &mut env,
+        "list.prepend",
+        scheme(vec![0], fun(vec![var(0), list(var(0))], list(var(0)))),
+    );
+    add(
+        &mut env,
+        "list.append",
+        scheme(vec![0], fun(vec![list(var(0)), var(0)], list(var(0)))),
+    );
+
+    add(
+        &mut env,
+        "result.try",
+        scheme(
+            vec![0, 1, 2],
+            fun(
+                vec![
+                    result(var(0), var(2)),
+                    fun(vec![var(0)], result(var(1), var(2))),
+                ],
+                result(var(1), var(2)),
+            ),
+        ),
+    );
+    add(
+        &mut env,
+        "result.map",
+        scheme(
+            vec![0, 1, 2],
+            fun(
+                vec![result(var(0), var(2)), fun(vec![var(0)], var(1))],
+                result(var(1), var(2)),
+            ),
+        ),
+    );
+    add(
+        &mut env,
+        "result.map-err",
+        scheme(
+            vec![0, 1, 2],
+            fun(
+                vec![result(var(0), var(1)), fun(vec![var(1)], var(2))],
+                result(var(0), var(2)),
+            ),
+        ),
+    );
+
+    env
+}
+
+fn add(env: &mut BTreeMap<String, Scheme>, name: &str, scheme: Scheme) {
+    env.insert(name.to_owned(), scheme);
+}
+
+fn mono(body: Type) -> Scheme {
+    Scheme::mono(body)
+}
+
+fn scheme(vars: Vec<u32>, body: Type) -> Scheme {
+    Scheme {
+        variables: vars.into_iter().map(TypeVar).collect(),
+        body,
+    }
+}
+
+fn var(id: u32) -> Type {
+    Type::Var(TypeVar(id))
+}
+
+fn list(item: Type) -> Type {
+    Type::List(Box::new(item))
+}
+
+fn fun(parameters: Vec<Type>, result: Type) -> Type {
+    Type::Function {
+        parameters,
+        result: Box::new(result),
+    }
+}
+
+fn result(ok: Type, err: Type) -> Type {
+    Type::Named {
+        name: "result".to_owned(),
+        arguments: vec![ok, err],
+    }
+}
+
+fn option(item: Type) -> Type {
+    Type::Named {
+        name: "option".to_owned(),
+        arguments: vec![item],
+    }
+}

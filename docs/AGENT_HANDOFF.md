@@ -16,11 +16,13 @@ exhaustiveness, diagnostics, and module loading. Read repository-root
 The current local Gleam checkout is indexed as CMM project
 `home-shirk3y-stuff-gleam`; `GLEAM.md` records the commit and feature mapping.
 
-## Recommended first task
+## Current P0 focus
 
-Implement `Inferencer::infer_expr` over `jisp_ir::Expr` and add integration tests
-for polymorphic identity, lists, object fields, enum constructors, `Result`, and
-branch unification. Then make `jisp::parse` optionally run inference.
+Type inference now covers core expressions, let-generalisation, enum
+constructors, `case` pattern typing, and a conservative prelude for fixed-arity
+stdlib functions. The next type-system task is exhaustiveness checking for
+`case`, followed by richer stdlib schemes for variadic, overloaded, and
+object/row-polymorphic builtins.
 
 ## Useful existing seams
 
