@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use jisp_ir::{TypeDecl, VariantDecl};
-use jisp_types::Type;
+use jisp_types::{Scheme, Type};
 use proc_macro2::Ident;
 use quote::format_ident;
 
@@ -15,7 +15,10 @@ pub(crate) struct EnumTypes {
 }
 
 impl EnumTypes {
-    pub(crate) fn from_declarations(declarations: &[TypeDecl]) -> Result<Self, CodegenError> {
+    pub(crate) fn from_module(
+        declarations: &[TypeDecl],
+        schemes: &BTreeMap<String, Scheme>,
+    ) -> Result<Self, CodegenError> {
         let mut names = BTreeMap::new();
         let mut enums = BTreeMap::new();
         let mut variants = BTreeMap::new();
@@ -29,7 +32,8 @@ impl EnumTypes {
             names,
             enums,
             variants,
-        })
+        }
+        .with_prelude_instances(schemes))
     }
 
     pub(crate) fn ident_for_name(&self, name: &str) -> Result<Ident, CodegenError> {
@@ -49,6 +53,55 @@ impl EnumTypes {
         self.variants
             .get(name)
             .filter(|variant| variant.fields.is_empty())
+    }
+
+    pub(crate) fn ident_for_type(&self, ty: &Type) -> Result<Ident, CodegenError> {
+        match ty {
+            Type::Named { name, arguments } if arguments.is_empty() => self.ident_for_name(name),
+            Type::Named { .. } => self
+                .enums
+                .get(&type_key(ty))
+                .map(|shape| shape.ident.clone())
+                .ok_or(CodegenError::Unsupported("generic named type emission")),
+            _ => Err(CodegenError::Unsupported("unregistered native enum type")),
+        }
+    }
+
+    pub(crate) fn prelude_constructor(
+        &self,
+        name: &str,
+        expected: Option<&Type>,
+    ) -> Result<Option<VariantShape>, CodegenError> {
+        let Some(expected) = expected else {
+            return Ok(None);
+        };
+        let Type::Named {
+            name: type_name,
+            arguments,
+        } = expected
+        else {
+            return Ok(None);
+        };
+        let fields = match (type_name.as_str(), name, arguments.as_slice()) {
+            ("result", "ok", [ok, _]) => vec![ok.clone()],
+            ("result", "err", [_, err]) => vec![err.clone()],
+            ("option", "some", [item]) => vec![item.clone()],
+            ("option", "none", [_]) => vec![],
+            _ => return Ok(None),
+        };
+        let enum_ident = self.ident_for_type(expected)?;
+        Ok(Some(VariantShape {
+            enum_ident,
+            ident: rust_variant_ident(name),
+            fields,
+        }))
+    }
+
+    fn with_prelude_instances(mut self, schemes: &BTreeMap<String, Scheme>) -> Self {
+        for scheme in schemes.values() {
+            collect_prelude_instances(&scheme.body, &mut self.enums);
+        }
+        self
     }
 }
 
@@ -91,6 +144,82 @@ fn enum_shape(
         ident: enum_ident,
         variants: shapes,
     })
+}
+
+fn collect_prelude_instances(ty: &Type, enums: &mut BTreeMap<String, EnumShape>) {
+    match ty {
+        Type::List(item) => collect_prelude_instances(item, enums),
+        Type::Object(row) => {
+            for ty in row.fields.values() {
+                collect_prelude_instances(ty, enums);
+            }
+        }
+        Type::Function {
+            parameters,
+            rest,
+            result,
+        } => {
+            for parameter in parameters {
+                collect_prelude_instances(parameter, enums);
+            }
+            if let Some(rest) = rest {
+                collect_prelude_instances(rest, enums);
+            }
+            collect_prelude_instances(result, enums);
+        }
+        Type::Named { name, arguments } => {
+            for argument in arguments {
+                collect_prelude_instances(argument, enums);
+            }
+            if let Some(shape) = prelude_enum_shape(name, arguments, enums.len()) {
+                enums.entry(type_key(ty)).or_insert(shape);
+            }
+        }
+        Type::Var(_)
+        | Type::Never
+        | Type::Null
+        | Type::Bool
+        | Type::Int
+        | Type::BigInt
+        | Type::Float
+        | Type::Str => {}
+    }
+}
+
+fn prelude_enum_shape(name: &str, arguments: &[Type], index: usize) -> Option<EnumShape> {
+    let ident = format_ident!("JispEnum{index}");
+    let variants = match (name, arguments) {
+        ("result", [ok, err]) => vec![
+            VariantShape {
+                enum_ident: ident.clone(),
+                ident: rust_variant_ident("ok"),
+                fields: vec![ok.clone()],
+            },
+            VariantShape {
+                enum_ident: ident.clone(),
+                ident: rust_variant_ident("err"),
+                fields: vec![err.clone()],
+            },
+        ],
+        ("option", [item]) => vec![
+            VariantShape {
+                enum_ident: ident.clone(),
+                ident: rust_variant_ident("none"),
+                fields: vec![],
+            },
+            VariantShape {
+                enum_ident: ident.clone(),
+                ident: rust_variant_ident("some"),
+                fields: vec![item.clone()],
+            },
+        ],
+        _ => return None,
+    };
+    Some(EnumShape { ident, variants })
+}
+
+fn type_key(ty: &Type) -> String {
+    ty.to_string()
 }
 
 fn variant_shape(variant: &VariantDecl, enum_ident: &Ident) -> Result<VariantShape, CodegenError> {

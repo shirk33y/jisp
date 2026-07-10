@@ -32,17 +32,22 @@ This is the single authoritative list of intentionally unfinished work.
 
 ## P2 — language completeness
 
+- P2 milestone queue:
+  1. Done: add explicit `bigint` values to the language, interpreter, type
+     prelude, docs, and portable tests.
+  2. Add native backend support for the remaining typed prelude helpers such as
+     `str.slice`, `list.get`, `list.slice`, and the first concrete
+     `result<T,E>` / `option<T>` helpers that can compile without a dynamic
+     `Value` fallback.
+  3. Add `use` desugaring.
+  4. Build a minimal UI proof prototype once P1 validates the data shape,
+     starting with Jisp structural UI data rendered to a simple HTML/string or
+     JSON vnode target before a full renderer.
+  5. Improve portable `.lisp` test runner UX with better listing, filtering, and
+     failure reporting.
 - Add native backend support for first-class function values, nested functions,
-  variadic user functions, generic named types from prelude such as
-  `result<T,E>`, `bigint`, `obj.get`, dynamic object helpers/open rows, dynamic
-  field access, and the remaining typed prelude helpers such as `str.slice` and
-  `list.get`.
-- Add `use` desugaring.
-- Build a minimal UI proof prototype once P1 validates the data shape, starting
-  with Jisp structural UI data rendered to a simple HTML/string or JSON vnode
-  target before a full renderer.
-- Improve portable `.lisp` test runner UX with better listing, filtering, and
-  failure reporting.
+  variadic user functions, `bigint` emission, `obj.get`, dynamic object
+  helpers/open rows, and dynamic field access.
 - Add compile-time evaluation for user macros.
 - Add case guards, alternative patterns, aliases, and robust exhaustiveness.
 - Expand `jisp-macros` beyond item-position native file emission.

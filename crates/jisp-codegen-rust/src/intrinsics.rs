@@ -39,9 +39,12 @@ impl<'a> EmitContext<'a> {
             "str.starts" => self.emit_binary_string_predicate(arguments, quote! { starts_with }),
             "str.ends" => self.emit_binary_string_predicate(arguments, quote! { ends_with }),
             "str.replace" => self.emit_str_replace_intrinsic(arguments),
+            "str.slice" => self.emit_str_slice_intrinsic(arguments),
             "list.len" => self.emit_list_len_intrinsic(arguments),
+            "list.get" => self.emit_list_get_intrinsic(arguments, expected),
             "list.cat" => self.emit_list_cat_intrinsic(arguments),
             "list.rest" => self.emit_list_rest_intrinsic(arguments),
+            "list.slice" => self.emit_list_slice_intrinsic(arguments, expected),
             "list.has" => self.emit_list_has_intrinsic(arguments),
             "list.prepend" => self.emit_list_prepend_intrinsic(arguments),
             "list.append" => self.emit_list_append_intrinsic(arguments),
@@ -320,12 +323,99 @@ impl<'a> EmitContext<'a> {
         Ok(quote! { #value.replace(&#from, &#to) })
     }
 
+    fn emit_str_slice_intrinsic(
+        &mut self,
+        arguments: &[Expr],
+    ) -> Result<TokenStream, CodegenError> {
+        let [value, start, end] = arguments else {
+            return Err(CodegenError::Unsupported("non-ternary native intrinsics"));
+        };
+        let result_type = result_type(Type::Str, Type::Str);
+        let ok = self
+            .enum_types
+            .prelude_constructor("ok", Some(&result_type))?
+            .ok_or(CodegenError::Unsupported("str.slice native result type"))?;
+        let err = self
+            .enum_types
+            .prelude_constructor("err", Some(&result_type))?
+            .ok_or(CodegenError::Unsupported("str.slice native result type"))?;
+        let ok_enum = &ok.enum_ident;
+        let ok_variant = &ok.ident;
+        let err_enum = &err.enum_ident;
+        let err_variant = &err.ident;
+        let value = self.emit_expr(value, Some(&Type::Str))?;
+        let start = self.emit_expr(start, Some(&Type::Int))?;
+        let end = self.emit_expr(end, Some(&Type::Int))?;
+        Ok(quote! {{
+            let __jisp_value = #value;
+            let __jisp_start = #start;
+            let __jisp_end = #end;
+            if __jisp_start < 0i64 || __jisp_end < 0i64 {
+                #err_enum::#err_variant(String::from("string slice indices cannot be negative"))
+            } else {
+                let __jisp_start = __jisp_start as usize;
+                let __jisp_end = __jisp_end as usize;
+                let __jisp_chars = __jisp_value.chars().collect::<Vec<char>>();
+                if __jisp_start > __jisp_end || __jisp_end > __jisp_chars.len() {
+                    #err_enum::#err_variant(String::from("string slice is out of bounds"))
+                } else {
+                    #ok_enum::#ok_variant(__jisp_chars[__jisp_start..__jisp_end].iter().collect::<String>())
+                }
+            }
+        }})
+    }
+
     fn emit_list_len_intrinsic(&mut self, arguments: &[Expr]) -> Result<TokenStream, CodegenError> {
         let [value] = arguments else {
             return Err(CodegenError::Unsupported("non-unary native intrinsics"));
         };
         let value = self.emit_expr(value, None)?;
         Ok(quote! { #value.len() as i64 })
+    }
+
+    fn emit_list_get_intrinsic(
+        &mut self,
+        arguments: &[Expr],
+        expected: Option<&Type>,
+    ) -> Result<TokenStream, CodegenError> {
+        let [list, index] = arguments else {
+            return Err(CodegenError::Unsupported("non-binary native intrinsics"));
+        };
+        let Some((item_type, err_type)) = result_arguments(expected) else {
+            return Err(CodegenError::Unsupported(
+                "list.get without expected result type",
+            ));
+        };
+        if err_type != &Type::Str {
+            return Err(CodegenError::Unsupported("list.get native error type"));
+        }
+        let ok = self
+            .enum_types
+            .prelude_constructor("ok", expected)?
+            .ok_or(CodegenError::Unsupported("list.get native result type"))?;
+        let err = self
+            .enum_types
+            .prelude_constructor("err", expected)?
+            .ok_or(CodegenError::Unsupported("list.get native result type"))?;
+        let ok_enum = &ok.enum_ident;
+        let ok_variant = &ok.ident;
+        let err_enum = &err.enum_ident;
+        let err_variant = &err.ident;
+        let list_type = Type::List(Box::new(item_type.clone()));
+        let list = self.emit_expr(list, Some(&list_type))?;
+        let index = self.emit_expr(index, Some(&Type::Int))?;
+        Ok(quote! {{
+            let __jisp_list = #list;
+            let __jisp_index = #index;
+            if __jisp_index < 0i64 {
+                #err_enum::#err_variant(String::from("list index cannot be negative"))
+            } else {
+                match __jisp_list.get(__jisp_index as usize) {
+                    Some(__jisp_value) => #ok_enum::#ok_variant(__jisp_value.clone()),
+                    None => #err_enum::#err_variant(String::from("list index is out of bounds")),
+                }
+            }
+        }})
     }
 
     fn emit_list_cat_intrinsic(&mut self, arguments: &[Expr]) -> Result<TokenStream, CodegenError> {
@@ -357,6 +447,58 @@ impl<'a> EmitContext<'a> {
         let list = self.emit_expr(list, None)?;
         let value = self.emit_expr(value, None)?;
         Ok(quote! { #list.contains(&#value) })
+    }
+
+    fn emit_list_slice_intrinsic(
+        &mut self,
+        arguments: &[Expr],
+        expected: Option<&Type>,
+    ) -> Result<TokenStream, CodegenError> {
+        let [list, start, end] = arguments else {
+            return Err(CodegenError::Unsupported("non-ternary native intrinsics"));
+        };
+        let Some((ok_type, err_type)) = result_arguments(expected) else {
+            return Err(CodegenError::Unsupported(
+                "list.slice without expected result type",
+            ));
+        };
+        let Type::List(item_type) = ok_type else {
+            return Err(CodegenError::Unsupported("list.slice native ok type"));
+        };
+        if err_type != &Type::Str {
+            return Err(CodegenError::Unsupported("list.slice native error type"));
+        }
+        let ok = self
+            .enum_types
+            .prelude_constructor("ok", expected)?
+            .ok_or(CodegenError::Unsupported("list.slice native result type"))?;
+        let err = self
+            .enum_types
+            .prelude_constructor("err", expected)?
+            .ok_or(CodegenError::Unsupported("list.slice native result type"))?;
+        let ok_enum = &ok.enum_ident;
+        let ok_variant = &ok.ident;
+        let err_enum = &err.enum_ident;
+        let err_variant = &err.ident;
+        let list_type = Type::List(Box::new((**item_type).clone()));
+        let list = self.emit_expr(list, Some(&list_type))?;
+        let start = self.emit_expr(start, Some(&Type::Int))?;
+        let end = self.emit_expr(end, Some(&Type::Int))?;
+        Ok(quote! {{
+            let __jisp_list = #list;
+            let __jisp_start = #start;
+            let __jisp_end = #end;
+            if __jisp_start < 0i64 || __jisp_end < 0i64 {
+                #err_enum::#err_variant(String::from("list slice indices cannot be negative"))
+            } else {
+                let __jisp_start = __jisp_start as usize;
+                let __jisp_end = __jisp_end as usize;
+                match __jisp_list.get(__jisp_start..__jisp_end) {
+                    Some(__jisp_value) => #ok_enum::#ok_variant(__jisp_value.to_vec()),
+                    None => #err_enum::#err_variant(String::from("list slice is out of bounds")),
+                }
+            }
+        }})
     }
 
     fn emit_list_prepend_intrinsic(
@@ -574,6 +716,24 @@ impl<'a> EmitContext<'a> {
                 "native object helper arguments without known object rows",
             )),
         }
+    }
+}
+
+fn result_type(ok: Type, err: Type) -> Type {
+    Type::Named {
+        name: "result".to_owned(),
+        arguments: vec![ok, err],
+    }
+}
+
+fn result_arguments(expected: Option<&Type>) -> Option<(&Type, &Type)> {
+    let Type::Named { name, arguments } = expected? else {
+        return None;
+    };
+    if name == "result" && arguments.len() == 2 {
+        Some((&arguments[0], &arguments[1]))
+    } else {
+        None
     }
 }
 

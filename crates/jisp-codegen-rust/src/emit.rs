@@ -20,7 +20,7 @@ pub(crate) fn emit_module(module: &TypedModule) -> Result<GeneratedRust, Codegen
         .map(|definition| definition.name.clone())
         .collect::<BTreeSet<_>>();
     let object_types = ObjectTypes::from_module(module)?;
-    let enum_types = EnumTypes::from_declarations(&module.module.types)?;
+    let enum_types = EnumTypes::from_module(&module.module.types, &module.schemes)?;
     let object_structs = emit_object_structs(&object_types, &enum_types)?;
     let enum_definitions = emit_enum_definitions(&enum_types, &object_types)?;
     let definitions = module
@@ -141,6 +141,15 @@ impl<'a> EmitContext<'a> {
                     Ok(quote! { #ident })
                 } else if self.top_level_names.contains(name) {
                     Ok(quote! { #ident() })
+                } else if let Some(variant) = self.enum_types.prelude_constructor(name, expected)? {
+                    if !variant.fields.is_empty() {
+                        return Err(CodegenError::Unsupported(
+                            "bare non-empty prelude enum constructor",
+                        ));
+                    }
+                    let enum_ident = &variant.enum_ident;
+                    let variant_ident = &variant.ident;
+                    Ok(quote! { #enum_ident::#variant_ident })
                 } else if let Some(variant) = self.enum_types.zero_field_variant(name) {
                     let enum_ident = &variant.enum_ident;
                     let variant_ident = &variant.ident;
@@ -431,6 +440,25 @@ impl<'a> EmitContext<'a> {
         let ExprKind::Name(name) = &callee.kind else {
             return Err(CodegenError::Unsupported("first-class function calls"));
         };
+        if let Some(variant) = self.enum_types.prelude_constructor(name, expected)? {
+            if variant.fields.len() != arguments.len() {
+                return Err(CodegenError::Unsupported(
+                    "prelude enum constructor arity mismatch",
+                ));
+            }
+            let enum_ident = &variant.enum_ident;
+            let variant_ident = &variant.ident;
+            let arguments = arguments
+                .iter()
+                .zip(&variant.fields)
+                .map(|(argument, ty)| self.emit_expr(argument, Some(ty)))
+                .collect::<Result<Vec<_>, _>>()?;
+            return if arguments.is_empty() {
+                Ok(quote! { #enum_ident::#variant_ident })
+            } else {
+                Ok(quote! { #enum_ident::#variant_ident(#(#arguments),*) })
+            };
+        }
         if let Some(variant) = self.enum_types.variants.get(name).cloned() {
             if variant.fields.len() != arguments.len() {
                 return Err(CodegenError::Unsupported(
@@ -751,7 +779,7 @@ fn emit_type(
         Type::Function { .. } => Err(CodegenError::Unsupported("function value types")),
         Type::Named { name, arguments } => {
             if !arguments.is_empty() {
-                return Err(CodegenError::Unsupported("generic named type emission"));
+                return enum_types.ident_for_type(ty).map(|ident| quote! { #ident });
             }
             enum_types
                 .ident_for_name(name)

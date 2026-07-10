@@ -70,18 +70,24 @@ Implemented or substantially wired:
 
 Still incomplete and tracked as P2:
 
+- broader native Rust code generation, starting with the ordered P2 queue in
+  `TODO.md`: explicit `bigint` language support is done, and the current focus
+  is typed prelude helpers such as `str.slice`, `list.get`, `list.slice`, plus
+  concrete `result<T,E>` / `option<T>` helpers that compile without a dynamic
+  `Value` fallback;
+- later native backend work for first-class function values, nested functions,
+  variadic user functions, `bigint` emission, open or dynamic object rows,
+  dynamic field access, and `obj.get`;
+- `use` desugaring;
+- a minimal UI renderer proof from Jisp structural UI data to HTML/string or
+  JSON vnode output;
+- richer portable `.lisp` test runner UX;
 - compile-time evaluation for user macros;
-- broader native Rust code generation for first-class function values, nested
-  functions, variadic user functions, generic named types such as
-  `result<T,E>`, open or dynamic object rows, dynamic field access, `obj.get`,
-  and the remaining typed prelude helpers such as `str.slice` and `list.get`;
 - richer `case` patterns and exhaustiveness, including guards, alternatives,
   aliases, and nested/literal variant-field refinements;
-- native Rust emission for `bigint` values;
 - package tooling beyond the current local module/import resolver;
 - P2 rustc diagnostic remapping through Jisp source maps;
-- P2 formatter, richer portable `.lisp` test runner UX, UI renderer prototype,
-  LSP, FFI, and binding generation.
+- P2 formatter, LSP, FFI, and binding generation.
 
 See [`TODO.md`](TODO.md) and [`docs/AGENT_HANDOFF.md`](docs/AGENT_HANDOFF.md)
 before changing language semantics.

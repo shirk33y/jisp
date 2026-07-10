@@ -40,6 +40,21 @@ fn named_type(name: &str) -> Type {
     }
 }
 
+fn named_type_args(name: &str, arguments: Vec<Type>) -> Type {
+    Type::Named {
+        name: name.to_owned(),
+        arguments,
+    }
+}
+
+fn result_type(ok: Type, err: Type) -> Type {
+    named_type_args("result", vec![ok, err])
+}
+
+fn option_type(item: Type) -> Type {
+    named_type_args("option", vec![item])
+}
+
 fn definition(name: &str, public: bool, value: Expr) -> Definition {
     Definition {
         name: name.to_owned(),
@@ -283,6 +298,113 @@ fn emits_native_string_and_list_prelude_helpers() {
     assert!(generated.contains("greeting () . chars () . count () as i64"));
     assert!(generated.contains("numbers () . get (1usize ..) . unwrap_or_default () . to_vec ()"));
     assert!(generated.contains(". len () as i64"));
+    assert!(!generated.contains("Value"));
+    assert!(!generated.contains("jisp_eval"));
+}
+
+#[test]
+fn emits_native_slice_and_prelude_enum_helpers() {
+    let prefix = definition(
+        "prefix",
+        true,
+        expr(ExprKind::Call {
+            callee: Box::new(name("str.slice")),
+            arguments: vec![
+                literal(Literal::String("abcdef".to_owned())),
+                literal(Literal::Int(1)),
+                literal(Literal::Int(4)),
+            ],
+        }),
+    );
+    let picked = definition(
+        "picked",
+        true,
+        expr(ExprKind::Call {
+            callee: Box::new(name("list.get")),
+            arguments: vec![
+                expr(ExprKind::List(vec![
+                    literal(Literal::Int(4)),
+                    literal(Literal::Int(5)),
+                ])),
+                literal(Literal::Int(1)),
+            ],
+        }),
+    );
+    let window = definition(
+        "window",
+        true,
+        expr(ExprKind::Call {
+            callee: Box::new(name("list.slice")),
+            arguments: vec![
+                expr(ExprKind::List(vec![
+                    literal(Literal::Int(4)),
+                    literal(Literal::Int(5)),
+                    literal(Literal::Int(6)),
+                ])),
+                literal(Literal::Int(0)),
+                literal(Literal::Int(2)),
+            ],
+        }),
+    );
+    let maybe = definition(
+        "maybe",
+        true,
+        expr(ExprKind::If {
+            condition: Box::new(literal(Literal::Bool(true))),
+            then_branch: Box::new(expr(ExprKind::Call {
+                callee: Box::new(name("some")),
+                arguments: vec![literal(Literal::Int(7))],
+            })),
+            else_branch: Box::new(name("none")),
+        }),
+    );
+    let outcome = definition(
+        "outcome",
+        true,
+        expr(ExprKind::If {
+            condition: Box::new(literal(Literal::Bool(false))),
+            then_branch: Box::new(expr(ExprKind::Call {
+                callee: Box::new(name("ok")),
+                arguments: vec![literal(Literal::Int(1))],
+            })),
+            else_branch: Box::new(expr(ExprKind::Call {
+                callee: Box::new(name("err")),
+                arguments: vec![literal(Literal::String("bad".to_owned()))],
+            })),
+        }),
+    );
+    let int_result = result_type(Type::Int, Type::Str);
+    let module = typed_module(
+        vec![prefix, picked, window, maybe, outcome],
+        vec![
+            ("prefix", result_type(Type::Str, Type::Str)),
+            ("picked", int_result.clone()),
+            (
+                "window",
+                result_type(Type::List(Box::new(Type::Int)), Type::Str),
+            ),
+            ("maybe", option_type(Type::Int)),
+            ("outcome", int_result),
+        ],
+    );
+
+    let generated = generate(&module).unwrap().to_string();
+
+    assert!(generated.contains("pub enum JispEnum"));
+    assert!(generated.contains("Ok (String)"));
+    assert!(generated.contains("Ok (i64)"));
+    assert!(generated.contains("Ok (Vec < i64 >)"));
+    assert!(generated.contains("Some (i64)"));
+    assert!(generated.contains("None"));
+    assert!(generated.contains("string slice indices cannot be negative"));
+    assert!(generated.contains("list index cannot be negative"));
+    assert!(generated.contains("list slice indices cannot be negative"));
+    assert!(generated.contains(". get (__jisp_index as usize)"));
+    assert!(generated.contains(". get (__jisp_start .. __jisp_end)"));
+    assert!(generated.contains(":: Some (7i64)"));
+    assert!(generated.contains(":: None"));
+    assert!(generated.contains(":: Ok (1i64)"));
+    assert!(generated.contains(":: Err (String :: from (\"bad\"))"));
     assert!(!generated.contains("Value"));
     assert!(!generated.contains("jisp_eval"));
 }
