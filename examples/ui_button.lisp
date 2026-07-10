@@ -1,22 +1,24 @@
 (def user-active true)
 (def saving false)
-(def blog-title (str "Draft editor"))
+(def blog-title "Draft editor")
 
 (def button
   (obj
-    (str "tag") (str "button")
-    (str "id") (str "save-button")
-    (str "title") blog-title
-    (str "classes")
+    "tag" "button"
+    "id" "save-button"
+    "title" blog-title
+    "classes"
       (obj
-        (str "px-4") true
-        (str "py-2") true
-        (str "opacity-50") saving
-        (str "bg-emerald-600") (and user-active (not saving)))
-    (str "children")
+        "px-4" true
+        "py-2" true
+        "opacity-50" saving
+        "bg-emerald-600" (and user-active (not saving)))
+    "children"
       (list
         (obj
-          (str "tag") (str "text")
-          (str "value") (str "Save")))))
+          "tag" "text"
+          "value" "Save"))))
 
-(export main button)
+(export main
+  (fn ()
+    button))

@@ -10,6 +10,128 @@ Rust is the implementation backend, not the user-facing language. The compiled
 language is designed around typed layouts and explicit backend failures rather
 than a universal dynamic `Value` ABI.
 
+## Examples
+
+### Language Tour
+
+```lisp
+; Algebraic data types define constructors.
+(type response
+  (cached int)
+  (miss str))
+
+; Functions are ordinary values.
+(def load
+  (fn (response)
+    (case response
+      ((cached value)
+        (ok value))
+      ((miss key)
+        (if (str.has key "user")
+          (ok 40)
+          (err (str "missing:" ,key)))))))
+
+; Lists, higher-order functions, and explicit integer division compose.
+(def visible-score
+  (fn (scores)
+    (list.fold
+      (fn (total value) (+ total value))
+      0
+      (list.filter
+        (fn (value) (> value 1))
+        (list.map (fn (value) (+ value 1)) scores)))))
+
+; Objects are structural data. Field access is explicit.
+(def public-user
+  (fn (user)
+    (obj.del
+      (obj.set user "slug" (str.replace (str.lower (. user "name")) " " "-"))
+      "internal-score")))
+
+; `use` is callback-last sugar for result propagation.
+(def finish
+  (fn (response)
+    (use value (result.try (load response))
+      (ok (+ value 2)))))
+
+(export main
+  (fn ()
+    (do
+      ; `do` evaluates forms in order and returns the last one.
+      (let (ignored (str.len "warmup")) ignored)
+      (let (user (public-user
+                   (obj
+                     "name" "Ada Lovelace"
+                     "active" true
+                     "internal-score" 41))
+            large (+ (bigint "9223372036854775808") (bigint "4"))
+            score (visible-score (list 0 1 2 3)))
+        (obj
+          "loaded" (finish (cached 40))
+          "fallback" (finish (miss "user:42"))
+          "score" score
+          "large" (str.from large)
+          "label" (str "user:" ,(. user "slug") ":" ,(str.from score))
+          "active" (or false (and (. user "active") (not false)))
+          "name" (case (some (. user "name"))
+            ((some name) name)
+            ((none) "anonymous"))
+          "math" (list (/ -7 3) (// -7 3) (% -7 3) (math.sqrt 81.0))
+          "first" (list.get (list "a" "b" "c") 0)
+          "slice" (str.slice "abcdef" 1 4))))))
+```
+
+### Structural UI Data
+
+```lisp
+; UI nodes are plain objects. Utility classes are boolean object keys,
+; not one space-separated string.
+(def button
+  (fn (saving)
+    (obj
+      "tag" "button"
+      "id" "save-button"
+      "title" "Save <draft>"
+      "classes"
+        (obj
+          "px-4" true
+          "py-2" true
+          "opacity-50" saving
+          "bg-emerald-600" (not saving))
+      "children"
+        (list
+          (obj
+            "tag" "text"
+            "value" "Save & close")))))
+
+(export main
+  (fn ()
+    (ui.html (button false))))
+```
+
+### Equivalent Tool Syntax
+
+Lisp is the primary human-written syntax. JSON is the canonical interchange
+syntax, so string literals need the explicit `["str", "..."]` form there because
+plain JSON strings are symbols.
+
+```json
+[
+  ["def", "answer", ["fn", [], ["+", 40, 2]]],
+  ["export", "main", ["fn", [], ["answer"]]]
+]
+```
+
+Restricted YAML-like flow syntax is accepted for concise structured examples.
+Quoted YAML-like scalars are strings; bare scalars are symbols.
+
+```yaml
+[
+  [def, answer, [fn, [], [+, 40, 2]]],
+  [export, main, [fn, [], [answer]]]
+]
+```
+
 ## Status
 
 Jisp is a compiler foundation, not a production language yet.
@@ -61,39 +183,12 @@ cargo test -p jisp-macros
 ## Language Snapshot
 
 Lisp is the primary human-written syntax. It uses normal S-expressions; square
-brackets belong to the JSON and YAML-like syntaxes.
+brackets belong to the JSON and YAML-like syntaxes. In Lisp and YAML-like
+source, plain quoted values are normal string literals. The explicit `str` form
+is mainly for string templates:
 
 ```lisp
-(def classify
-  (fn (score)
-    (case score
-      (0 (str "empty"))
-      (1 (str "single"))
-      (_ (str "many")))))
-
-(export main
-  (fn ()
-    (str.cat (classify 2) (str ": ") (str.from (+ 40 2)))))
-```
-
-The equivalent canonical JSON form is data-shaped, which makes Jisp easy to
-generate from tools:
-
-```json
-[
-  ["def", "answer", ["fn", [], ["+", 40, 2]]],
-  ["export", "main", ["fn", [], ["answer"]]]
-]
-```
-
-The restricted YAML-like reader accepts concise flow-style forms without full
-YAML semantics:
-
-```yaml
-[
-  [def, answer, [fn, [], [+, 40, 2]]],
-  [export, main, [fn, [], [answer]]]
-]
+(str "hello " ,name " and " ,@(list "Lin" "Grace"))
 ```
 
 Core forms include `def`, `export`, `import`, `type`, `fn`, `let`, `do`, `if`,
@@ -101,64 +196,9 @@ Core forms include `def`, `export`, `import`, `type`, `fn`, `let`, `do`, `if`,
 Top-level executable expressions are rejected; execution starts at exported
 `main`.
 
-## Runtime Data
-
 Jisp values are immutable in the language model. The current evaluator supports
 integers, floats, booleans, null, strings, lists, objects, closures, enum
-constructors, and explicit arbitrary-precision integers:
-
-```lisp
-(def huge (bigint "32849384983498230592309502398509388908203986232306"))
-
-(export main
-  (fn ()
-    (+ huge (bigint "4"))))
-```
-
-Objects are structural data, not classes or method receivers. Field lookup uses
-`.` as an explicit form:
-
-```lisp
-(def user
-  (obj
-    (str "name") (str "Ada")
-    (str "active") true))
-
-(export main
-  (fn ()
-    (if (. user "active")
-      (. user "name")
-      (str "inactive"))))
-```
-
-## UI Proof
-
-Jisp also has a small UI-language proof-of-shape. UI nodes are ordinary
-structural objects, and Tailwind-like utility classes are first-class object
-keys with boolean activation rather than a space-separated `class` string.
-
-```lisp
-(def saving false)
-
-(export main
-  (fn ()
-    (obj
-      (str "tag") (str "button")
-      (str "classes")
-        (obj
-          (str "px-4") true
-          (str "py-2") true
-          (str "opacity-50") saving
-          (str "bg-emerald-600") (not saving))
-      (str "children")
-        (list
-          (obj
-            (str "tag") (str "text")
-            (str "value") (str "Save"))))))
-```
-
-The prototype `ui.html` builtin renders this data shape to escaped HTML. It is
-useful for validating the representation, not a full UI framework.
+constructors, and explicit arbitrary-precision integers.
 
 ## Pipeline
 

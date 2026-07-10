@@ -1,7 +1,7 @@
 (def answer (fn () (+ 40 2)))
-(def stats (obj (str "active") true (str "age") 41))
-(def words (str.split (str "jisp,native,rust") (str ",")))
-(def label (str.cat (str.upper (str "p1")) (str ":") (str.join (str "-") words)))
+(def stats (obj "active" true "age" 41))
+(def words (str.split "jisp,native,rust" ","))
+(def label (str.cat (str.upper "p1") ":" (str.join "-" words)))
 (def numbers (list.append (list.prepend 1 (list 2 3)) 4))
 
 (export main

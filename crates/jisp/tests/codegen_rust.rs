@@ -76,15 +76,15 @@ fn emit_rust_detailed_emits_native_prelude_helpers() {
         "main.lisp",
         Syntax::Lisp,
         r#"
-(def words (str.split (str "a,b,c") (str ",")))
-(def padded (str.trim (str "  hi  ")))
-(def label (str.cat padded (str ":") (str.join (str "-") words)))
-(def items (list.append (list.prepend (str "z") words) (str "d")))
+(def words (str.split "a,b,c" ","))
+(def padded (str.trim "  hi  "))
+(def label (str.cat padded ":" (str.join "-" words)))
+(def items (list.append (list.prepend "z" words) "d"))
 
 (export main
   (fn ()
-    (if (and (str.starts label (str "hi"))
-             (list.has items (str "b")))
+    (if (and (str.starts label "hi")
+             (list.has items "b"))
       (+ (str.len label) (list.len (list.rest items)))
       0)))
 "#,
@@ -131,8 +131,8 @@ fn emit_rust_detailed_emits_closed_objects_as_native_structs() {
         "main.lisp",
         Syntax::Lisp,
         r#"
-(def stats (obj (str "active") true (str "age") 42))
-(export main (fn () (. stats (str "age"))))
+(def stats (obj "active" true "age" 42))
+(export main (fn () (. stats "age")))
 "#,
     )
     .unwrap();
@@ -159,8 +159,8 @@ fn emit_rust_detailed_maps_generated_structs_and_enums_to_source_spans() {
   (ok int)
   (err str))
 
-(def stats (obj (str "active") true (str "age") 42))
-(export main (fn () (. stats (str "age"))))
+(def stats (obj "active" true "age" 42))
+(export main (fn () (. stats "age")))
 "#,
     )
     .unwrap();
@@ -188,7 +188,7 @@ fn emit_rust_detailed_emits_string_templates() {
         "main.lisp",
         Syntax::Lisp,
         r#"
-(export main (fn () (str "Hello " ,(str "Ada"))))
+(export main (fn () (str "Hello " ,"Ada")))
 "#,
     )
     .unwrap();
@@ -292,7 +292,7 @@ fn emit_rust_detailed_emits_native_object_case_patterns() {
         "main.lisp",
         Syntax::Lisp,
         r#"
-(def stats (obj (str "active") true (str "age") 41))
+(def stats (obj "active" true "age" 41))
 
 (export main
   (fn ()
