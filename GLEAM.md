@@ -50,6 +50,25 @@ Review verdict:
   normalization, multi-source modules, and portable fixture tests instead of
   copied wholesale.
 
+Claim-level review:
+
+- ADTs, constructors, and enum-like user data are valid Gleam imports for Jisp.
+  The useful part is the split between type constructors, value constructors,
+  and constructor schemes installed in the type environment.
+- `case` is a valid reference point, but Gleam's checker should be treated as
+  an exhaustiveness and diagnostic model rather than a syntax model. Jisp still
+  needs local rules for list, object, and multi-syntax pattern shapes.
+- Module loading and stale tracking are only partially relevant. The agent
+  response is correct that dependency tracking matters, but Jisp should route
+  that through the existing facade resolver instead of adopting Gleam's full
+  project compiler.
+- Variadic stdlib schemes and object-row typing are not direct Gleam ports.
+  They remain Jisp-owned type-system work; Gleam can inform the environment and
+  diagnostic structure, not the exact type representation.
+- Macro hygiene is not substantially answered by Gleam. Any quote,
+  quasiquote, unquote, and splicing design should be documented and implemented
+  in Jisp's macro/origin pipeline.
+
 Accepted findings:
 
 - ADT constructor schemes, top-level SCC grouping, and finite-domain
