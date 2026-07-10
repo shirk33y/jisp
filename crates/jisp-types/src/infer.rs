@@ -1,6 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 
-use jisp_ir::{Expr, ExprKind, Literal, Module, StringPart, TypeDecl};
+use jisp_ir::{CaseBranch, Expr, ExprKind, Literal, Module, Pattern, StringPart, TypeDecl};
 use thiserror::Error;
 
 use crate::{ObjectRow, Scheme, Type, TypeVar, Unifier, UnifyError};
@@ -15,6 +15,9 @@ pub enum InferError {
 
     #[error("full Core IR inference is not implemented yet: {0}")]
     NotImplemented(&'static str),
+
+    #[error("pattern binds `{0}` more than once")]
+    DuplicatePatternBinding(String),
 }
 
 /// Reusable state for Hindley–Milner-style inference.
@@ -175,11 +178,7 @@ impl Inferencer {
                 }
                 Type::Str
             }
-            ExprKind::Case { .. } => {
-                return Err(InferError::NotImplemented(
-                    "case exhaustiveness and pattern types",
-                ));
-            }
+            ExprKind::Case { subject, branches } => self.infer_case(subject, branches)?,
         };
         Ok(self.apply(&ty))
     }
@@ -359,6 +358,110 @@ impl Inferencer {
             }),
         )?;
         Ok(field_ty)
+    }
+
+    fn infer_case(&mut self, subject: &Expr, branches: &[CaseBranch]) -> Result<Type, InferError> {
+        let subject_ty = self.infer_expr(subject)?;
+        let result_ty = self.fresh_type();
+
+        for branch in branches {
+            let body_ty = self.with_scope(|inferencer| {
+                let mut bindings = BTreeSet::new();
+                inferencer.infer_pattern(&branch.pattern, subject_ty.clone(), &mut bindings)?;
+                inferencer.infer_expr(&branch.body)
+            })?;
+            self.unify(result_ty.clone(), body_ty)?;
+        }
+
+        Ok(result_ty)
+    }
+
+    fn infer_pattern(
+        &mut self,
+        pattern: &Pattern,
+        expected: Type,
+        bindings: &mut BTreeSet<String>,
+    ) -> Result<(), InferError> {
+        match pattern {
+            Pattern::Wildcard => {}
+            Pattern::Bind(name) => self.bind_pattern_name(name, expected, bindings)?,
+            Pattern::Literal(literal) => {
+                let literal_ty = self.infer_literal(literal);
+                self.unify(expected, literal_ty)?;
+            }
+            Pattern::Variant { tag, fields } => {
+                let constructor_ty = self.lookup(tag)?;
+                match (fields.as_slice(), self.apply(&constructor_ty)) {
+                    ([], constructor_ty @ Type::Named { .. }) => {
+                        self.unify(expected, constructor_ty)?;
+                    }
+                    (fields, Type::Function { parameters, result }) => {
+                        if fields.len() != parameters.len() {
+                            return Err(InferError::Unify(UnifyError::Arity {
+                                left: parameters.len(),
+                                right: fields.len(),
+                            }));
+                        }
+                        self.unify(expected, *result)?;
+                        for (field, parameter) in fields.iter().zip(parameters) {
+                            self.infer_pattern(field, parameter, bindings)?;
+                        }
+                    }
+                    ([], other) => {
+                        self.unify(expected, other)?;
+                    }
+                    (_, other) => {
+                        return Err(InferError::Unify(UnifyError::Mismatch {
+                            left: other,
+                            right: Type::Function {
+                                parameters: fields.iter().map(|_| self.fresh_type()).collect(),
+                                result: Box::new(expected),
+                            },
+                        }));
+                    }
+                }
+            }
+            Pattern::List { prefix, rest } => {
+                let item = self.fresh_type();
+                self.unify(expected, Type::List(Box::new(item.clone())))?;
+                for pattern in prefix {
+                    self.infer_pattern(pattern, item.clone(), bindings)?;
+                }
+                if let Some(name) = rest {
+                    self.bind_pattern_name(name, Type::List(Box::new(item)), bindings)?;
+                }
+            }
+            Pattern::Object(fields) => {
+                let mut row_fields = BTreeMap::new();
+                for (name, pattern) in fields {
+                    let field_ty = self.fresh_type();
+                    row_fields.insert(name.clone(), field_ty.clone());
+                    self.infer_pattern(pattern, field_ty, bindings)?;
+                }
+                let rest = self.fresh_var();
+                self.unify(
+                    expected,
+                    Type::Object(ObjectRow {
+                        fields: row_fields,
+                        rest: Some(rest),
+                    }),
+                )?;
+            }
+        }
+        Ok(())
+    }
+
+    fn bind_pattern_name(
+        &mut self,
+        name: &str,
+        ty: Type,
+        bindings: &mut BTreeSet<String>,
+    ) -> Result<(), InferError> {
+        if !bindings.insert(name.to_owned()) {
+            return Err(InferError::DuplicatePatternBinding(name.to_owned()));
+        }
+        self.define(name, Scheme::mono(self.apply(&ty)));
+        Ok(())
     }
 
     fn apply(&self, ty: &Type) -> Type {

@@ -1,6 +1,6 @@
 use super::*;
 use jisp_core::{SourceId, Span};
-use jisp_ir::{Definition, Import, TypeDecl, VariantDecl};
+use jisp_ir::{CaseBranch, Definition, Import, Pattern, TypeDecl, VariantDecl};
 
 fn span() -> Span {
     Span::empty(SourceId(0), 0)
@@ -22,6 +22,10 @@ fn string(value: &str) -> Expr {
     expr(ExprKind::Literal(Literal::String(value.to_owned())))
 }
 
+fn bool_(value: bool) -> Expr {
+    expr(ExprKind::Literal(Literal::Bool(value)))
+}
+
 fn definition(name: &str, value: Expr) -> Definition {
     Definition {
         name: name.to_owned(),
@@ -37,6 +41,14 @@ fn module(definitions: Vec<Definition>) -> Module {
         types: vec![],
         definitions,
         exports: vec![],
+    }
+}
+
+fn branch(pattern: Pattern, body: Expr) -> CaseBranch {
+    CaseBranch {
+        pattern,
+        body,
+        span: span(),
     }
 }
 
@@ -158,6 +170,126 @@ fn installs_enum_constructor_schemes() {
     assert_eq!(arguments[0], Type::Int);
     assert!(matches!(arguments[1], Type::Var(_)));
     assert_eq!(schemes["main"].variables.len(), 1);
+}
+
+#[test]
+fn infers_case_branch_result_type() {
+    let mut inferencer = Inferencer::default();
+    let expression = expr(ExprKind::Case {
+        subject: Box::new(int(1)),
+        branches: vec![
+            branch(Pattern::Literal(Literal::Int(1)), string("one")),
+            branch(Pattern::Wildcard, string("many")),
+        ],
+    });
+
+    assert_eq!(inferencer.infer_expr(&expression).unwrap(), Type::Str);
+}
+
+#[test]
+fn infers_case_pattern_bindings() {
+    let mut inferencer = Inferencer::default();
+    let expression = expr(ExprKind::Case {
+        subject: Box::new(expr(ExprKind::List(vec![int(1), int(2)]))),
+        branches: vec![branch(
+            Pattern::List {
+                prefix: vec![Pattern::Bind("head".to_owned())],
+                rest: Some("tail".to_owned()),
+            },
+            expr(ExprKind::Do(vec![name("tail"), name("head")])),
+        )],
+    });
+
+    assert_eq!(inferencer.infer_expr(&expression).unwrap(), Type::Int);
+}
+
+#[test]
+fn infers_enum_case_pattern_bindings() {
+    let mut inferencer = Inferencer::default();
+    let result_decl = TypeDecl {
+        name: "result".to_owned(),
+        variants: vec![
+            VariantDecl {
+                name: "ok".to_owned(),
+                field_types: vec!["value".to_owned()],
+                span: span(),
+            },
+            VariantDecl {
+                name: "err".to_owned(),
+                field_types: vec!["error".to_owned()],
+                span: span(),
+            },
+        ],
+        span: span(),
+    };
+    let subject = expr(ExprKind::Call {
+        callee: Box::new(name("ok")),
+        arguments: vec![int(1)],
+    });
+    let case = expr(ExprKind::Case {
+        subject: Box::new(subject),
+        branches: vec![
+            branch(
+                Pattern::Variant {
+                    tag: "ok".to_owned(),
+                    fields: vec![Pattern::Bind("value".to_owned())],
+                },
+                name("value"),
+            ),
+            branch(
+                Pattern::Variant {
+                    tag: "err".to_owned(),
+                    fields: vec![Pattern::Bind("message".to_owned())],
+                },
+                int(0),
+            ),
+        ],
+    });
+    let mut module = module(vec![definition("main", case)]);
+    module.types.push(result_decl);
+
+    let schemes = inferencer.infer_module(&module).unwrap();
+    assert_eq!(schemes["main"].body, Type::Int);
+}
+
+#[test]
+fn rejects_case_branch_type_mismatch() {
+    let mut inferencer = Inferencer::default();
+    let expression = expr(ExprKind::Case {
+        subject: Box::new(bool_(true)),
+        branches: vec![
+            branch(Pattern::Literal(Literal::Bool(true)), int(1)),
+            branch(Pattern::Wildcard, string("no")),
+        ],
+    });
+
+    assert!(matches!(
+        inferencer.infer_expr(&expression),
+        Err(InferError::Unify(UnifyError::Mismatch { .. }))
+    ));
+}
+
+#[test]
+fn rejects_duplicate_pattern_bindings() {
+    let mut inferencer = Inferencer::default();
+    let expression = expr(ExprKind::Case {
+        subject: Box::new(expr(ExprKind::List(vec![int(1), int(2)]))),
+        branches: vec![branch(
+            Pattern::List {
+                prefix: vec![
+                    Pattern::Bind("item".to_owned()),
+                    Pattern::Bind("item".to_owned()),
+                ],
+                rest: None,
+            },
+            name("item"),
+        )],
+    });
+
+    assert!(matches!(
+        inferencer.infer_expr(&expression),
+        Err(InferError::DuplicatePatternBinding(name)) if name == "item"
+    ));
 }
 
 #[test]
