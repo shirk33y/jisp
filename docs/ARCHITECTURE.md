@@ -38,3 +38,10 @@ JSON / restricted YAML / Lisp
 4. The interpreter's internal `Value` is not the compiled language ABI.
 5. Raw `{}` remains unsupported until its purpose is explicitly designed.
 6. FFI is not implemented opportunistically; start with a written ABI design.
+
+## Design reference
+
+Use repository-root `GLEAM.md` when implementing ADTs, inference,
+exhaustiveness, diagnostics, or module loading. Gleam is a reference for
+architecture and behavior, not a source of vendored code or a reason to redesign
+Jisp surface syntax.

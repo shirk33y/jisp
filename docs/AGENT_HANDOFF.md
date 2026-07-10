@@ -10,6 +10,10 @@ syntax experiments and related prototypes. Treat the previous code as reference
 material only. It is available in git history and on the `old` branch when
 recovering intent, APIs, tests, or syntax examples.
 
+Gleam is the primary external compiler reference for ADTs, inference,
+exhaustiveness, diagnostics, and module loading. Read repository-root
+`GLEAM.md` before porting or adapting behavior from it.
+
 ## Recommended first task
 
 Implement `Inferencer::infer_expr` over `jisp_ir::Expr` and add integration tests

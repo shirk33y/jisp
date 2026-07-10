@@ -50,6 +50,10 @@ Not complete:
 
 See [`TODO.md`](TODO.md) and [`docs/AGENT_HANDOFF.md`](docs/AGENT_HANDOFF.md) before continuing.
 
+Gleam is the main compiler reference for several type-system, diagnostic, and
+module-loading choices. See [`GLEAM.md`](GLEAM.md) for the tracked feature
+mapping, rationale, local CMM project, and source attribution policy.
+
 ## Canonical JSON
 
 A JSON file is a list of top-level forms:
