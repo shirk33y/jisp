@@ -1,12 +1,10 @@
-# jisp
+# Jisp
 
-`jisp` is a small, statically-oriented Lisp frontend with three source syntaxes:
+Jisp is a small, statically oriented language frontend that normalises Lisp,
+canonical JSON, and restricted YAML-like source into one source-aware AST before
+lowering, checking, interpreting, or eventually compiling to Rust.
 
-- Lisp (`.lisp`)
-- canonical JSON (`.json`)
-- a deliberately restricted YAML-like flow syntax (`.yaml` / `.yml`)
-
-All three readers produce the same source-aware AST. The intended production pipeline is:
+The intended production pipeline is:
 
 ```text
 source
@@ -18,15 +16,24 @@ source
   → interpreter or Rust codegen
 ```
 
-Rust is an implementation backend, not part of Jisp's surface language.
+Rust is an implementation backend, not part of Jisp's surface language, and the
+three source syntaxes are intended to be semantically equivalent.
 
-## Status of this repository
+## Source syntaxes
 
-This archive is a **foundation and handoff package**, not a finished compiler.
+- Lisp (`.lisp`) is the primary human-written syntax.
+- Canonical JSON (`.json`) is a portable structured syntax for tools.
+- Restricted YAML-like flow syntax (`.yaml` / `.yml`) is accepted for concise
+  structured examples without full YAML semantics.
 
-Implemented or substantially sketched:
+## Current status
 
-- source-aware AST and diagnostics;
+This repository is an active Rust foundation for the compiler, evaluator, and
+native backend; it is not a finished production compiler yet.
+
+Implemented or substantially wired:
+
+- source-aware AST and diagnostics with macro-origin labels;
 - custom readers for canonical JSON, Lisp, and restricted YAML-like syntax;
 - quote/quasiquote/unquote/unquote-splicing expansion before lowering;
 - lowering to a shared Core IR;
@@ -39,7 +46,7 @@ Implemented or substantially sketched:
 - detailed language, architecture, diagnostics, schema, stdlib, and FFI notes;
 - unit and integration tests.
 
-Not complete:
+Still incomplete:
 
 - full Hindley–Milner inference over Core IR;
 - compile-time evaluation for user macros;
@@ -49,11 +56,52 @@ Not complete:
 - production-grade formatter/LSP;
 - FFI and binding generation.
 
-See [`TODO.md`](TODO.md) and [`docs/AGENT_HANDOFF.md`](docs/AGENT_HANDOFF.md) before continuing.
+See [`TODO.md`](TODO.md) and [`docs/AGENT_HANDOFF.md`](docs/AGENT_HANDOFF.md)
+before changing language semantics.
 
 Gleam is the main compiler reference for several type-system, diagnostic, and
 module-loading choices. See [`GLEAM.md`](GLEAM.md) for the tracked feature
 mapping, rationale, local checkout, and CMM project.
+
+## Workspace crates
+
+- `jisp` is the public facade that connects syntax detection, parsing,
+  expansion, lowering, type checking, import resolution, evaluation, and
+  detailed diagnostic rendering.
+- `jisp-core` owns source files, spans, the shared AST, diagnostics, special-form
+  registry, and generated core schema.
+- `jisp-syntax-lisp` parses the Lisp surface syntax into the shared source-aware
+  AST.
+- `jisp-syntax-json` normalises canonical JSON modules into the same shared AST
+  used by the other syntaxes.
+- `jisp-syntax-yaml` accepts the deliberately restricted YAML-like flow syntax
+  and normalises it into the shared AST.
+- `jisp-expand` performs quote, quasiquote, unquote, and unquote-splicing
+  expansion while recording generated-to-origin spans.
+- `jisp-ir` defines Core IR and lowers source AST forms into syntax-independent
+  module, definition, expression, and pattern structures.
+- `jisp-types` contains type representations, unification, prelude schemes,
+  top-level dependency grouping, import type environments, and current inference
+  logic.
+- `jisp-runtime` provides reusable pure runtime operations for math, strings,
+  lists, and objects.
+- `jisp-eval` interprets lowered IR with lexical environments, imports, builtins,
+  runtime errors, and portable language fixture tests.
+- `jisp-codegen-rust` is the native Rust backend seam and currently remains a
+  scaffold until typed IR emission is implemented.
+- `jisp-macros` exposes Rust proc-macro entry points that track Cargo
+  dependencies and currently fail clearly until native code generation is ready.
+- `jisp-cli` is the command-line frontend for `check`, `run`, `schema`, and the
+  future `emit-rust` flow.
+
+## Quick commands
+
+```text
+cargo fmt --all -- --check
+cargo test --workspace --exclude jisp-macros
+cargo run -p jisp-cli -- check examples/hello.lisp
+cargo run -p jisp-cli -- run examples/hello.lisp
+```
 
 ## Canonical JSON
 
@@ -119,5 +167,3 @@ jisp run path
 jisp schema [output]
 jisp emit-rust path      # currently reports that native codegen is unfinished
 ```
-
-No installation or build was performed while preparing this archive.

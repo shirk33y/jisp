@@ -63,10 +63,12 @@ division by zero is an error, and NaN is not equal to itself.
 `jisp-expand` runs after parsing and before lowering through the `jisp` facade.
 It expands `quote`, `quasiquote`/`` ` ``, `unquote`/`,`, and
 `unquote-splicing`/`,@`, and records an `ExpansionMap` on `ParsedModule`.
+Detailed facade errors retain the `SourceMap` and `ExpansionMap`, and
+`ModuleError::render_diagnostics` renders macro-origin chains as secondary
+labels. `jisp check` uses the detailed path for parse/check failures.
 Compile-time user macro evaluation remains P1. Diagnostic rendering in
 `jisp-core` supports source snippets, notes, cross-file secondary labels, and
-multi-line spans. Rendering macro-origin chains through the expansion map is
-still pending.
+multi-line spans.
 
 ## Useful existing seams
 

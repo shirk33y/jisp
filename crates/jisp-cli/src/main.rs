@@ -36,10 +36,10 @@ fn main() -> Result<()> {
         Command::Check { path, types, deps } => {
             let text = read(&path)?;
             if types || deps {
-                let checked = jisp::check(&path, &text);
+                let checked = jisp::check_detailed(&path, &text);
                 let parsed = match checked {
                     Ok(parsed) => parsed,
-                    Err(error) => report_jisp_error(&path, &text, &error),
+                    Err(error) => report_jisp_module_error(&error),
                 };
                 if deps {
                     for dependency in parsed.dependencies {
@@ -49,8 +49,8 @@ fn main() -> Result<()> {
                     println!("ok: {}", path.display());
                 }
             } else {
-                if let Err(error) = jisp::parse(&path, &text) {
-                    report_jisp_error(&path, &text, &error);
+                if let Err(error) = jisp::parse_detailed(&path, &text) {
+                    report_jisp_module_error(&error);
                 }
                 println!("ok: {}", path.display());
             }
@@ -88,6 +88,15 @@ fn report_jisp_error(path: &PathBuf, text: &str, error: &jisp::Error) -> ! {
         eprintln!("{rendered}");
     } else {
         eprintln!("{error}");
+    }
+    process::exit(1);
+}
+
+fn report_jisp_module_error(error: &jisp::ModuleError) -> ! {
+    if let Some(rendered) = error.render_diagnostics() {
+        eprintln!("{rendered}");
+    } else {
+        eprintln!("{}", error.error);
     }
     process::exit(1);
 }

@@ -10,24 +10,16 @@ fn sym(value: &str) -> Node {
     Node::symbol(value, span(0, value.len()))
 }
 
-fn sym_at(value: &str, origin: Span) -> Node {
-    Node::symbol(value, origin)
-}
-
 fn int(value: i64) -> Node {
     Node::new(NodeKind::Int(value), span(0, 1))
 }
 
-fn int_at(value: i64, origin: Span) -> Node {
-    Node::new(NodeKind::Int(value), origin)
+fn string(value: &str) -> Node {
+    Node::string(value, span(0, value.len()))
 }
 
 fn form(items: Vec<Node>) -> Node {
     Node::form(items, span(0, 1))
-}
-
-fn form_at(items: Vec<Node>, origin: Span) -> Node {
-    Node::form(items, origin)
 }
 
 #[test]
@@ -37,13 +29,7 @@ fn expands_quote_to_origin_tracked_syntax() {
 
     let expanded = expand_module(&[quoted]).unwrap();
 
-    assert_eq!(
-        expanded.nodes,
-        vec![form_at(
-            vec![sym_at("list", origin), int_at(1, origin)],
-            origin
-        )]
-    );
+    assert_eq!(expanded.nodes, vec![form(vec![sym("list"), int(1)])]);
     assert!(!expanded.expansion_map.is_empty());
     assert_eq!(
         expanded.expansion_map.origin(expanded.nodes[0].span),
@@ -71,19 +57,17 @@ fn expands_quasiquote_unquote_and_splicing() {
 
     assert_eq!(
         expanded.nodes,
-        vec![form_at(
-            vec![
-                sym_at("list", origin),
-                int_at(1, origin),
-                form_at(
-                    vec![sym_at("+", origin), int_at(1, origin), int_at(1, origin)],
-                    origin,
-                ),
-                int_at(3, origin),
-                int_at(4, origin),
-            ],
-            origin,
-        )]
+        vec![form(vec![
+            sym("list"),
+            int(1),
+            form(vec![sym("+"), int(1), int(1)]),
+            int(3),
+            int(4),
+        ])]
+    );
+    assert_eq!(
+        expanded.expansion_map.origin(expanded.nodes[0].span),
+        origin
     );
 }
 
@@ -98,6 +82,28 @@ fn rejects_unquote_outside_quasiquote() {
 }
 
 #[test]
+fn keeps_string_template_unquote_and_expands_inner_expression() {
+    let expanded = expand_module(&[form(vec![
+        sym("str"),
+        string("value: "),
+        form(vec![
+            sym(","),
+            form(vec![sym("quote"), form(vec![sym("list"), int(1)])]),
+        ]),
+    ])])
+    .unwrap();
+
+    assert_eq!(
+        expanded.nodes,
+        vec![form(vec![
+            sym("str"),
+            string("value: "),
+            form(vec![sym(","), form(vec![sym("list"), int(1)])]),
+        ])]
+    );
+}
+
+#[test]
 fn follows_origin_chains_with_a_depth_limit() {
     let mut map = ExpansionMap::default();
     let generated = span(0, 1);
@@ -107,4 +113,5 @@ fn follows_origin_chains_with_a_depth_limit() {
     map.record(first, original);
 
     assert_eq!(map.origin(generated), original);
+    assert_eq!(map.origin_chain(generated), vec![first, original]);
 }

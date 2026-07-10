@@ -3,8 +3,9 @@
 Every source AST node carries a byte span and source id. Parser, lowering,
 module, macro, and type errors must be rendered against the original source.
 The current renderer supports primary labels, secondary labels, notes,
-cross-file labels, and multi-line spans. Macro expansion should retain an
-origin chain once macro expansion exists.
+cross-file labels, and multi-line spans. Macro expansion records generated span
+origins in `ExpansionMap`; detailed facade errors render those origin chains as
+secondary labels.
 
 Stable proc macros cannot assign arbitrary spans into external Jisp files.
 Native CLI builds should therefore optionally emit generated Rust plus a source

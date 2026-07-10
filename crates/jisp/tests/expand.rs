@@ -27,3 +27,23 @@ fn parse_tracks_quote_expansion_origins() {
 
     assert!(!parsed.expansion_map.is_empty());
 }
+
+#[test]
+fn detailed_errors_render_quote_expansion_origin() {
+    let error = match jisp::parse_detailed(
+        "bad-quote.lisp",
+        r#"
+(export main
+  (fn ()
+    (quote (let))))
+"#,
+    ) {
+        Ok(_) => panic!("expected quoted invalid syntax to fail after expansion"),
+        Err(error) => error,
+    };
+
+    let rendered = error.render_diagnostics().unwrap();
+
+    assert!(rendered.contains("let expects"));
+    assert!(rendered.contains("expanded from here"));
+}

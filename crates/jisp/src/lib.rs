@@ -6,7 +6,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use jisp_core::{detect_syntax, Node, SourceMap, Syntax, SyntaxParser};
+use jisp_core::{detect_syntax, Diagnostic, Node, SourceMap, Syntax, SyntaxParser};
 use jisp_eval::{Evaluator, ImportValues, LoadedModule, RuntimeError, Value};
 use jisp_expand::ExpansionMap;
 use jisp_ir::{LowerError, Lowerer, Module};
@@ -59,6 +59,49 @@ pub struct ParsedModule {
     pub dependencies: Vec<PathBuf>,
 }
 
+#[derive(Debug)]
+pub struct ModuleError {
+    pub sources: SourceMap,
+    pub expansion_map: ExpansionMap,
+    pub error: Error,
+}
+
+impl ModuleError {
+    fn new(sources: SourceMap, expansion_map: ExpansionMap, error: Error) -> Self {
+        Self {
+            sources,
+            expansion_map,
+            error,
+        }
+    }
+
+    pub fn diagnostics(&self) -> Option<&[Diagnostic]> {
+        match &self.error {
+            Error::Parse(error) => Some(&error.diagnostics),
+            Error::Expand(error) => Some(&error.diagnostics),
+            Error::Lower(error) => Some(&error.diagnostics),
+            _ => None,
+        }
+    }
+
+    pub fn render_diagnostics(&self) -> Option<String> {
+        let diagnostics = self.diagnostics()?;
+        Some(
+            diagnostics
+                .iter()
+                .map(|diagnostic| {
+                    let mut diagnostic = diagnostic.clone();
+                    for origin in self.expansion_map.origin_chain(diagnostic.primary.span) {
+                        diagnostic = diagnostic.with_secondary(origin, "expanded from here");
+                    }
+                    diagnostic.render(&self.sources)
+                })
+                .collect::<Vec<_>>()
+                .join("\n"),
+        )
+    }
+}
+
 pub fn parse(path: impl AsRef<Path>, text: &str) -> Result<ParsedModule, Error> {
     parse_with_options(path, text, ParseOptions::default())
 }
@@ -88,23 +131,94 @@ pub fn parse_as_with_options(
     text: &str,
     options: ParseOptions,
 ) -> Result<ParsedModule, Error> {
+    parse_as_detailed(name, syntax, text, options).map_err(|error| error.error)
+}
+
+pub fn parse_detailed(path: impl AsRef<Path>, text: &str) -> Result<ParsedModule, ModuleError> {
+    parse_with_options_detailed(path, text, ParseOptions::default())
+}
+
+pub fn parse_with_options_detailed(
+    path: impl AsRef<Path>,
+    text: &str,
+    options: ParseOptions,
+) -> Result<ParsedModule, ModuleError> {
+    let path = path.as_ref();
+    let syntax = detect_syntax(path).ok_or_else(|| {
+        ModuleError::new(
+            SourceMap::default(),
+            ExpansionMap::default(),
+            Error::UnknownSyntax(path.display().to_string()),
+        )
+    })?;
+    parse_as_detailed(path.display().to_string(), syntax, text, options)
+}
+
+pub fn parse_as_detailed(
+    name: impl Into<String>,
+    syntax: Syntax,
+    text: &str,
+    options: ParseOptions,
+) -> Result<ParsedModule, ModuleError> {
     let name = name.into();
     let mut sources = SourceMap::default();
     let source = sources.add(name.clone(), text.to_owned());
-    let nodes = match syntax {
-        Syntax::Json => jisp_syntax_json::JsonParser.parse_module(source, text)?,
-        Syntax::Yaml => jisp_syntax_yaml::YamlParser.parse_module(source, text)?,
-        Syntax::Lisp => jisp_syntax_lisp::LispParser.parse_module(source, text)?,
+    let nodes = match match syntax {
+        Syntax::Json => jisp_syntax_json::JsonParser.parse_module(source, text),
+        Syntax::Yaml => jisp_syntax_yaml::YamlParser.parse_module(source, text),
+        Syntax::Lisp => jisp_syntax_lisp::LispParser.parse_module(source, text),
+    } {
+        Ok(nodes) => nodes,
+        Err(error) => {
+            return Err(ModuleError::new(
+                sources,
+                ExpansionMap::default(),
+                error.into(),
+            ))
+        }
     };
-    let expanded = jisp_expand::expand_module(&nodes)?;
-    let module = Lowerer.lower_module(&expanded.nodes)?;
+    let expanded = match jisp_expand::expand_module(&nodes) {
+        Ok(expanded) => expanded,
+        Err(error) => {
+            return Err(ModuleError::new(
+                sources,
+                ExpansionMap::default(),
+                error.into(),
+            ))
+        }
+    };
+    let module = match Lowerer.lower_module(&expanded.nodes) {
+        Ok(module) => module,
+        Err(error) => {
+            return Err(ModuleError::new(
+                sources,
+                expanded.expansion_map,
+                error.into(),
+            ))
+        }
+    };
     let mut dependencies = vec![];
     let types = if options.infer_types {
-        let mut resolver = TypeResolver::new(&mut sources);
         let path = Path::new(&name);
-        let imports = resolver.import_environments(path, &module)?;
-        dependencies = resolver.dependencies();
-        Some(Inferencer::with_prelude().infer_module_with_imports(&module, &imports)?)
+        let type_result = (|| -> Result<_, Error> {
+            let mut resolver = TypeResolver::new(&mut sources);
+            let imports = resolver.import_environments(path, &module)?;
+            let dependencies = resolver.dependencies();
+            let types = Inferencer::with_prelude().infer_module_with_imports(&module, &imports)?;
+            Ok((types, dependencies))
+        })();
+        let (inferred, resolved_dependencies) = match type_result {
+            Ok(result) => result,
+            Err(error) => {
+                return Err(ModuleError::new(
+                    sources,
+                    expanded.expansion_map.clone(),
+                    error,
+                ))
+            }
+        };
+        dependencies = resolved_dependencies;
+        Some(inferred)
     } else {
         None
     };
@@ -119,6 +233,10 @@ pub fn parse_as_with_options(
 
 pub fn check(path: impl AsRef<Path>, text: &str) -> Result<ParsedModule, Error> {
     parse_with_options(path, text, ParseOptions { infer_types: true })
+}
+
+pub fn check_detailed(path: impl AsRef<Path>, text: &str) -> Result<ParsedModule, ModuleError> {
+    parse_with_options_detailed(path, text, ParseOptions { infer_types: true })
 }
 
 pub fn import_dependencies(path: impl AsRef<Path>, text: &str) -> Result<Vec<PathBuf>, Error> {
@@ -284,7 +402,8 @@ fn load_module(sources: &mut SourceMap, path: &Path) -> Result<Module, Error> {
     for file in module_source_files(path)? {
         nodes.extend(parse_file(sources, &file)?);
     }
-    Ok(Lowerer.lower_module(&nodes)?)
+    let expanded = jisp_expand::expand_module(&nodes)?;
+    Ok(Lowerer.lower_module(&expanded.nodes)?)
 }
 
 fn module_source_files(path: &Path) -> Result<Vec<PathBuf>, Error> {

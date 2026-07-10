@@ -16,17 +16,23 @@ impl ExpansionMap {
     }
 
     pub fn origin(&self, span: Span) -> Span {
+        self.origin_chain(span).last().copied().unwrap_or(span)
+    }
+
+    pub fn origin_chain(&self, span: Span) -> Vec<Span> {
         let mut current = span;
+        let mut origins = Vec::new();
         for _ in 0..MAX_ORIGIN_DEPTH {
             let Some(next) = self.origins.get(&current).copied() else {
                 break;
             };
-            if next == current {
+            if next == current || origins.contains(&next) {
                 break;
             }
+            origins.push(next);
             current = next;
         }
-        current
+        origins
     }
 
     pub fn is_empty(&self) -> bool {
@@ -96,6 +102,7 @@ impl Expander {
                 node.span,
                 "unquote is only valid inside quasiquote or a string template",
             )),
+            "str" | "str.lines" => self.expand_string_template(node.span, items),
             "macro" | "~" => Err(ExpandError::single(
                 node.span,
                 "user macro evaluation is not implemented yet",
@@ -113,6 +120,26 @@ impl Expander {
             .map(|item| self.expand_node(item))
             .collect::<Result<Vec<_>, _>>()?;
         Ok(Node::form(items, node.span))
+    }
+
+    fn expand_string_template(&mut self, span: Span, items: &[Node]) -> Result<Node, ExpandError> {
+        let mut expanded = vec![items[0].clone()];
+        for item in &items[1..] {
+            let Some(parts) = item.as_form() else {
+                expanded.push(item.clone());
+                continue;
+            };
+            match parts.first().and_then(Node::as_symbol) {
+                Some("," | "unquote" | ",@" | "unquote-splicing") if parts.len() == 2 => {
+                    expanded.push(Node::form(
+                        vec![parts[0].clone(), self.expand_node(parts[1].clone())?],
+                        item.span,
+                    ));
+                }
+                _ => expanded.push(item.clone()),
+            }
+        }
+        Ok(Node::form(expanded, span))
     }
 
     fn expand_quasiquote(&mut self, node: &Node) -> Result<Node, ExpandError> {
@@ -155,8 +182,8 @@ impl Expander {
         Ok(Node::form(expanded, span))
     }
 
-    fn originated(&mut self, mut node: Node, origin: Span) -> Node {
-        rewrite_span(&mut node, origin, &mut self.expansion_map);
+    fn originated(&mut self, node: Node, origin: Span) -> Node {
+        record_origin(&node, origin, &mut self.expansion_map);
         node
     }
 }
@@ -194,12 +221,11 @@ fn expect_arity(
     }
 }
 
-fn rewrite_span(node: &mut Node, origin: Span, map: &mut ExpansionMap) {
+fn record_origin(node: &Node, origin: Span, map: &mut ExpansionMap) {
     map.record(node.span, origin);
-    node.span = origin;
-    if let NodeKind::Form(items) = &mut node.kind {
+    if let NodeKind::Form(items) = &node.kind {
         for item in items {
-            rewrite_span(item, origin, map);
+            record_origin(item, origin, map);
         }
     }
 }
