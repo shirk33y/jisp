@@ -362,6 +362,41 @@ fn rejects_non_exhaustive_bool_case() {
 }
 
 #[test]
+fn rejects_redundant_bool_case_pattern() {
+    let mut inferencer = Inferencer::default();
+    let expression = expr(ExprKind::Case {
+        subject: Box::new(bool_(true)),
+        branches: vec![
+            branch(Pattern::Literal(Literal::Bool(true)), int(1)),
+            branch(Pattern::Literal(Literal::Bool(true)), int(2)),
+            branch(Pattern::Literal(Literal::Bool(false)), int(0)),
+        ],
+    });
+
+    assert!(matches!(
+        inferencer.infer_expr(&expression),
+        Err(InferError::RedundantCasePattern(pattern)) if pattern == "true"
+    ));
+}
+
+#[test]
+fn rejects_case_branch_after_catch_all() {
+    let mut inferencer = Inferencer::default();
+    let expression = expr(ExprKind::Case {
+        subject: Box::new(bool_(true)),
+        branches: vec![
+            branch(Pattern::Wildcard, int(1)),
+            branch(Pattern::Literal(Literal::Bool(false)), int(0)),
+        ],
+    });
+
+    assert!(matches!(
+        inferencer.infer_expr(&expression),
+        Err(InferError::RedundantCasePattern(pattern)) if pattern == "false"
+    ));
+}
+
+#[test]
 fn accepts_exhaustive_null_case() {
     let mut inferencer = Inferencer::default();
     let expression = expr(ExprKind::Case {

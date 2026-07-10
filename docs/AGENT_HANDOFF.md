@@ -21,11 +21,12 @@ The current local Gleam checkout is indexed as CMM project
 Type inference now covers core expressions, let-generalisation, top-level
 recursive SCC grouping, enum constructors, `case` pattern typing, minimal
 variant exhaustiveness for user-defined ADTs and prelude `result`/`option`,
-finite `bool`/`null` literal cases, and a conservative prelude for fixed-arity
-stdlib functions plus simple runtime helpers such as predicates,
-`result.recover`, numeric overloads, and basic object introspection. Remaining
-type-system work includes richer exhaustiveness for lists, objects, redundant
-patterns, and stdlib schemes for variadic and object/row-polymorphic builtins.
+finite `bool`/`null` literal cases, redundant finite-domain `case` patterns, and
+a conservative prelude for fixed-arity stdlib functions plus simple runtime
+helpers such as predicates, `result.recover`, numeric overloads, and basic
+object introspection. Remaining type-system work includes richer exhaustiveness
+for lists and objects, and stdlib schemes for variadic and
+object/row-polymorphic builtins.
 
 `jisp-types` now exposes `Inferencer::infer_module_with_imports` and
 `ImportTypeEnvironments`. It resolves each `import` by path and installs

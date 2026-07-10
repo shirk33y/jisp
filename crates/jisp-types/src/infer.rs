@@ -30,6 +30,9 @@ pub enum InferError {
         type_name: String,
         missing: Vec<String>,
     },
+
+    #[error("redundant case pattern `{0}`")]
+    RedundantCasePattern(String),
 }
 
 /// Reusable state for Hindley–Milner-style inference.
@@ -467,20 +470,37 @@ impl Inferencer {
         };
 
         let mut covered = BTreeSet::new();
+        let mut has_catch_all = false;
         for branch in branches {
+            if has_catch_all {
+                return Err(InferError::RedundantCasePattern(pattern_name(
+                    &branch.pattern,
+                )));
+            }
             match &branch.pattern {
-                Pattern::Wildcard | Pattern::Bind(_) => return Ok(()),
+                Pattern::Wildcard | Pattern::Bind(_) => has_catch_all = true,
                 Pattern::Variant { tag, .. } => {
-                    covered.insert(tag.clone());
+                    if !covered.insert(tag.clone()) {
+                        return Err(InferError::RedundantCasePattern(tag.clone()));
+                    }
                 }
                 Pattern::Literal(Literal::Bool(value)) if type_name == "bool" => {
-                    covered.insert(value.to_string());
+                    let name = value.to_string();
+                    if !covered.insert(name.clone()) {
+                        return Err(InferError::RedundantCasePattern(name));
+                    }
                 }
                 Pattern::Literal(Literal::Null) if type_name == "null" => {
-                    covered.insert("null".to_owned());
+                    if !covered.insert("null".to_owned()) {
+                        return Err(InferError::RedundantCasePattern("null".to_owned()));
+                    }
                 }
                 Pattern::Literal(_) | Pattern::List { .. } | Pattern::Object(_) => {}
             }
+        }
+
+        if has_catch_all {
+            return Ok(());
         }
 
         let missing = expected.difference(&covered).cloned().collect::<Vec<_>>();
@@ -708,6 +728,21 @@ fn static_string_key(expr: &Expr) -> Option<String> {
             }
         }
         _ => None,
+    }
+}
+
+fn pattern_name(pattern: &Pattern) -> String {
+    match pattern {
+        Pattern::Wildcard => "_".to_owned(),
+        Pattern::Bind(name) => name.clone(),
+        Pattern::Literal(Literal::Null) => "null".to_owned(),
+        Pattern::Literal(Literal::Bool(value)) => value.to_string(),
+        Pattern::Literal(Literal::Int(value)) => value.to_string(),
+        Pattern::Literal(Literal::Float(value)) => value.to_string(),
+        Pattern::Literal(Literal::String(value)) => format!("{value:?}"),
+        Pattern::Variant { tag, .. } => tag.clone(),
+        Pattern::List { .. } => "list pattern".to_owned(),
+        Pattern::Object(_) => "object pattern".to_owned(),
     }
 }
 
