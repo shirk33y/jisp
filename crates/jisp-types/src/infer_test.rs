@@ -152,6 +152,50 @@ fn infers_static_object_fields() {
 }
 
 #[test]
+fn infers_dynamic_object_keys_as_open_rows() {
+    let mut inferencer = Inferencer::with_prelude();
+    let expression = expr(ExprKind::Object(vec![
+        (string("name"), string("Ada")),
+        (
+            expr(ExprKind::Call {
+                callee: Box::new(name("str.cat")),
+                arguments: vec![string("act"), string("ive")],
+            }),
+            bool_(true),
+        ),
+    ]));
+
+    let ty = inferencer.infer_expr(&expression).unwrap();
+    assert!(matches!(
+        ty,
+        Type::Object(ObjectRow {
+            fields,
+            rest: Some(_),
+        }) if fields.get("name") == Some(&Type::Str)
+    ));
+}
+
+#[test]
+fn infers_dynamic_field_keys_from_usage_context() {
+    let mut inferencer = Inferencer::with_prelude();
+    let expression = expr(ExprKind::Call {
+        callee: Box::new(name("str.cat")),
+        arguments: vec![expr(ExprKind::Field {
+            object: Box::new(expr(ExprKind::Object(vec![(
+                string("name"),
+                string("Ada"),
+            )]))),
+            key: Box::new(expr(ExprKind::Call {
+                callee: Box::new(name("str.cat")),
+                arguments: vec![string("na"), string("me")],
+            })),
+        })],
+    });
+
+    assert_eq!(inferencer.infer_expr(&expression).unwrap(), Type::Str);
+}
+
+#[test]
 fn generalizes_top_level_definitions() {
     let mut inferencer = Inferencer::default();
     let identity = expr(ExprKind::Lambda {

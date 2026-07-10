@@ -408,34 +408,36 @@ impl Inferencer {
 
     fn infer_object(&mut self, fields: &[(Expr, Expr)]) -> Result<Type, InferError> {
         let mut typed_fields = BTreeMap::new();
+        let mut dynamic = false;
         for (key, value) in fields {
             let key_ty = self.infer_expr(key)?;
             self.unify(key_ty, Type::Str)?;
-            let Some(name) = static_string_key(key) else {
-                return Err(InferError::NotImplemented("dynamic object key types"));
-            };
-            typed_fields.insert(name, self.infer_expr(value)?);
+            let value_ty = self.infer_expr(value)?;
+            if let Some(name) = static_string_key(key) {
+                typed_fields.insert(name, value_ty);
+            } else {
+                dynamic = true;
+            }
         }
         Ok(Type::Object(ObjectRow {
             fields: typed_fields,
-            rest: None,
+            rest: dynamic.then(|| self.fresh_var()),
         }))
     }
 
     fn infer_field(&mut self, object: &Expr, key: &Expr) -> Result<Type, InferError> {
         let key_ty = self.infer_expr(key)?;
         self.unify(key_ty, Type::Str)?;
-        let Some(name) = static_string_key(key) else {
-            return Err(InferError::NotImplemented("dynamic field key types"));
-        };
-
         let object_ty = self.infer_expr(object)?;
         let field_ty = self.fresh_type();
         let rest = self.fresh_var();
+        let fields = static_string_key(key)
+            .map(|name| BTreeMap::from([(name, field_ty.clone())]))
+            .unwrap_or_default();
         self.unify(
             object_ty,
             Type::Object(ObjectRow {
-                fields: BTreeMap::from([(name, field_ty.clone())]),
+                fields,
                 rest: Some(rest),
             }),
         )?;
