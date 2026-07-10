@@ -198,6 +198,9 @@ impl<'a> EmitContext<'a> {
             return Err(CodegenError::Unsupported("first-class function calls"));
         };
         if !self.locals.contains(name) && !self.top_level_names.contains(name) {
+            if let Some(operator) = binary_intrinsic_operator(name) {
+                return self.emit_binary_intrinsic(arguments, operator);
+            }
             return Err(CodegenError::Unsupported("calls outside native module"));
         }
         let name = rust_ident(name);
@@ -206,6 +209,32 @@ impl<'a> EmitContext<'a> {
             .map(|argument| self.emit_expr(argument))
             .collect::<Result<Vec<_>, _>>()?;
         Ok(quote! { #name(#(#arguments),*) })
+    }
+
+    fn emit_binary_intrinsic(
+        &mut self,
+        arguments: &[Expr],
+        operator: TokenStream,
+    ) -> Result<TokenStream, CodegenError> {
+        let [left, right] = arguments else {
+            return Err(CodegenError::Unsupported("non-binary native intrinsics"));
+        };
+        let left = self.emit_expr(left)?;
+        let right = self.emit_expr(right)?;
+        Ok(quote! { (#left #operator #right) })
+    }
+}
+
+fn binary_intrinsic_operator(name: &str) -> Option<TokenStream> {
+    match name {
+        "+" => Some(quote! { + }),
+        "-" => Some(quote! { - }),
+        "*" => Some(quote! { * }),
+        "<" => Some(quote! { < }),
+        ">" => Some(quote! { > }),
+        "<=" => Some(quote! { <= }),
+        ">=" => Some(quote! { >= }),
+        _ => None,
     }
 }
 

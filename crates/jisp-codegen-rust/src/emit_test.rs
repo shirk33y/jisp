@@ -132,6 +132,54 @@ fn emits_let_if_and_bool_expressions() {
 }
 
 #[test]
+fn emits_binary_prelude_intrinsics_as_native_operators() {
+    let module = typed_module(
+        vec![definition(
+            "main",
+            true,
+            expr(ExprKind::Call {
+                callee: Box::new(name("+")),
+                arguments: vec![
+                    literal(Literal::Int(40)),
+                    expr(ExprKind::Call {
+                        callee: Box::new(name("*")),
+                        arguments: vec![literal(Literal::Int(1)), literal(Literal::Int(2))],
+                    }),
+                ],
+            }),
+        )],
+        vec![("main", Type::Int)],
+    );
+
+    let generated = generate(&module).unwrap().to_string();
+
+    assert!(generated.contains("pub fn main () -> i64"));
+    assert!(generated.contains("(40i64 + (1i64 * 2i64))"));
+    assert!(!generated.contains("Value"));
+    assert!(!generated.contains("jisp_eval"));
+}
+
+#[test]
+fn rejects_non_binary_native_intrinsics() {
+    let module = typed_module(
+        vec![definition(
+            "main",
+            true,
+            expr(ExprKind::Call {
+                callee: Box::new(name("+")),
+                arguments: vec![literal(Literal::Int(1))],
+            }),
+        )],
+        vec![("main", Type::Int)],
+    );
+
+    assert_eq!(
+        generate(&module).unwrap_err(),
+        CodegenError::Unsupported("non-binary native intrinsics")
+    );
+}
+
+#[test]
 fn rejects_unsupported_native_shapes_without_value_fallback() {
     let module = typed_module(
         vec![definition(
