@@ -31,8 +31,8 @@
 - Use the fastest decisive diagnostic first. Avoid broad exploration once a
   focused parser/lowering/evaluator/type test proves the boundary.
 - Do not run clippy, pre-commit, or broad verification after every small change.
-  Use focused checks while fixing, then run the required validation once near the
-  end.
+  Use focused non-Cargo diagnostics while fixing, then run the required
+  validation once near the end.
 - For docs-only work, stage only owned documentation changes. `git commit
   --no-verify` is acceptable for documentation-only changes, including
   `.agents/` notes, todos, plans, and this file.
@@ -40,8 +40,9 @@
 ## Tests
 
 - Add regression tests as soon as a bug or behavior contract is identified.
-- Prefer the full relevant Rust suite over a narrow `cargo test <name>` filter
-  when it is fast enough.
+- Do not run selective `cargo test` filters in this repo. The workspace test
+  suite is fast enough that running all tests saves tool calls and catches
+  cross-crate regressions.
 - Keep test output quiet by default; surface only failures or actionable errors.
 - Integration tests live in `tests/` at the crate root, as in
   `crates/jisp-eval/tests/`.

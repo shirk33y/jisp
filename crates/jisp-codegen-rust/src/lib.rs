@@ -4,6 +4,9 @@
 //! stable entry point so an agent can implement code generation without
 //! changing the frontend.
 
+mod emit;
+#[cfg(test)]
+mod emit_test;
 mod layout;
 #[cfg(test)]
 mod layout_test;
@@ -16,15 +19,15 @@ use thiserror::Error;
 
 #[derive(Debug, Error, PartialEq, Eq)]
 pub enum CodegenError {
-    #[error("native Rust code generation is not implemented yet")]
-    NotImplemented,
-
     #[error("native Rust code generation cannot classify layout: {0}")]
     Layout(String),
+
+    #[error("native Rust code generation does not support {0} yet")]
+    Unsupported(&'static str),
 }
 
 pub fn generate(module: &TypedModule) -> Result<TokenStream, CodegenError> {
     let _layout =
         layout::classify_module(module).map_err(|error| CodegenError::Layout(error.to_string()))?;
-    Err(CodegenError::NotImplemented)
+    emit::emit_module(module)
 }

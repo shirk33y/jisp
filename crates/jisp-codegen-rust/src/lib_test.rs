@@ -23,11 +23,11 @@ fn generate_rejects_open_object_rows_before_emitting_rust() {
 }
 
 #[test]
-fn generate_reaches_scaffold_after_layout_classification() {
+fn generate_reaches_emitter_after_layout_classification() {
     let module = TypedModule {
         module: jisp_ir::Module::empty(),
         schemes: BTreeMap::from([("main".to_owned(), Scheme::mono(Type::Int))]),
     };
 
-    assert_eq!(generate(&module).unwrap_err(), CodegenError::NotImplemented);
+    assert_eq!(generate(&module).unwrap().to_string(), "");
 }

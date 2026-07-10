@@ -175,6 +175,7 @@ dependencies = [
 name = "jisp-codegen-rust"
 version = "0.0.1"
 dependencies = [
+ "jisp-core",
  "jisp-ir",
  "jisp-types",
  "proc-macro2",
