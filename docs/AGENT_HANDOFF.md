@@ -28,9 +28,12 @@ object/row-polymorphic builtins.
 
 `jisp-types` now exposes `Inferencer::infer_module_with_imports` and
 `ImportTypeEnvironments`. It resolves each `import` by path and installs
-exported schemes as `alias.name` bindings. The next module-system step is a real
-facade/CLI file resolver that parses dependency modules, filters exported
-schemes, detects cycles, and passes those environments into the inferencer.
+exported schemes as `alias.name` bindings. The `jisp` facade now resolves those
+import type environments from files and directories for `jisp::check`: it
+supports extensionless `.lisp`/`.jisp`/`.json`/`.yaml`/`.yml` imports, mixed
+syntax directory modules, exported-only visibility, and cycle detection. The
+next module-system step is runtime/CLI module loading for ordinary evaluation
+and native/proc-macro dependency tracking.
 
 Portable Lisp fixture tests now live under `tests/language/` and are registered
 as Cargo-visible tests by `crates/jisp-eval/build.rs`. The generated tests call
