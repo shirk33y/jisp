@@ -156,26 +156,27 @@ impl Inferencer {
         let ty = match &expr.kind {
             ExprKind::Literal(literal) => self.infer_literal(literal),
             ExprKind::Name(name) => self.lookup(name)?,
-            ExprKind::Lambda { params, rest, body } => {
-                if rest.is_some() {
-                    return Err(InferError::NotImplemented("variadic function types"));
-                }
-                self.with_scope(|inferencer| {
-                    let parameters = params
-                        .iter()
-                        .map(|name| {
-                            let ty = inferencer.fresh_type();
-                            inferencer.define(name, Scheme::mono(ty.clone()));
-                            ty
-                        })
-                        .collect::<Vec<_>>();
-                    let result = inferencer.infer_expr(body)?;
-                    Ok(Type::Function {
-                        parameters: parameters.iter().map(|ty| inferencer.apply(ty)).collect(),
-                        result: Box::new(inferencer.apply(&result)),
+            ExprKind::Lambda { params, rest, body } => self.with_scope(|inferencer| {
+                let parameters = params
+                    .iter()
+                    .map(|name| {
+                        let ty = inferencer.fresh_type();
+                        inferencer.define(name, Scheme::mono(ty.clone()));
+                        ty
                     })
-                })?
-            }
+                    .collect::<Vec<_>>();
+                let rest_item = rest.as_ref().map(|name| {
+                    let ty = inferencer.fresh_type();
+                    inferencer.define(name, Scheme::mono(Type::List(Box::new(ty.clone()))));
+                    ty
+                });
+                let result = inferencer.infer_expr(body)?;
+                Ok(Type::Function {
+                    parameters: parameters.iter().map(|ty| inferencer.apply(ty)).collect(),
+                    rest: rest_item.map(|ty| Box::new(inferencer.apply(&ty))),
+                    result: Box::new(inferencer.apply(&result)),
+                })
+            })?,
             ExprKind::Let { bindings, body } => self.infer_let(bindings, body)?,
             ExprKind::Do(expressions) => self.infer_do(expressions)?,
             ExprKind::If {
@@ -210,6 +211,7 @@ impl Inferencer {
                     callee_ty,
                     Type::Function {
                         parameters,
+                        rest: None,
                         result: Box::new(result.clone()),
                     },
                 )?;
@@ -294,6 +296,7 @@ impl Inferencer {
                 } else {
                     Type::Function {
                         parameters: fields,
+                        rest: None,
                         result: Box::new(result),
                     }
                 };
@@ -664,7 +667,14 @@ impl Inferencer {
                     ([], constructor_ty @ Type::Named { .. }) => {
                         self.unify(expected, constructor_ty)?;
                     }
-                    (fields, Type::Function { parameters, result }) => {
+                    (
+                        fields,
+                        Type::Function {
+                            parameters,
+                            rest: None,
+                            result,
+                        },
+                    ) => {
                         if fields.len() != parameters.len() {
                             return Err(InferError::Unify(UnifyError::Arity {
                                 left: parameters.len(),
@@ -684,6 +694,7 @@ impl Inferencer {
                             left: other,
                             right: Type::Function {
                                 parameters: fields.iter().map(|_| self.fresh_type()).collect(),
+                                rest: None,
                                 result: Box::new(expected),
                             },
                         }));
@@ -796,6 +807,7 @@ impl Inferencer {
             callee_ty,
             Type::Function {
                 parameters,
+                rest: None,
                 result: Box::new(result.clone()),
             },
         )?;
@@ -815,11 +827,16 @@ fn replace(ty: &Type, replacements: &BTreeMap<TypeVar, Type>) -> Type {
                 .collect(),
             rest: row.rest,
         }),
-        Type::Function { parameters, result } => Type::Function {
+        Type::Function {
+            parameters,
+            rest,
+            result,
+        } => Type::Function {
             parameters: parameters
                 .iter()
                 .map(|ty| replace(ty, replacements))
                 .collect(),
+            rest: rest.as_ref().map(|ty| Box::new(replace(ty, replacements))),
             result: Box::new(replace(result, replacements)),
         },
         Type::Named { name, arguments } => Type::Named {
@@ -1034,9 +1051,16 @@ fn collect_type_vars(ty: &Type, vars: &mut BTreeSet<TypeVar>) {
                 collect_type_vars(ty, vars);
             }
         }
-        Type::Function { parameters, result } => {
+        Type::Function {
+            parameters,
+            rest,
+            result,
+        } => {
             for parameter in parameters {
                 collect_type_vars(parameter, vars);
+            }
+            if let Some(rest) = rest {
+                collect_type_vars(rest, vars);
             }
             collect_type_vars(result, vars);
         }

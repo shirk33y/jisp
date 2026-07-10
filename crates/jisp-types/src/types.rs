@@ -17,6 +17,7 @@ pub enum Type {
     Object(ObjectRow),
     Function {
         parameters: Vec<Type>,
+        rest: Option<Box<Type>>,
         result: Box<Type>,
     },
     Named {
@@ -70,13 +71,23 @@ impl fmt::Display for Type {
                 }
                 f.write_str("}")
             }
-            Type::Function { parameters, result } => {
+            Type::Function {
+                parameters,
+                rest,
+                result,
+            } => {
                 f.write_str("(fn (")?;
                 for (index, parameter) in parameters.iter().enumerate() {
                     if index > 0 {
                         f.write_str(" ")?;
                     }
                     write!(f, "{parameter}")?;
+                }
+                if let Some(rest) = rest {
+                    if !parameters.is_empty() {
+                        f.write_str(" ")?;
+                    }
+                    write!(f, "...{rest}")?;
                 }
                 write!(f, ") {result})")
             }

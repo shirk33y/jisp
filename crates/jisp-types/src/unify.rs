@@ -34,8 +34,13 @@ impl Substitution {
                     .collect(),
                 rest: row.rest,
             }),
-            Type::Function { parameters, result } => Type::Function {
+            Type::Function {
+                parameters,
+                rest,
+                result,
+            } => Type::Function {
                 parameters: parameters.iter().map(|ty| self.apply(ty)).collect(),
+                rest: rest.as_ref().map(|ty| Box::new(self.apply(ty))),
                 result: Box::new(self.apply(result)),
             },
             Type::Named { name, arguments } => Type::Named {
@@ -81,33 +86,53 @@ impl Unifier {
             (Type::Int, Type::Int) => Ok(Type::Int),
             (Type::Float, Type::Float) => Ok(Type::Float),
             (Type::Str, Type::Str) => Ok(Type::Str),
-            (Type::List(a), Type::List(b)) => {
-                Ok(Type::List(Box::new(self.unify(*a, *b)?)))
-            }
+            (Type::List(a), Type::List(b)) => Ok(Type::List(Box::new(self.unify(*a, *b)?))),
             (
                 Type::Function {
                     parameters: left_parameters,
+                    rest: left_rest,
                     result: left_result,
                 },
                 Type::Function {
                     parameters: right_parameters,
+                    rest: right_rest,
                     result: right_result,
                 },
             ) => {
-                if left_parameters.len() != right_parameters.len() {
+                if !function_arities_overlap(
+                    left_parameters.len(),
+                    left_rest.is_some(),
+                    right_parameters.len(),
+                    right_rest.is_some(),
+                ) {
                     return Err(UnifyError::Arity {
                         left: left_parameters.len(),
                         right: right_parameters.len(),
                     });
                 }
-                let parameters = left_parameters
-                    .into_iter()
-                    .zip(right_parameters)
-                    .map(|(left, right)| self.unify(left, right))
-                    .collect::<Result<Vec<_>, _>>()?;
+                let parameters = self.unify_function_parameters(
+                    &left_parameters,
+                    &left_rest,
+                    &right_parameters,
+                )?;
+                if let Some(right_rest) = right_rest.as_deref() {
+                    if let Some(left_rest) = left_rest.as_deref() {
+                        self.unify(left_rest.clone(), right_rest.clone())?;
+                    }
+                    for left in left_parameters.iter().skip(right_parameters.len()) {
+                        self.unify(left.clone(), right_rest.clone())?;
+                    }
+                }
+                let rest = match (left_rest, right_rest) {
+                    (Some(left), Some(right)) => Some(Box::new(self.unify(*left, *right)?)),
+                    (Some(left), None) => Some(left),
+                    (None, Some(right)) => Some(right),
+                    (None, None) => None,
+                };
                 let result = self.unify(*left_result, *right_result)?;
                 Ok(Type::Function {
                     parameters,
+                    rest,
                     result: Box::new(result),
                 })
             }
@@ -183,75 +208,67 @@ fn occurs(var: TypeVar, ty: &Type, substitution: &Substitution) -> bool {
         Type::Var(other) => var == other,
         Type::List(item) => occurs(var, &item, substitution),
         Type::Object(row) => {
-            row.rest == Some(var)
-                || row
-                    .fields
-                    .values()
-                    .any(|ty| occurs(var, ty, substitution))
+            row.rest == Some(var) || row.fields.values().any(|ty| occurs(var, ty, substitution))
         }
-        Type::Function { parameters, result } => {
-            parameters
-                .iter()
-                .any(|ty| occurs(var, ty, substitution))
+        Type::Function {
+            parameters,
+            rest,
+            result,
+        } => {
+            parameters.iter().any(|ty| occurs(var, ty, substitution))
+                || rest
+                    .as_ref()
+                    .is_some_and(|ty| occurs(var, ty, substitution))
                 || occurs(var, &result, substitution)
         }
-        Type::Named { arguments, .. } => arguments
-            .iter()
-            .any(|ty| occurs(var, ty, substitution)),
+        Type::Named { arguments, .. } => arguments.iter().any(|ty| occurs(var, ty, substitution)),
         _ => false,
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+impl Unifier {
+    fn unify_function_parameters(
+        &mut self,
+        left_parameters: &[Type],
+        left_rest: &Option<Box<Type>>,
+        right_parameters: &[Type],
+    ) -> Result<Vec<Type>, UnifyError> {
+        let mut parameters = Vec::with_capacity(left_parameters.len().max(right_parameters.len()));
+        let shared = left_parameters.len().min(right_parameters.len());
 
-    #[test]
-    fn binds_a_variable_inside_a_list() {
-        let var = TypeVar(0);
-        let mut unifier = Unifier::default();
-        let result = unifier
-            .unify(
-                Type::List(Box::new(Type::Var(var))),
-                Type::List(Box::new(Type::Int)),
-            )
-            .unwrap();
-        assert_eq!(result, Type::List(Box::new(Type::Int)));
-        assert_eq!(unifier.substitution.get(var), Some(&Type::Int));
-    }
+        for index in 0..shared {
+            parameters.push(self.unify(
+                left_parameters[index].clone(),
+                right_parameters[index].clone(),
+            )?);
+        }
 
-    #[test]
-    fn rejects_recursive_types() {
-        let var = TypeVar(0);
-        let mut unifier = Unifier::default();
-        assert!(matches!(
-            unifier.unify(Type::Var(var), Type::List(Box::new(Type::Var(var)))),
-            Err(UnifyError::Occurs { .. })
-        ));
-    }
-
-    #[test]
-    fn unifies_function_types() {
-        let mut unifier = Unifier::default();
-        let variable = Type::Var(TypeVar(0));
-        let result = unifier
-            .unify(
-                Type::Function {
-                    parameters: vec![variable.clone()],
-                    result: Box::new(variable),
-                },
-                Type::Function {
-                    parameters: vec![Type::Str],
-                    result: Box::new(Type::Str),
-                },
-            )
-            .unwrap();
-        assert_eq!(
-            result,
-            Type::Function {
-                parameters: vec![Type::Str],
-                result: Box::new(Type::Str)
+        if left_parameters.len() > right_parameters.len() {
+            parameters.extend_from_slice(&left_parameters[shared..]);
+        } else if let Some(left_rest) = left_rest.as_deref() {
+            for right in &right_parameters[shared..] {
+                parameters.push(self.unify(left_rest.clone(), right.clone())?);
             }
-        );
+        }
+
+        Ok(parameters)
     }
 }
+
+fn function_arities_overlap(
+    left_fixed: usize,
+    left_variadic: bool,
+    right_fixed: usize,
+    right_variadic: bool,
+) -> bool {
+    match (left_variadic, right_variadic) {
+        (false, false) => left_fixed == right_fixed,
+        (true, false) => left_fixed <= right_fixed,
+        (false, true) => right_fixed <= left_fixed,
+        (true, true) => true,
+    }
+}
+
+#[cfg(test)]
+#[path = "unify_test.rs"]
+mod unify_test;

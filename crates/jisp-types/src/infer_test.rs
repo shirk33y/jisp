@@ -67,6 +67,7 @@ fn instantiation_creates_fresh_variables() {
         variables: vec![TypeVar(99)],
         body: Type::Function {
             parameters: vec![Type::Var(TypeVar(99))],
+            rest: None,
             result: Box::new(Type::Var(TypeVar(99))),
         },
     };
@@ -88,6 +89,27 @@ fn infers_function_calls() {
     });
 
     assert_eq!(inferencer.infer_expr(&expression).unwrap(), Type::Int);
+}
+
+#[test]
+fn infers_variadic_lambda_rest_arguments() {
+    let mut inferencer = Inferencer::with_prelude();
+    let expression = expr(ExprKind::Call {
+        callee: Box::new(expr(ExprKind::Lambda {
+            params: vec!["head".to_owned()],
+            rest: Some("tail".to_owned()),
+            body: Box::new(expr(ExprKind::Call {
+                callee: Box::new(name("list.prepend")),
+                arguments: vec![name("head"), name("tail")],
+            })),
+        })),
+        arguments: vec![int(1), int(2), int(3)],
+    });
+
+    assert_eq!(
+        inferencer.infer_expr(&expression).unwrap(),
+        Type::List(Box::new(Type::Int))
+    );
 }
 
 #[test]
@@ -208,6 +230,7 @@ fn preserves_recursive_top_level_placeholders() {
         schemes["fact"].body,
         Type::Function {
             parameters: vec![Type::Int],
+            rest: None,
             result: Box::new(Type::Int),
         }
     );
@@ -760,20 +783,42 @@ fn prelude_infers_basic_object_helpers() {
 }
 
 #[test]
-fn prelude_infers_fixed_arity_variadic_runtime_helpers() {
+fn prelude_infers_variadic_runtime_helpers() {
     let mut inferencer = Inferencer::with_prelude();
+
+    let empty_str_cat = expr(ExprKind::Call {
+        callee: Box::new(name("str.cat")),
+        arguments: vec![],
+    });
+    assert_eq!(inferencer.infer_expr(&empty_str_cat).unwrap(), Type::Str);
+
+    let one_str_cat = expr(ExprKind::Call {
+        callee: Box::new(name("str.cat")),
+        arguments: vec![string("hello")],
+    });
+    assert_eq!(inferencer.infer_expr(&one_str_cat).unwrap(), Type::Str);
 
     let str_cat = expr(ExprKind::Call {
         callee: Box::new(name("str.cat")),
-        arguments: vec![string("hello"), string(" world")],
+        arguments: vec![string("hello"), string(" "), string("world")],
     });
     assert_eq!(inferencer.infer_expr(&str_cat).unwrap(), Type::Str);
+
+    let one_list_cat = expr(ExprKind::Call {
+        callee: Box::new(name("list.cat")),
+        arguments: vec![expr(ExprKind::List(vec![int(1)]))],
+    });
+    assert_eq!(
+        inferencer.infer_expr(&one_list_cat).unwrap(),
+        Type::List(Box::new(Type::Int))
+    );
 
     let list_cat = expr(ExprKind::Call {
         callee: Box::new(name("list.cat")),
         arguments: vec![
             expr(ExprKind::List(vec![int(1)])),
             expr(ExprKind::List(vec![int(2)])),
+            expr(ExprKind::List(vec![int(3)])),
         ],
     });
     assert_eq!(
@@ -910,6 +955,7 @@ fn infers_qualified_values_from_import_type_environments() {
         "inc".to_owned(),
         Scheme::mono(Type::Function {
             parameters: vec![Type::Int],
+            rest: None,
             result: Box::new(Type::Int),
         }),
     );

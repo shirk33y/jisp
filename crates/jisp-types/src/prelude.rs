@@ -67,7 +67,7 @@ pub fn environment() -> BTreeMap<String, Scheme> {
     add(
         &mut env,
         "str.cat",
-        mono(fun(vec![Type::Str, Type::Str], Type::Str)),
+        mono(variadic_fun(vec![], Type::Str, Type::Str)),
     );
     add(
         &mut env,
@@ -195,10 +195,7 @@ pub fn environment() -> BTreeMap<String, Scheme> {
     add(
         &mut env,
         "list.cat",
-        scheme(
-            vec![0],
-            fun(vec![list(var(0)), list(var(0))], list(var(0))),
-        ),
+        scheme(vec![0], variadic_fun(vec![], list(var(0)), list(var(0)))),
     );
     add(
         &mut env,
@@ -384,6 +381,15 @@ fn object_row(rest: u32) -> Type {
 fn fun(parameters: Vec<Type>, result: Type) -> Type {
     Type::Function {
         parameters,
+        rest: None,
+        result: Box::new(result),
+    }
+}
+
+fn variadic_fun(parameters: Vec<Type>, rest: Type, result: Type) -> Type {
+    Type::Function {
+        parameters,
+        rest: Some(Box::new(rest)),
         result: Box::new(result),
     }
 }
