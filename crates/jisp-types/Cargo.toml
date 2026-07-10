@@ -6,4 +6,8 @@ license.workspace = true
 
 [dependencies]
 indexmap.workspace = true
+jisp-ir.workspace = true
 thiserror.workspace = true
+
+[dev-dependencies]
+jisp-core.workspace = true
