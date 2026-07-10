@@ -45,8 +45,10 @@
 - Keep test output quiet by default; surface only failures or actionable errors.
 - Integration tests live in `tests/` at the crate root, as in
   `crates/jisp-eval/tests/`.
-- Unit tests may live beside the module they test as `<module>_test.rs`, declared
-  from the parent module with:
+- For new or touched unit-test coverage, put tests beside the module they test
+  as `<module>_test.rs` in the same directory, for example `lower.rs` uses
+  `lower_test.rs`. Keep the tests only in that sibling test file; the production
+  module should only declare it with:
 
   ```rust
   #[cfg(test)]
@@ -54,6 +56,8 @@
   ```
 
 - Use `#[cfg(test)]` on the module declaration, not inside the whole test file.
+- Existing inline or differently placed unit tests may be migrated later; do not
+  expand them when adding new coverage.
 - CI validation is:
 
   ```text
