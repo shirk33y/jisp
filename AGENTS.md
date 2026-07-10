@@ -28,11 +28,20 @@
 
 - Batch related edits across files before verification. Prefer one coherent patch
   over many tiny edit/check loops.
+- Prefer fewer, denser shell tool calls. Chain related read-only or validation
+  commands in one shell when ordering is clear, for example `cmd1 && cmd2` for
+  dependent checks or `cmd1; cmd2` for independent diagnostics. Keep output
+  capped and readable.
 - Use the fastest decisive diagnostic first. Avoid broad exploration once a
   focused parser/lowering/evaluator/type test proves the boundary.
 - Do not run clippy, pre-commit, or broad verification after every small change.
   Use focused non-Cargo diagnostics while fixing, then run the required
-  validation once near the end.
+  validation once near the end. When running broad checks, combine them with the
+  other final validation commands instead of launching each one as a separate
+  pass.
+- Trust the configured pre-commit hook as the final local gate. Do not over-sample
+  the same code path with repeated tiny Cargo runs before that gate unless a
+  specific failure needs isolation.
 - For docs-only work, stage only owned documentation changes. `git commit
   --no-verify` is acceptable for documentation-only changes, including
   `.agents/` notes, todos, plans, and this file.
