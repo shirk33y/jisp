@@ -1,7 +1,7 @@
 //! Public facade for parsing, lowering, and interpreting Jisp modules.
 
 use std::{
-    collections::{BTreeMap, HashMap},
+    collections::{BTreeMap, BTreeSet, HashMap},
     fs, io,
     path::{Path, PathBuf},
 };
@@ -51,6 +51,7 @@ pub struct ParsedModule {
     pub sources: SourceMap,
     pub module: Module,
     pub types: Option<BTreeMap<String, Scheme>>,
+    pub dependencies: Vec<PathBuf>,
 }
 
 pub fn parse(path: impl AsRef<Path>, text: &str) -> Result<ParsedModule, Error> {
@@ -91,10 +92,12 @@ pub fn parse_as_with_options(
         Syntax::Lisp => jisp_syntax_lisp::LispParser.parse_module(source, text)?,
     };
     let module = Lowerer.lower_module(&nodes)?;
+    let mut dependencies = vec![];
     let types = if options.infer_types {
         let mut resolver = TypeResolver::new(&mut sources);
         let path = Path::new(&name);
         let imports = resolver.import_environments(path, &module)?;
+        dependencies = resolver.dependencies();
         Some(Inferencer::with_prelude().infer_module_with_imports(&module, &imports)?)
     } else {
         None
@@ -103,11 +106,16 @@ pub fn parse_as_with_options(
         sources,
         module,
         types,
+        dependencies,
     })
 }
 
 pub fn check(path: impl AsRef<Path>, text: &str) -> Result<ParsedModule, Error> {
     parse_with_options(path, text, ParseOptions { infer_types: true })
+}
+
+pub fn import_dependencies(path: impl AsRef<Path>, text: &str) -> Result<Vec<PathBuf>, Error> {
+    Ok(check(path, text)?.dependencies)
 }
 
 pub fn evaluate(path: impl AsRef<Path>, text: &str) -> Result<LoadedModule, Error> {
@@ -136,6 +144,7 @@ struct TypeResolver<'a> {
     sources: &'a mut SourceMap,
     cache: BTreeMap<PathBuf, BTreeMap<String, Scheme>>,
     stack: Vec<PathBuf>,
+    dependencies: BTreeSet<PathBuf>,
 }
 
 impl<'a> TypeResolver<'a> {
@@ -144,7 +153,12 @@ impl<'a> TypeResolver<'a> {
             sources,
             cache: BTreeMap::new(),
             stack: vec![],
+            dependencies: BTreeSet::new(),
         }
+    }
+
+    fn dependencies(self) -> Vec<PathBuf> {
+        self.dependencies.into_iter().collect()
     }
 
     fn import_environments(
@@ -171,6 +185,9 @@ impl<'a> TypeResolver<'a> {
         }
 
         self.stack.push(key.clone());
+        for file in module_source_files(&key)? {
+            self.dependencies.insert(file);
+        }
         let module = load_module(self.sources, &key)?;
         let imports = self.import_environments(&key, &module)?;
         let schemes = Inferencer::with_prelude().infer_module_with_imports(&module, &imports)?;
@@ -257,14 +274,18 @@ fn resolve_import(importer: &Path, import: &str) -> Result<PathBuf, Error> {
 
 fn load_module(sources: &mut SourceMap, path: &Path) -> Result<Module, Error> {
     let mut nodes = vec![];
-    if path.is_dir() {
-        for file in module_files(path)? {
-            nodes.extend(parse_file(sources, &file)?);
-        }
-    } else {
-        nodes.extend(parse_file(sources, path)?);
+    for file in module_source_files(path)? {
+        nodes.extend(parse_file(sources, &file)?);
     }
     Ok(Lowerer.lower_module(&nodes)?)
+}
+
+fn module_source_files(path: &Path) -> Result<Vec<PathBuf>, Error> {
+    if path.is_dir() {
+        module_files(path)
+    } else {
+        Ok(vec![canonicalize(path)?])
+    }
 }
 
 fn parse_file(sources: &mut SourceMap, path: &Path) -> Result<Vec<Node>, Error> {

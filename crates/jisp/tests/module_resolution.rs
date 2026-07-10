@@ -1,3 +1,4 @@
+use std::collections::BTreeSet;
 use std::fs;
 use std::path::PathBuf;
 
@@ -213,11 +214,111 @@ fn imports_expose_only_exported_names() {
     );
 }
 
+#[test]
+fn import_dependencies_include_extensionless_file_imports() {
+    let dir = fixture_dir("file-import-dependencies");
+    let main = dir.join("main.lisp");
+    let math = dir.join("math.lisp");
+    fs::write(&math, "(export inc (fn (value) (+ value 1)))").unwrap();
+    fs::write(
+        &main,
+        r#"
+(import math "math")
+(export main (fn () (math.inc 41)))
+"#,
+    )
+    .unwrap();
+
+    let text = fs::read_to_string(&main).unwrap();
+    let dependencies = dependency_set(jisp::import_dependencies(&main, &text).unwrap());
+
+    assert_eq!(dependencies, BTreeSet::from([canonical(&math)]));
+}
+
+#[test]
+fn import_dependencies_include_directory_module_source_files() {
+    let dir = fixture_dir("directory-import-dependencies");
+    let module_dir = dir.join("math");
+    fs::create_dir_all(&module_dir).unwrap();
+    let main = dir.join("main.lisp");
+    let inc = module_dir.join("inc.lisp");
+    let dec = module_dir.join("dec.json");
+    let double = module_dir.join("double.yaml");
+    fs::write(&inc, "(export inc (fn (value) (+ value 1)))").unwrap();
+    fs::write(
+        &dec,
+        r#"[["export","dec",["fn",["value"],["-","value",1]]]]"#,
+    )
+    .unwrap();
+    fs::write(
+        &double,
+        r#"[[export, double, [fn, [value], [*, value, 2]]]]"#,
+    )
+    .unwrap();
+    fs::write(
+        &main,
+        r#"
+(import math "math")
+(export main (fn () (math.dec (math.double (math.inc 41)))))
+"#,
+    )
+    .unwrap();
+
+    let text = fs::read_to_string(&main).unwrap();
+    let dependencies = dependency_set(jisp::import_dependencies(&main, &text).unwrap());
+
+    assert_eq!(
+        dependencies,
+        BTreeSet::from([canonical(&dec), canonical(&double), canonical(&inc)])
+    );
+}
+
+#[test]
+fn import_dependencies_include_transitive_imports() {
+    let dir = fixture_dir("transitive-import-dependencies");
+    let main = dir.join("main.lisp");
+    let app = dir.join("app.lisp");
+    let math = dir.join("math.lisp");
+    fs::write(&math, "(export inc (fn (value) (+ value 1)))").unwrap();
+    fs::write(
+        &app,
+        r#"
+(import math "math")
+(export answer (math.inc 41))
+"#,
+    )
+    .unwrap();
+    fs::write(
+        &main,
+        r#"
+(import app "app")
+(export main app.answer)
+"#,
+    )
+    .unwrap();
+
+    let text = fs::read_to_string(&main).unwrap();
+    let dependencies = dependency_set(jisp::import_dependencies(&main, &text).unwrap());
+
+    assert_eq!(
+        dependencies,
+        BTreeSet::from([canonical(&app), canonical(&math)])
+    );
+}
+
 fn assert_int(value: jisp::jisp_eval::Value, expected: i64) {
     match value {
         jisp::jisp_eval::Value::Int(actual) => assert_eq!(actual, expected),
         other => panic!("expected int {expected}, got {}", other.display_string()),
     }
+}
+
+fn dependency_set(paths: Vec<PathBuf>) -> BTreeSet<PathBuf> {
+    paths.into_iter().collect()
+}
+
+fn canonical(path: &PathBuf) -> PathBuf {
+    path.canonicalize().unwrap()
 }
 
 fn fixture_dir(name: &str) -> PathBuf {

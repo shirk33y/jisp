@@ -16,6 +16,8 @@ enum Command {
         path: PathBuf,
         #[arg(long)]
         types: bool,
+        #[arg(long)]
+        deps: bool,
     },
     Run {
         path: PathBuf,
@@ -31,17 +33,27 @@ enum Command {
 fn main() -> Result<()> {
     let cli = Cli::parse();
     match cli.command {
-        Command::Check { path, types } => {
+        Command::Check { path, types, deps } => {
             let text = read(&path)?;
-            let checked = if types {
-                jisp::check(&path, &text).map(|_| ())
+            if types || deps {
+                let checked = jisp::check(&path, &text);
+                let parsed = match checked {
+                    Ok(parsed) => parsed,
+                    Err(error) => report_jisp_error(&path, &text, &error),
+                };
+                if deps {
+                    for dependency in parsed.dependencies {
+                        println!("{}", dependency.display());
+                    }
+                } else {
+                    println!("ok: {}", path.display());
+                }
             } else {
-                jisp::parse(&path, &text).map(|_| ())
-            };
-            if let Err(error) = checked {
-                report_jisp_error(&path, &text, &error);
+                if let Err(error) = jisp::parse(&path, &text) {
+                    report_jisp_error(&path, &text, &error);
+                }
+                println!("ok: {}", path.display());
             }
-            println!("ok: {}", path.display());
         }
         Command::Run { path } => {
             let text = read(&path)?;
