@@ -23,10 +23,10 @@ recursive SCC grouping, enum constructors, `case` pattern typing, minimal
 variant exhaustiveness for user-defined ADTs and prelude `result`/`option`,
 finite `bool`/`null` literal cases, redundant finite-domain `case` patterns, and
 a conservative prelude for fixed-arity stdlib functions plus simple runtime
-helpers such as predicates, `result.recover`, numeric overloads, and basic
-object introspection. Remaining type-system work includes richer exhaustiveness
-for lists and objects, and stdlib schemes for variadic and
-object/row-polymorphic builtins.
+helpers such as predicates, `result.recover`, numeric overloads, fixed-arity
+`str.cat`/`list.cat`/`io.println`, and basic object introspection. Remaining
+type-system work includes richer exhaustiveness for lists and objects, variadic
+function schemes, and object/row-polymorphic builtins.
 
 `jisp-types` now exposes `Inferencer::infer_module_with_imports` and
 `ImportTypeEnvironments`. It resolves each `import` by path and installs

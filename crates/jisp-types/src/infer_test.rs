@@ -608,6 +608,35 @@ fn prelude_infers_basic_object_helpers() {
 }
 
 #[test]
+fn prelude_infers_fixed_arity_variadic_runtime_helpers() {
+    let mut inferencer = Inferencer::with_prelude();
+
+    let str_cat = expr(ExprKind::Call {
+        callee: Box::new(name("str.cat")),
+        arguments: vec![string("hello"), string(" world")],
+    });
+    assert_eq!(inferencer.infer_expr(&str_cat).unwrap(), Type::Str);
+
+    let list_cat = expr(ExprKind::Call {
+        callee: Box::new(name("list.cat")),
+        arguments: vec![
+            expr(ExprKind::List(vec![int(1)])),
+            expr(ExprKind::List(vec![int(2)])),
+        ],
+    });
+    assert_eq!(
+        inferencer.infer_expr(&list_cat).unwrap(),
+        Type::List(Box::new(Type::Int))
+    );
+
+    let println = expr(ExprKind::Call {
+        callee: Box::new(name("io.println")),
+        arguments: vec![string("hello")],
+    });
+    assert_eq!(inferencer.infer_expr(&println).unwrap(), Type::Null);
+}
+
+#[test]
 fn prelude_infers_result_case() {
     let mut inferencer = Inferencer::with_prelude();
     let expression = expr(ExprKind::Case {

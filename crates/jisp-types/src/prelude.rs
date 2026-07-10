@@ -66,6 +66,11 @@ pub fn environment() -> BTreeMap<String, Scheme> {
     add(&mut env, "str.len", mono(fun(vec![Type::Str], Type::Int)));
     add(
         &mut env,
+        "str.cat",
+        mono(fun(vec![Type::Str, Type::Str], Type::Str)),
+    );
+    add(
+        &mut env,
         "str.join",
         mono(fun(vec![Type::Str, list(Type::Str)], Type::Str)),
     );
@@ -189,6 +194,14 @@ pub fn environment() -> BTreeMap<String, Scheme> {
     );
     add(
         &mut env,
+        "list.cat",
+        scheme(
+            vec![0],
+            fun(vec![list(var(0)), list(var(0))], list(var(0))),
+        ),
+    );
+    add(
+        &mut env,
         "list.prepend",
         scheme(vec![0], fun(vec![var(0), list(var(0))], list(var(0)))),
     );
@@ -268,6 +281,12 @@ pub fn environment() -> BTreeMap<String, Scheme> {
                 result(var(0), var(2)),
             ),
         ),
+    );
+
+    add(
+        &mut env,
+        "io.println",
+        scheme(vec![0], fun(vec![var(0)], Type::Null)),
     );
 
     env
