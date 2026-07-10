@@ -223,7 +223,7 @@ impl Lowerer {
             Some("use") => self.lower_use(span, items),
             Some("quote" | "quasiquote" | "`" | "macro" | "~") => Err(error(
                 span,
-                "macro-phase syntax is reserved but the hygienic macro expander is not implemented",
+                "macro-phase syntax must be expanded before lowering",
             )),
             Some("unquote" | "," | "unquote-splicing" | ",@") => Err(error(
                 span,

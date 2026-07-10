@@ -150,6 +150,7 @@ version = "0.0.1"
 dependencies = [
  "jisp-core",
  "jisp-eval",
+ "jisp-expand",
  "jisp-ir",
  "jisp-macros",
  "jisp-syntax-json",
@@ -202,6 +203,14 @@ dependencies = [
  "jisp-syntax-lisp",
  "jisp-syntax-yaml",
  "jisp-types",
+ "thiserror",
+]
+
+[[package]]
+name = "jisp-expand"
+version = "0.0.1"
+dependencies = [
+ "jisp-core",
  "thiserror",
 ]
 

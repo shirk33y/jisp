@@ -5,7 +5,7 @@ JSON / restricted YAML / Lisp
               ↓
       source-aware Node AST
               ↓
-     macro expansion (TODO)
+        macro expansion
               ↓
  module/name resolution (TODO)
               ↓
@@ -21,6 +21,8 @@ JSON / restricted YAML / Lisp
 - `jisp-core`: source files, spans, AST, diagnostics, special-form registry,
   generated core schema.
 - `jisp-syntax-*`: three readers normalising to the same AST.
+- `jisp-expand`: quote/quasiquote/unquote/unquote-splicing expansion and
+  origin tracking before lowering.
 - `jisp-ir`: syntax-independent Core IR and lowering.
 - `jisp-types`: type representation and unifier; expression inference pending.
 - `jisp-runtime`: reusable pure implementations of math/string/list/object ops.

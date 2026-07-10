@@ -11,15 +11,14 @@ This is the single authoritative list of intentionally unfinished work.
   list/object exhaustiveness are implemented. Static-key `obj.get`, `obj.set`,
   `obj.del`, homogeneous `obj.values`, and closed-row `obj.cat` refinements are
   implemented with dynamic-key fallback.
-- Implement a hygienic macro expander for quote/quasiquote/unquote/splicing.
+- Render macro-origin chains in diagnostics using the `jisp-expand`
+  `ExpansionMap`. Quote/quasiquote/unquote/splicing expansion is implemented
+  before lowering; compile-time user macro evaluation remains P1.
 - Wire resolved module dependencies into proc-macro/native compilation so
   imported source files are tracked through the same resolver seam used by
   `jisp::check` and `jisp::run_main`. The facade exposes
   `jisp::import_dependencies`, and `jisp check --deps` lists imported source
   files for CLI tooling.
-- Preserve macro-origin chains in diagnostics. Basic primary/secondary
-  diagnostic rendering includes source snippets, notes, cross-file labels, and
-  multi-line spans.
 
 ## P1 — native compiler and product validation
 

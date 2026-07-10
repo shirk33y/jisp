@@ -8,12 +8,14 @@ use std::{
 
 use jisp_core::{detect_syntax, Node, SourceMap, Syntax, SyntaxParser};
 use jisp_eval::{Evaluator, ImportValues, LoadedModule, RuntimeError, Value};
+use jisp_expand::ExpansionMap;
 use jisp_ir::{LowerError, Lowerer, Module};
 use jisp_types::{ImportTypeEnvironments, Inferencer, Scheme};
 use thiserror::Error;
 
 pub use jisp_core;
 pub use jisp_eval;
+pub use jisp_expand;
 pub use jisp_ir;
 pub use jisp_macros::{file, json_file, lisp_file, yaml_file};
 pub use jisp_types;
@@ -24,6 +26,8 @@ pub enum Error {
     UnknownSyntax(String),
     #[error(transparent)]
     Parse(#[from] jisp_core::ParseError),
+    #[error(transparent)]
+    Expand(#[from] jisp_expand::ExpandError),
     #[error(transparent)]
     Lower(#[from] LowerError),
     #[error(transparent)]
@@ -50,6 +54,7 @@ pub struct ParseOptions {
 pub struct ParsedModule {
     pub sources: SourceMap,
     pub module: Module,
+    pub expansion_map: ExpansionMap,
     pub types: Option<BTreeMap<String, Scheme>>,
     pub dependencies: Vec<PathBuf>,
 }
@@ -91,7 +96,8 @@ pub fn parse_as_with_options(
         Syntax::Yaml => jisp_syntax_yaml::YamlParser.parse_module(source, text)?,
         Syntax::Lisp => jisp_syntax_lisp::LispParser.parse_module(source, text)?,
     };
-    let module = Lowerer.lower_module(&nodes)?;
+    let expanded = jisp_expand::expand_module(&nodes)?;
+    let module = Lowerer.lower_module(&expanded.nodes)?;
     let mut dependencies = vec![];
     let types = if options.infer_types {
         let mut resolver = TypeResolver::new(&mut sources);
@@ -105,6 +111,7 @@ pub fn parse_as_with_options(
     Ok(ParsedModule {
         sources,
         module,
+        expansion_map: expanded.expansion_map,
         types,
         dependencies,
     })

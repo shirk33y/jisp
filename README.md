@@ -28,6 +28,7 @@ Implemented or substantially sketched:
 
 - source-aware AST and diagnostics;
 - custom readers for canonical JSON, Lisp, and restricted YAML-like syntax;
+- quote/quasiquote/unquote/unquote-splicing expansion before lowering;
 - lowering to a shared Core IR;
 - lexical evaluator with closures, recursive definitions, enum constructors, `case`,
   lists, objects, string templates, and a minimal standard environment;
@@ -41,7 +42,7 @@ Implemented or substantially sketched:
 Not complete:
 
 - full Hindley–Milner inference over Core IR;
-- hygienic macro expander;
+- compile-time evaluation for user macros;
 - complete module graph and package loader;
 - native Rust code generation;
 - source-map remapping of rustc diagnostics;

@@ -60,10 +60,13 @@ Numeric semantics are now specified in `SPEC.md`: integers are checked `i64`,
 float arithmetic is `f64`, numeric builtins do not coerce int/float operands,
 division by zero is an error, and NaN is not equal to itself.
 
-Diagnostic rendering in `jisp-core` supports source snippets, notes, cross-file
-secondary labels, and multi-line spans. Macro-origin chains are still pending
-and should be designed with the macro expander rather than bolted onto the
-renderer alone.
+`jisp-expand` runs after parsing and before lowering through the `jisp` facade.
+It expands `quote`, `quasiquote`/`` ` ``, `unquote`/`,`, and
+`unquote-splicing`/`,@`, and records an `ExpansionMap` on `ParsedModule`.
+Compile-time user macro evaluation remains P1. Diagnostic rendering in
+`jisp-core` supports source snippets, notes, cross-file secondary labels, and
+multi-line spans. Rendering macro-origin chains through the expansion map is
+still pending.
 
 ## Useful existing seams
 

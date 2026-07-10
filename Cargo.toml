@@ -6,6 +6,7 @@ members = [
   "crates/jisp-syntax-json",
   "crates/jisp-syntax-yaml",
   "crates/jisp-syntax-lisp",
+  "crates/jisp-expand",
   "crates/jisp-ir",
   "crates/jisp-types",
   "crates/jisp-runtime",
@@ -38,6 +39,7 @@ jisp-core = { path = "crates/jisp-core" }
 jisp-syntax-json = { path = "crates/jisp-syntax-json" }
 jisp-syntax-yaml = { path = "crates/jisp-syntax-yaml" }
 jisp-syntax-lisp = { path = "crates/jisp-syntax-lisp" }
+jisp-expand = { path = "crates/jisp-expand" }
 jisp-ir = { path = "crates/jisp-ir" }
 jisp-types = { path = "crates/jisp-types" }
 jisp-runtime = { path = "crates/jisp-runtime" }
