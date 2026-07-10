@@ -454,7 +454,43 @@ fn prelude_rejects_non_exhaustive_result_case() {
 }
 
 #[test]
-fn rejects_imports_until_module_resolution_has_type_environments() {
+fn infers_qualified_values_from_import_type_environments() {
+    let mut inferencer = Inferencer::default();
+    let module = Module {
+        imports: vec![Import {
+            alias: "math".to_owned(),
+            path: "math".to_owned(),
+            span: span(),
+        }],
+        types: vec![],
+        definitions: vec![definition(
+            "main",
+            expr(ExprKind::Call {
+                callee: Box::new(name("math.inc")),
+                arguments: vec![int(41)],
+            }),
+        )],
+        exports: vec![],
+    };
+    let mut math = BTreeMap::new();
+    math.insert(
+        "inc".to_owned(),
+        Scheme::mono(Type::Function {
+            parameters: vec![Type::Int],
+            result: Box::new(Type::Int),
+        }),
+    );
+    let imports = BTreeMap::from([("math".to_owned(), math)]);
+
+    let schemes = inferencer
+        .infer_module_with_imports(&module, &imports)
+        .unwrap();
+
+    assert_eq!(schemes["main"].body, Type::Int);
+}
+
+#[test]
+fn rejects_unresolved_import_type_environments() {
     let mut inferencer = Inferencer::default();
     let module = Module {
         imports: vec![Import {
@@ -469,6 +505,7 @@ fn rejects_imports_until_module_resolution_has_type_environments() {
 
     assert!(matches!(
         inferencer.infer_module(&module),
-        Err(InferError::NotImplemented("import type environments"))
+        Err(InferError::UnresolvedImport { alias, path })
+            if alias == "math" && path == "std/math"
     ));
 }

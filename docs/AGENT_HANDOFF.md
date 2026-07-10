@@ -26,6 +26,12 @@ type-system work includes richer exhaustiveness for lists, objects, redundant
 patterns, and stdlib schemes for variadic, overloaded, and
 object/row-polymorphic builtins.
 
+`jisp-types` now exposes `Inferencer::infer_module_with_imports` and
+`ImportTypeEnvironments`. It resolves each `import` by path and installs
+exported schemes as `alias.name` bindings. The next module-system step is a real
+facade/CLI file resolver that parses dependency modules, filters exported
+schemes, detects cycles, and passes those environments into the inferencer.
+
 Portable Lisp fixture tests now live under `tests/language/` and are registered
 as Cargo-visible tests by `crates/jisp-eval/build.rs`. The generated tests call
 `crates/jisp-eval/tests/portable_lisp_support.rs`, which strips the selected

@@ -1,9 +1,11 @@
 use std::collections::{BTreeMap, BTreeSet};
 
-use jisp_ir::{CaseBranch, Expr, ExprKind, Literal, Module, Pattern, StringPart, TypeDecl};
+use jisp_ir::{CaseBranch, Expr, ExprKind, Import, Literal, Module, Pattern, StringPart, TypeDecl};
 use thiserror::Error;
 
 use crate::{ObjectRow, Scheme, Type, TypeVar, Unifier, UnifyError};
+
+pub type ImportTypeEnvironments = BTreeMap<String, BTreeMap<String, Scheme>>;
 
 #[derive(Clone, Debug, Error)]
 pub enum InferError {
@@ -15,6 +17,9 @@ pub enum InferError {
 
     #[error("full Core IR inference is not implemented yet: {0}")]
     NotImplemented(&'static str),
+
+    #[error("unresolved import `{alias}` from `{path}`")]
+    UnresolvedImport { alias: String, path: String },
 
     #[error("pattern binds `{0}` more than once")]
     DuplicatePatternBinding(String),
@@ -71,10 +76,15 @@ impl Inferencer {
         &mut self,
         module: &Module,
     ) -> Result<BTreeMap<String, Scheme>, InferError> {
-        if !module.imports.is_empty() {
-            return Err(InferError::NotImplemented("import type environments"));
-        }
+        self.infer_module_with_imports(module, &BTreeMap::new())
+    }
 
+    pub fn infer_module_with_imports(
+        &mut self,
+        module: &Module,
+        imports: &ImportTypeEnvironments,
+    ) -> Result<BTreeMap<String, Scheme>, InferError> {
+        self.install_imports(&module.imports, imports)?;
         self.install_type_constructors(&module.types)?;
         let base_environment = self.environment.clone();
         let mut placeholders = BTreeMap::new();
@@ -107,6 +117,26 @@ impl Inferencer {
         }
 
         Ok(schemes)
+    }
+
+    fn install_imports(
+        &mut self,
+        imports: &[Import],
+        environments: &ImportTypeEnvironments,
+    ) -> Result<(), InferError> {
+        for import in imports {
+            let environment =
+                environments
+                    .get(&import.path)
+                    .ok_or_else(|| InferError::UnresolvedImport {
+                        alias: import.alias.clone(),
+                        path: import.path.clone(),
+                    })?;
+            for (name, scheme) in environment {
+                self.define(format!("{}.{}", import.alias, name), scheme.clone());
+            }
+        }
+        Ok(())
     }
 
     pub fn infer_expr(&mut self, expr: &Expr) -> Result<Type, InferError> {
