@@ -315,6 +315,28 @@ fn emit_rust_detailed_emits_native_object_case_patterns() {
 }
 
 #[test]
+fn emit_rust_detailed_emits_static_object_helpers() {
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../examples/object_helpers.lisp");
+    let text = fs::read_to_string(&path).unwrap();
+    let generated = jisp::emit_rust_detailed(&path, &text).unwrap();
+
+    let tokens = generated.tokens.to_string();
+
+    assert!(tokens.contains("fn renamed () -> JispObject"));
+    assert!(tokens.contains("name :"));
+    assert!(tokens.contains("String :: from (\"Grace\")"));
+    assert!(tokens.contains("fn public_profile () -> JispObject"));
+    assert!(tokens.contains("age : __jisp_object . age . clone ()"));
+    assert!(tokens.contains("fn combined () -> JispObject"));
+    assert!(tokens.contains("active : __jisp_object_1 . active . clone ()"));
+    assert!(tokens.contains("vec ! [String :: from (\"active\")"));
+    assert!(tokens.contains("vec ! [__jisp_object . end . clone ()"));
+    assert!(tokens.contains("pub fn main () -> i64"));
+    assert!(!tokens.contains("Value"));
+    assert!(!tokens.contains("jisp_eval"));
+}
+
+#[test]
 fn emit_rust_detailed_emits_ui_data_shape_as_static_structs() {
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../examples/ui_button.lisp");
     let text = fs::read_to_string(&path).unwrap();

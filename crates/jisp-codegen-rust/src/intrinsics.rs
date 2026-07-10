@@ -45,6 +45,13 @@ impl<'a> EmitContext<'a> {
             "list.has" => self.emit_list_has_intrinsic(arguments),
             "list.prepend" => self.emit_list_prepend_intrinsic(arguments),
             "list.append" => self.emit_list_append_intrinsic(arguments),
+            "obj.len" => self.emit_obj_len_intrinsic(arguments),
+            "obj.has" => self.emit_obj_has_intrinsic(arguments),
+            "obj.keys" => self.emit_obj_keys_intrinsic(arguments),
+            "obj.set" => self.emit_obj_set_intrinsic(arguments, expected),
+            "obj.del" => self.emit_obj_del_intrinsic(arguments, expected),
+            "obj.values" => self.emit_obj_values_intrinsic(arguments),
+            "obj.cat" => self.emit_obj_cat_intrinsic(arguments, expected),
             _ => Err(CodegenError::Unsupported("calls outside native module")),
         }
     }
@@ -382,6 +389,191 @@ impl<'a> EmitContext<'a> {
             __jisp_list.push(#value);
             __jisp_list
         }})
+    }
+
+    fn emit_obj_len_intrinsic(&mut self, arguments: &[Expr]) -> Result<TokenStream, CodegenError> {
+        let [object] = arguments else {
+            return Err(CodegenError::Unsupported("non-unary native intrinsics"));
+        };
+        let row = self.native_object_row(object)?;
+        let len = row.fields.len() as i64;
+        Ok(quote! { #len })
+    }
+
+    fn emit_obj_has_intrinsic(&mut self, arguments: &[Expr]) -> Result<TokenStream, CodegenError> {
+        let [object, key] = arguments else {
+            return Err(CodegenError::Unsupported("non-binary native intrinsics"));
+        };
+        let Some(key) = super::static_string_key(key) else {
+            return Err(CodegenError::Unsupported("dynamic native object keys"));
+        };
+        let row = self.native_object_row(object)?;
+        let has = row.fields.contains_key(&key);
+        Ok(quote! { #has })
+    }
+
+    fn emit_obj_keys_intrinsic(&mut self, arguments: &[Expr]) -> Result<TokenStream, CodegenError> {
+        let [object] = arguments else {
+            return Err(CodegenError::Unsupported("non-unary native intrinsics"));
+        };
+        let row = self.native_object_row(object)?;
+        let keys = row.fields.keys();
+        Ok(quote! { vec![#(String::from(#keys)),*] })
+    }
+
+    fn emit_obj_set_intrinsic(
+        &mut self,
+        arguments: &[Expr],
+        expected: Option<&Type>,
+    ) -> Result<TokenStream, CodegenError> {
+        let [object, key, value] = arguments else {
+            return Err(CodegenError::Unsupported("non-ternary native intrinsics"));
+        };
+        let Some(key) = super::static_string_key(key) else {
+            return Err(CodegenError::Unsupported("dynamic native object keys"));
+        };
+        let Some(Type::Object(row)) = expected else {
+            return Err(CodegenError::Unsupported(
+                "obj.set without expected object type",
+            ));
+        };
+        let ident = self.object_types.ident_for_row(row)?;
+        let object = self.emit_expr(object, None)?;
+        let fields = row
+            .fields
+            .iter()
+            .map(|(name, ty)| {
+                let field = super::rust_ident(name);
+                if name == &key {
+                    let value = self.emit_expr(value, Some(ty))?;
+                    Ok(quote! { #field: #value })
+                } else {
+                    Ok(quote! { #field: __jisp_object.#field.clone() })
+                }
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(quote! {{
+            let __jisp_object = #object;
+            #ident { #(#fields),* }
+        }})
+    }
+
+    fn emit_obj_del_intrinsic(
+        &mut self,
+        arguments: &[Expr],
+        expected: Option<&Type>,
+    ) -> Result<TokenStream, CodegenError> {
+        let [object, key] = arguments else {
+            return Err(CodegenError::Unsupported("non-binary native intrinsics"));
+        };
+        if super::static_string_key(key).is_none() {
+            return Err(CodegenError::Unsupported("dynamic native object keys"));
+        }
+        let Some(Type::Object(row)) = expected else {
+            return Err(CodegenError::Unsupported(
+                "obj.del without expected object type",
+            ));
+        };
+        let ident = self.object_types.ident_for_row(row)?;
+        let object = self.emit_expr(object, None)?;
+        let fields = row
+            .fields
+            .keys()
+            .map(|name| {
+                let field = super::rust_ident(name);
+                quote! { #field: __jisp_object.#field.clone() }
+            })
+            .collect::<Vec<_>>();
+        Ok(quote! {{
+            let __jisp_object = #object;
+            #ident { #(#fields),* }
+        }})
+    }
+
+    fn emit_obj_values_intrinsic(
+        &mut self,
+        arguments: &[Expr],
+    ) -> Result<TokenStream, CodegenError> {
+        let [object] = arguments else {
+            return Err(CodegenError::Unsupported("non-unary native intrinsics"));
+        };
+        let row = self.native_object_row(object)?;
+        let object = self.emit_expr(object, None)?;
+        let fields = row.fields.keys().map(|name| {
+            let field = super::rust_ident(name);
+            quote! { __jisp_object.#field.clone() }
+        });
+        Ok(quote! {{
+            let __jisp_object = #object;
+            vec![#(#fields),*]
+        }})
+    }
+
+    fn emit_obj_cat_intrinsic(
+        &mut self,
+        arguments: &[Expr],
+        expected: Option<&Type>,
+    ) -> Result<TokenStream, CodegenError> {
+        let Some(Type::Object(row)) = expected else {
+            return Err(CodegenError::Unsupported(
+                "obj.cat without expected object type",
+            ));
+        };
+        let ident = self.object_types.ident_for_row(row)?;
+        let rows = arguments
+            .iter()
+            .map(|argument| self.native_object_row(argument))
+            .collect::<Result<Vec<_>, _>>()?;
+        let objects = arguments
+            .iter()
+            .map(|argument| self.emit_expr(argument, None))
+            .collect::<Result<Vec<_>, _>>()?;
+        let fields = row
+            .fields
+            .keys()
+            .map(|name| {
+                let source = rows
+                    .iter()
+                    .enumerate()
+                    .rev()
+                    .find(|(_, row)| row.fields.contains_key(name))
+                    .map(|(index, _)| format!("__jisp_object_{index}"))
+                    .ok_or(CodegenError::Unsupported("obj.cat native field mismatch"))?;
+                let source = super::rust_ident(&source);
+                let field = super::rust_ident(name);
+                Ok(quote! { #field: #source.#field.clone() })
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        let bindings = objects.into_iter().enumerate().map(|(index, object)| {
+            let name = super::rust_ident(&format!("__jisp_object_{index}"));
+            quote! { let #name = #object; }
+        });
+        Ok(quote! {{
+            #(#bindings)*
+            #ident { #(#fields),* }
+        }})
+    }
+
+    fn native_object_row(&self, expr: &Expr) -> Result<jisp_types::ObjectRow, CodegenError> {
+        let jisp_ir::ExprKind::Name(name) = &expr.kind else {
+            return Err(CodegenError::Unsupported(
+                "native object helper arguments without known object rows",
+            ));
+        };
+        let ty = self
+            .locals
+            .get(name)
+            .and_then(Option::as_ref)
+            .or_else(|| self.top_level_schemes.get(name).map(|scheme| &scheme.body));
+        match ty {
+            Some(Type::Object(row)) if row.rest.is_none() => Ok(row.clone()),
+            Some(Type::Object(_)) => {
+                Err(CodegenError::Unsupported("open object row type emission"))
+            }
+            _ => Err(CodegenError::Unsupported(
+                "native object helper arguments without known object rows",
+            )),
+        }
     }
 }
 
