@@ -32,19 +32,23 @@ This is the single authoritative list of intentionally unfinished work.
 
 ## P2 — language completeness
 
-- Add `use` desugaring.
-- Add compile-time evaluation for user macros.
-- Add case guards, alternative patterns, aliases, and robust exhaustiveness.
+- Add arbitrary-precision `bigint` values, with an explicit constructor form
+  such as `(bigint "32849384983498230592309502398509388908203986232306")`
+  before deciding whether plain integer literals may exceed `i64`.
 - Add native backend support for first-class function values, nested functions,
   variadic user functions, generic named types from prelude such as
   `result<T,E>`, `obj.get`, dynamic object helpers/open rows, dynamic field
   access, and the remaining typed prelude helpers such as `str.slice` and
   `list.get`.
+- Add `use` desugaring.
+- Build a minimal UI proof prototype once P1 validates the data shape, starting
+  with Jisp structural UI data rendered to a simple HTML/string or JSON vnode
+  target before a full renderer.
+- Improve portable `.lisp` test runner UX with better listing, filtering, and
+  failure reporting.
+- Add compile-time evaluation for user macros.
+- Add case guards, alternative patterns, aliases, and robust exhaustiveness.
 - Expand `jisp-macros` beyond item-position native file emission.
-- Implement a real UI renderer/prototype once P1 validates the data shape.
-- Add arbitrary-precision `bigint` values, with an explicit constructor form
-  such as `(bigint "32849384983498230592309502398509388908203986232306")`
-  before deciding whether plain integer literals may exceed `i64`.
 - Broaden the current item-level generated-to-source mapping for `emit-rust`
   output into the granularity needed for diagnostics. The facade already maps
   generated Rust functions, structs, and enums back to Jisp definition/type
@@ -52,8 +56,7 @@ This is the single authoritative list of intentionally unfinished work.
 - Wrap Cargo/rustc JSON diagnostics and remap them to Jisp source ranges.
 - Finalise immutable/COW semantics for `list` and `obj` updates.
 - Add project-aware JSON Schema generated from resolved modules.
-- Add formatter, richer portable `.lisp` test runner UX, REPL persistence, LSP,
-  and package tooling.
+- Add formatter, REPL persistence, LSP, and package tooling.
 
 ## Deferred by design
 
