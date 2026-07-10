@@ -132,7 +132,7 @@ impl<'a> EmitContext<'a> {
             }
             ExprKind::Call { callee, arguments } => self.emit_call(callee, arguments),
             ExprKind::Lambda { .. } => Err(CodegenError::Unsupported("nested functions")),
-            ExprKind::List(_) => Err(CodegenError::Unsupported("list expressions")),
+            ExprKind::List(items) => self.emit_list(items),
             ExprKind::Object(_) => Err(CodegenError::Unsupported("object expressions")),
             ExprKind::Field { .. } => Err(CodegenError::Unsupported("field access")),
             ExprKind::StringTemplate { .. } => Err(CodegenError::Unsupported("string templates")),
@@ -171,6 +171,14 @@ impl<'a> EmitContext<'a> {
             .collect::<Result<Vec<_>, _>>()?;
         let last = self.emit_expr(last)?;
         Ok(quote! {{ #(#leading;)* #last }})
+    }
+
+    fn emit_list(&mut self, items: &[Expr]) -> Result<TokenStream, CodegenError> {
+        let items = items
+            .iter()
+            .map(|item| self.emit_expr(item))
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(quote! { vec![#(#items),*] })
     }
 
     fn emit_bool_chain(

@@ -44,12 +44,34 @@ fn emit_rust_detailed_emits_native_prelude_operators() {
 }
 
 #[test]
+fn emit_rust_detailed_emits_list_literals_as_vecs() {
+    let generated = jisp::emit_rust_as_detailed(
+        "main.lisp",
+        Syntax::Lisp,
+        r#"
+(export main (fn () (list (+ 1 1) 3)))
+"#,
+    )
+    .unwrap();
+
+    let tokens = generated.tokens.to_string();
+
+    assert!(tokens.contains("pub fn main () -> Vec < i64 >"));
+    assert!(tokens.contains("vec ! [(1i64 + 1i64) , 3i64]"));
+    assert!(!tokens.contains("Value"));
+    assert!(!tokens.contains("jisp_eval"));
+}
+
+#[test]
 fn emit_rust_detailed_rejects_unsupported_shapes_without_runtime_fallback() {
-    let error = match jisp::emit_rust_as_detailed("main.lisp", Syntax::Lisp, "(def xs (list 1))") {
+    let error = match jisp::emit_rust_as_detailed("main.lisp", Syntax::Lisp, "(def xs (obj))") {
         Ok(_) => panic!("expected unsupported native codegen shape"),
         Err(error) => error.error,
     };
 
     assert!(matches!(error, jisp::Error::Codegen(_)), "{error}");
-    assert!(error.to_string().contains("list expressions"), "{error}");
+    assert!(
+        error.to_string().contains("object type emission"),
+        "{error}"
+    );
 }

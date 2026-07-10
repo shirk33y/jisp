@@ -160,6 +160,31 @@ fn emits_binary_prelude_intrinsics_as_native_operators() {
 }
 
 #[test]
+fn emits_list_literals_as_vecs() {
+    let module = typed_module(
+        vec![definition(
+            "main",
+            true,
+            expr(ExprKind::List(vec![
+                expr(ExprKind::Call {
+                    callee: Box::new(name("+")),
+                    arguments: vec![literal(Literal::Int(1)), literal(Literal::Int(1))],
+                }),
+                literal(Literal::Int(3)),
+            ])),
+        )],
+        vec![("main", Type::List(Box::new(Type::Int)))],
+    );
+
+    let generated = generate(&module).unwrap().to_string();
+
+    assert!(generated.contains("pub fn main () -> Vec < i64 >"));
+    assert!(generated.contains("vec ! [(1i64 + 1i64) , 3i64]"));
+    assert!(!generated.contains("Value"));
+    assert!(!generated.contains("jisp_eval"));
+}
+
+#[test]
 fn rejects_non_binary_native_intrinsics() {
     let module = typed_module(
         vec![definition(
@@ -182,17 +207,13 @@ fn rejects_non_binary_native_intrinsics() {
 #[test]
 fn rejects_unsupported_native_shapes_without_value_fallback() {
     let module = typed_module(
-        vec![definition(
-            "main",
-            true,
-            expr(ExprKind::List(vec![literal(Literal::Int(1))])),
-        )],
-        vec![("main", Type::List(Box::new(Type::Int)))],
+        vec![definition("main", true, expr(ExprKind::Object(vec![])))],
+        vec![("main", Type::Int)],
     );
 
     assert_eq!(
         generate(&module).unwrap_err(),
-        CodegenError::Unsupported("list expressions")
+        CodegenError::Unsupported("object expressions")
     );
 }
 
