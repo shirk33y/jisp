@@ -27,11 +27,13 @@ Variadic function types are represented in `jisp-types`; lambda rest parameters
 are typed as lists of extra arguments, and runtime-variadic `str.cat` and
 `list.cat` have matching prelude schemes. Runtime object helpers including
 `obj.get`, `obj.set`, `obj.del`, `obj.values`, and variadic `obj.cat` have broad
-object-row prelude schemes. The prelude also has fixed-arity stdlib functions
-plus simple runtime helpers such as predicates, `result.recover`, numeric
-overloads, `io.println`, and basic object introspection. Remaining type-system
-work includes nested/refined exhaustiveness for lists and objects plus richer
-structural object refinements for static keys.
+object-row prelude schemes, plus static-key refinements for `obj.get`,
+`obj.set`, and `obj.del`, homogeneous closed-row `obj.values`, and closed-row
+`obj.cat` with dynamic-key fallback. The prelude also has fixed-arity stdlib
+functions plus simple runtime helpers such as predicates, `result.recover`,
+numeric overloads, `io.println`, and basic object introspection. Remaining
+type-system work includes nested/refined exhaustiveness for lists and objects
+plus deeper structural object narrowing.
 
 `jisp-types` now exposes `Inferencer::infer_module_with_imports` and
 `ImportTypeEnvironments`. It resolves each `import` by path and installs

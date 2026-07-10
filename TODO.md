@@ -8,7 +8,9 @@ This is the single authoritative list of intentionally unfinished work.
   refinements and nested/refined `case` exhaustiveness. Basic structural
   objects, object-row stdlib schemes for runtime object helpers, variadic
   function types, variadic `str.cat`/`list.cat` schemes, and conservative
-  list/object exhaustiveness are implemented.
+  list/object exhaustiveness are implemented. Static-key `obj.get`, `obj.set`,
+  `obj.del`, homogeneous `obj.values`, and closed-row `obj.cat` refinements are
+  implemented with dynamic-key fallback.
 - Implement a hygienic macro expander for quote/quasiquote/unquote/splicing.
 - Wire resolved module dependencies into proc-macro/native compilation so
   imported source files are tracked through the same resolver seam used by

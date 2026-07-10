@@ -200,6 +200,13 @@ impl Inferencer {
                     if let Some(overloads) = self.overloads.get(name).cloned() {
                         return self.infer_overloaded_call(&overloads, arguments);
                     }
+                    if self.can_specialize_object_builtin(name) {
+                        let mut candidate = self.clone();
+                        if let Some(result) = candidate.infer_object_builtin(name, arguments)? {
+                            *self = candidate;
+                            return Ok(self.apply(&result));
+                        }
+                    }
                 }
                 let callee_ty = self.infer_expr(callee)?;
                 let parameters = arguments
@@ -433,6 +440,114 @@ impl Inferencer {
             }),
         )?;
         Ok(field_ty)
+    }
+
+    fn infer_object_builtin(
+        &mut self,
+        name: &str,
+        arguments: &[Expr],
+    ) -> Result<Option<Type>, InferError> {
+        match name {
+            "obj.get" => self.infer_obj_get(arguments),
+            "obj.set" => self.infer_obj_set(arguments),
+            "obj.del" => self.infer_obj_del(arguments),
+            "obj.values" => self.infer_obj_values(arguments),
+            "obj.cat" => self.infer_obj_cat(arguments),
+            _ => Ok(None),
+        }
+    }
+
+    fn infer_obj_get(&mut self, arguments: &[Expr]) -> Result<Option<Type>, InferError> {
+        require_arity(arguments, 2)?;
+        let Some(key) = static_string_key(&arguments[1]) else {
+            return Ok(None);
+        };
+        let key_ty = self.infer_expr(&arguments[1])?;
+        self.unify(key_ty, Type::Str)?;
+        let Some(row) = self.infer_static_object_row(&arguments[0])? else {
+            return Ok(None);
+        };
+        let Some(field) = row.fields.get(&key).cloned() else {
+            return Ok(None);
+        };
+        Ok(Some(result_type(field, Type::Str)))
+    }
+
+    fn infer_obj_set(&mut self, arguments: &[Expr]) -> Result<Option<Type>, InferError> {
+        require_arity(arguments, 3)?;
+        let Some(key) = static_string_key(&arguments[1]) else {
+            return Ok(None);
+        };
+        let key_ty = self.infer_expr(&arguments[1])?;
+        self.unify(key_ty, Type::Str)?;
+        let Some(mut row) = self.infer_static_object_row(&arguments[0])? else {
+            return Ok(None);
+        };
+        let value = self.infer_expr(&arguments[2])?;
+        row.fields.insert(key, self.apply(&value));
+        Ok(Some(Type::Object(row)))
+    }
+
+    fn infer_obj_del(&mut self, arguments: &[Expr]) -> Result<Option<Type>, InferError> {
+        require_arity(arguments, 2)?;
+        let Some(key) = static_string_key(&arguments[1]) else {
+            return Ok(None);
+        };
+        let key_ty = self.infer_expr(&arguments[1])?;
+        self.unify(key_ty, Type::Str)?;
+        let Some(mut row) = self.infer_static_object_row(&arguments[0])? else {
+            return Ok(None);
+        };
+        row.fields.remove(&key);
+        Ok(Some(Type::Object(row)))
+    }
+
+    fn infer_obj_values(&mut self, arguments: &[Expr]) -> Result<Option<Type>, InferError> {
+        require_arity(arguments, 1)?;
+        let Some(row) = self.infer_static_object_row(&arguments[0])? else {
+            return Ok(None);
+        };
+        if row.rest.is_some() || row.fields.is_empty() {
+            return Ok(None);
+        }
+        let item = self.fresh_type();
+        for value in row.fields.values() {
+            if self.unify(item.clone(), value.clone()).is_err() {
+                return Ok(None);
+            }
+        }
+        Ok(Some(Type::List(Box::new(self.apply(&item)))))
+    }
+
+    fn infer_obj_cat(&mut self, arguments: &[Expr]) -> Result<Option<Type>, InferError> {
+        let mut fields = BTreeMap::new();
+        for argument in arguments {
+            let Some(row) = self.infer_static_object_row(argument)? else {
+                return Ok(None);
+            };
+            if row.rest.is_some() {
+                return Ok(None);
+            }
+            fields.extend(row.fields);
+        }
+        Ok(Some(Type::Object(ObjectRow { fields, rest: None })))
+    }
+
+    fn infer_static_object_row(&mut self, object: &Expr) -> Result<Option<ObjectRow>, InferError> {
+        let ty = self.infer_expr(object)?;
+        match self.apply(&ty) {
+            Type::Object(row) => Ok(Some(row)),
+            _ => Ok(None),
+        }
+    }
+
+    fn can_specialize_object_builtin(&self, name: &str) -> bool {
+        matches!(
+            name,
+            "obj.get" | "obj.set" | "obj.del" | "obj.values" | "obj.cat"
+        ) && crate::prelude::environment()
+            .get(name)
+            .is_some_and(|scheme| self.environment.get(name) == Some(scheme))
     }
 
     fn infer_case(&mut self, subject: &Expr, branches: &[CaseBranch]) -> Result<Type, InferError> {
@@ -879,6 +994,25 @@ fn static_string_key(expr: &Expr) -> Option<String> {
             }
         }
         _ => None,
+    }
+}
+
+fn require_arity(arguments: &[Expr], expected: usize) -> Result<(), InferError> {
+    if arguments.len() == expected {
+        Ok(())
+    } else {
+        Err(UnifyError::Arity {
+            left: expected,
+            right: arguments.len(),
+        }
+        .into())
+    }
+}
+
+fn result_type(ok: Type, err: Type) -> Type {
+    Type::Named {
+        name: "result".to_owned(),
+        arguments: vec![ok, err],
     }
 }
 

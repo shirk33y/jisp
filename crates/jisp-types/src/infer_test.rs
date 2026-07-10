@@ -855,6 +855,123 @@ fn prelude_infers_basic_object_helpers() {
 }
 
 #[test]
+fn prelude_refines_static_object_helpers() {
+    let mut inferencer = Inferencer::with_prelude();
+
+    let set = expr(ExprKind::Call {
+        callee: Box::new(name("obj.set")),
+        arguments: vec![
+            expr(ExprKind::Object(vec![(string("name"), string("Ada"))])),
+            string("active"),
+            bool_(true),
+        ],
+    });
+    assert_eq!(
+        inferencer.infer_expr(&set).unwrap(),
+        Type::Object(ObjectRow {
+            fields: BTreeMap::from([
+                ("active".to_owned(), Type::Bool),
+                ("name".to_owned(), Type::Str),
+            ]),
+            rest: None,
+        })
+    );
+
+    let del = expr(ExprKind::Call {
+        callee: Box::new(name("obj.del")),
+        arguments: vec![
+            expr(ExprKind::Object(vec![
+                (string("name"), string("Ada")),
+                (string("age"), int(37)),
+            ])),
+            string("name"),
+        ],
+    });
+    assert_eq!(
+        inferencer.infer_expr(&del).unwrap(),
+        Type::Object(ObjectRow {
+            fields: BTreeMap::from([("age".to_owned(), Type::Int)]),
+            rest: None,
+        })
+    );
+
+    let cat = expr(ExprKind::Call {
+        callee: Box::new(name("obj.cat")),
+        arguments: vec![
+            expr(ExprKind::Object(vec![(string("name"), string("Ada"))])),
+            expr(ExprKind::Object(vec![(string("active"), bool_(true))])),
+        ],
+    });
+    assert_eq!(
+        inferencer.infer_expr(&cat).unwrap(),
+        Type::Object(ObjectRow {
+            fields: BTreeMap::from([
+                ("active".to_owned(), Type::Bool),
+                ("name".to_owned(), Type::Str),
+            ]),
+            rest: None,
+        })
+    );
+}
+
+#[test]
+fn prelude_refines_static_object_get_and_values() {
+    let mut inferencer = Inferencer::with_prelude();
+
+    let get = expr(ExprKind::Call {
+        callee: Box::new(name("obj.get")),
+        arguments: vec![
+            expr(ExprKind::Object(vec![
+                (string("name"), string("Ada")),
+                (string("age"), int(37)),
+            ])),
+            string("age"),
+        ],
+    });
+    assert_eq!(
+        inferencer.infer_expr(&get).unwrap(),
+        Type::Named {
+            name: "result".to_owned(),
+            arguments: vec![Type::Int, Type::Str],
+        }
+    );
+
+    let values = expr(ExprKind::Call {
+        callee: Box::new(name("obj.values")),
+        arguments: vec![expr(ExprKind::Object(vec![
+            (string("start"), int(1)),
+            (string("end"), int(3)),
+        ]))],
+    });
+    assert_eq!(
+        inferencer.infer_expr(&values).unwrap(),
+        Type::List(Box::new(Type::Int))
+    );
+}
+
+#[test]
+fn prelude_keeps_dynamic_object_helper_fallback() {
+    let mut inferencer = Inferencer::with_prelude();
+
+    let dynamic_set = expr(ExprKind::Call {
+        callee: Box::new(name("obj.set")),
+        arguments: vec![
+            expr(ExprKind::Object(vec![(string("name"), string("Ada"))])),
+            expr(ExprKind::Call {
+                callee: Box::new(name("str.cat")),
+                arguments: vec![string("act"), string("ive")],
+            }),
+            bool_(true),
+        ],
+    });
+
+    assert!(matches!(
+        inferencer.infer_expr(&dynamic_set).unwrap(),
+        Type::Object(ObjectRow { rest: Some(_), .. })
+    ));
+}
+
+#[test]
 fn prelude_infers_variadic_runtime_helpers() {
     let mut inferencer = Inferencer::with_prelude();
 
