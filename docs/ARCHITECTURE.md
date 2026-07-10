@@ -32,8 +32,8 @@ JSON / restricted YAML / Lisp
 - `jisp-codegen-rust`: native backend over `TypedModule`; it emits the current
   monomorphic scalar/function subset and rejects unsupported shapes without
   introducing a dynamic `Value` ABI.
-- `jisp-macros`: Cargo dependency-tracking macro scaffold using the facade
-  import resolver.
+- `jisp-macros`: Cargo dependency-tracking proc macros that call the facade
+  native-emission seam.
 - `jisp`: facade API.
 - `jisp-cli`: `check`, `run`, `schema`, and `emit-rust` for the supported
   native subset.

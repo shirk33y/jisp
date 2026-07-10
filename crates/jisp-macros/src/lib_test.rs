@@ -1,6 +1,6 @@
 use std::{collections::BTreeSet, fs, path::PathBuf};
 
-use crate::import_dependencies;
+use crate::{generate_file, import_dependencies};
 
 #[test]
 fn import_dependencies_include_transitive_source_files() {
@@ -32,6 +32,29 @@ fn import_dependencies_include_transitive_source_files() {
         dependencies,
         BTreeSet::from([canonical(&app), canonical(&math)])
     );
+}
+
+#[test]
+fn generate_file_emits_native_tokens_without_value_fallback() {
+    let dir = fixture_dir("macro-native-codegen");
+    let main = dir.join("main.lisp");
+    fs::write(
+        &main,
+        r#"
+(def answer (fn () 42))
+(export entry (fn () (answer)))
+"#,
+    )
+    .unwrap();
+
+    let generated = generate_file(&main).unwrap();
+    let tokens = generated.tokens.to_string();
+
+    assert!(tokens.contains("fn answer () -> i64"));
+    assert!(tokens.contains("pub fn entry () -> i64"));
+    assert!(tokens.contains("answer ()"));
+    assert!(!tokens.contains("Value"));
+    assert!(!tokens.contains("jisp_eval"));
 }
 
 fn dependency_set(paths: Vec<PathBuf>) -> BTreeSet<PathBuf> {

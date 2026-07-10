@@ -56,8 +56,8 @@ Implemented or substantially wired:
 - generated core JSON Schema;
 - CLI commands for checking, running, schema generation, and limited Rust
   emission;
-- proc-macro scaffolds that track direct and transitive Jisp source imports for
-  Cargo before failing clearly until they are wired to native codegen;
+- proc macros that track direct and transitive Jisp source imports for Cargo
+  rebuilds and emit native Rust items for the supported subset;
 - language, architecture, diagnostics, schema, stdlib, FFI, and handoff docs.
 
 Still incomplete:
@@ -87,7 +87,7 @@ before changing language semantics.
 | `jisp-runtime` | Pure runtime helper crate for reusable math, string, list, and object operations shared by evaluator and backends. |
 | `jisp-eval` | Tree interpreter for lowered IR with lexical environments, builtins, imports, runtime errors, and portable fixture tests. |
 | `jisp-codegen-rust` | Native Rust backend that accepts typed modules, emits a limited concrete Rust subset, and rejects unsupported shapes without a dynamic fallback. |
-| `jisp-macros` | Proc-macro crate that tracks Jisp source dependencies through the facade resolver and fails clearly until it is wired to native codegen. |
+| `jisp-macros` | Proc-macro crate that tracks Jisp source dependencies through the facade resolver and emits native Rust items for the supported subset. |
 | `jisp-cli` | Command-line frontend for checking, running, schema emission, and Rust token emission for the supported native subset. |
 
 ## Source Syntaxes
@@ -156,9 +156,8 @@ the interpreter.
 
 The public facade supports parsing, expansion, lowering, checking, interpreter
 execution, dependency listing, and limited Rust token emission. The
-`jisp-macros` crate already records direct and imported source files for Cargo
-rebuilds, then deliberately emits a clear compile error until it is wired to the
-native codegen facade.
+`jisp-macros` crate records direct and imported source files for Cargo rebuilds,
+then emits native Rust items through the same facade for the supported subset.
 
 ## Development
 

@@ -18,8 +18,8 @@ This is the single authoritative list of intentionally unfinished work.
 - Follow `.agents/plans/0004-p1-runtime-abi-validation.md`: generated Rust must
   use concrete typed layouts or fail codegen explicitly, never a universal
   dynamic `Value` for ordinary program values.
-- Replace the compile-error scaffold in `jisp-macros` with validation and native
-  token emission.
+- Expand `jisp-macros` beyond item-position native file emission once codegen
+  supports more expression/data shapes.
 - Add generated-to-source mapping for `emit-rust` output.
 - Wrap Cargo/rustc JSON diagnostics and remap them to Jisp source ranges.
 - Validate Jisp as a universal UI description language: React-like components,
