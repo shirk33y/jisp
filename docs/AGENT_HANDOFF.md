@@ -22,7 +22,11 @@ Type inference now covers core expressions, let-generalisation, top-level
 recursive SCC grouping, enum constructors, `case` pattern typing, minimal
 variant exhaustiveness for user-defined ADTs and prelude `result`/`option`,
 finite `bool`/`null` literal cases, redundant finite-domain `case` patterns, and
-conservative list/object `case` exhaustiveness for irrefutable patterns.
+conservative list/object `case` exhaustiveness for irrefutable patterns. It also
+tracks refined exact-list coverage over finite item domains and refined
+object-field coverage over finite fields, including nested object paths such as
+`user.active`, duplicate refinement rejection, and conservative enum-tag
+coverage for whole variant payloads.
 Variadic function types are represented in `jisp-types`; lambda rest parameters
 are typed as lists of extra arguments, and runtime-variadic `str.cat` and
 `list.cat` have matching prelude schemes. Runtime object helpers including
@@ -32,8 +36,8 @@ object-row prelude schemes, plus static-key refinements for `obj.get`,
 `obj.cat` with dynamic-key fallback. The prelude also has fixed-arity stdlib
 functions plus simple runtime helpers such as predicates, `result.recover`,
 numeric overloads, `io.println`, and basic object introspection. Remaining
-type-system work includes nested/refined exhaustiveness for lists and objects
-plus deeper structural object narrowing.
+P0 type-system work is a final audit of deeper structural object narrowing and
+typed-IR completeness for native codegen.
 
 `jisp-types` now exposes `Inferencer::infer_module_with_imports` and
 `ImportTypeEnvironments`. It resolves each `import` by path and installs

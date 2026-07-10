@@ -63,6 +63,9 @@ P0-compatible tests, because they match current Jisp semantics:
   variants;
 - redundant branch detection for catch-all patterns, repeated constructors, and
   repeated literals;
+- refined `case` coverage over finite list items and object fields, including
+  nested fields, duplicate refinements, exact-length list refinements, and
+  conservative handling of enum variants with payload patterns;
 - pattern and subject type mismatches with source-ranged diagnostics;
 - nested list, object, and constructor pattern bindings;
 - `case` arm bindings that do not leak out or mutate outer lexical bindings;
@@ -75,7 +78,14 @@ Future tests, because they need feature design before implementation:
 - guarded `case` branches and guard-sensitive reachability;
 - alternative patterns and overlap diagnostics;
 - multi-subject `case`;
+- `case` in every expression position that codegen must preserve, including
+  assignment, calls, and pipelines;
+- `let assert`-style destructuring if Jisp adopts an assertion-binding form;
 - string-prefix pattern matching;
+- bit-array pattern matching with typed segments, nested data, and endian-aware
+  encodings if Jisp adopts bit-array syntax/runtime support;
+- non-UTF8 string/bit-array interop if encoding-aware matching becomes part of
+  the language;
 - tuple/record-specific access and update semantics beyond current object rows;
 - private type leak diagnostics for public module APIs;
 - editor-code-action tests for adding missing patterns and removing unreachable

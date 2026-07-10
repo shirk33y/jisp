@@ -657,6 +657,8 @@ impl Inferencer {
         branches: &[CaseBranch],
     ) -> Result<(), InferError> {
         let mut exact_lengths = BTreeSet::new();
+        let mut refined_exact_lengths: BTreeMap<usize, BTreeSet<Vec<String>>> = BTreeMap::new();
+        let mut refined_exact_expected = BTreeMap::new();
         let mut rest_lengths = BTreeSet::new();
         let mut has_catch_all = false;
 
@@ -673,10 +675,6 @@ impl Inferencer {
                     let irrefutable_prefix = prefix
                         .iter()
                         .all(|pattern| self.pattern_is_irrefutable_for_type(pattern, item));
-                    if !irrefutable_prefix {
-                        continue;
-                    }
-
                     let length = prefix.len();
                     if rest_lengths.iter().any(|covered| *covered <= length) {
                         return Err(InferError::RedundantCasePattern(pattern_name(
@@ -685,26 +683,68 @@ impl Inferencer {
                     }
 
                     if rest.is_some() {
+                        if !irrefutable_prefix {
+                            continue;
+                        }
                         rest_lengths.insert(length);
                         if length == 0 {
                             has_catch_all = true;
                         }
-                    } else if !exact_lengths.insert(length) {
-                        return Err(InferError::RedundantCasePattern(pattern_name(
-                            &branch.pattern,
-                        )));
+                    } else if irrefutable_prefix {
+                        if refined_list_length_is_exhaustive(
+                            length,
+                            &refined_exact_lengths,
+                            &refined_exact_expected,
+                        ) {
+                            return Err(InferError::RedundantCasePattern(pattern_name(
+                                &branch.pattern,
+                            )));
+                        }
+                        if !exact_lengths.insert(length) {
+                            return Err(InferError::RedundantCasePattern(pattern_name(
+                                &branch.pattern,
+                            )));
+                        }
+                    } else if let Some((covered, expected)) =
+                        self.list_pattern_refined_coverage(prefix, item)
+                    {
+                        if exact_lengths.contains(&length) {
+                            return Err(InferError::RedundantCasePattern(pattern_name(
+                                &branch.pattern,
+                            )));
+                        }
+                        let refined = refined_exact_lengths.entry(length).or_default();
+                        if covered.iter().all(|item| refined.contains(item)) {
+                            return Err(InferError::RedundantCasePattern(pattern_name(
+                                &branch.pattern,
+                            )));
+                        }
+                        refined.extend(covered);
+                        refined_exact_expected.insert(length, expected);
                     }
                 }
                 _ => {}
             }
         }
 
-        if has_catch_all || list_coverage_is_exhaustive(&exact_lengths, &rest_lengths) {
+        if has_catch_all
+            || list_coverage_is_exhaustive(
+                &exact_lengths,
+                &refined_exact_lengths,
+                &refined_exact_expected,
+                &rest_lengths,
+            )
+        {
             Ok(())
         } else {
             Err(InferError::NonExhaustiveCase {
                 type_name: "list".to_owned(),
-                missing: missing_list_patterns(&exact_lengths, &rest_lengths),
+                missing: missing_list_patterns(
+                    &exact_lengths,
+                    &refined_exact_lengths,
+                    &refined_exact_expected,
+                    &rest_lengths,
+                ),
             })
         }
     }
@@ -715,18 +755,33 @@ impl Inferencer {
         branches: &[CaseBranch],
     ) -> Result<(), InferError> {
         let mut has_catch_all = false;
+        let mut refined_fields: BTreeMap<String, (BTreeSet<String>, BTreeSet<String>)> =
+            BTreeMap::new();
+
         for branch in branches {
-            if has_catch_all {
+            if has_catch_all || object_refinements_are_exhaustive(&refined_fields) {
                 return Err(InferError::RedundantCasePattern(pattern_name(
                     &branch.pattern,
                 )));
             }
             if self.pattern_is_irrefutable_for_type(&branch.pattern, subject_ty) {
                 has_catch_all = true;
+            } else if let Some(coverage) =
+                self.pattern_finite_refinement_coverage(&branch.pattern, subject_ty)
+            {
+                let entry = refined_fields
+                    .entry(coverage.key)
+                    .or_insert_with(|| (coverage.domain, BTreeSet::new()));
+                if coverage.labels.iter().all(|label| entry.1.contains(label)) {
+                    return Err(InferError::RedundantCasePattern(pattern_name(
+                        &branch.pattern,
+                    )));
+                }
+                entry.1.extend(coverage.labels);
             }
         }
 
-        if has_catch_all {
+        if has_catch_all || object_refinements_are_exhaustive(&refined_fields) {
             Ok(())
         } else {
             Err(InferError::NonExhaustiveCase {
@@ -764,6 +819,115 @@ impl Inferencer {
             Pattern::Literal(_) | Pattern::Variant { .. } | Pattern::List { rest: None, .. } => {
                 false
             }
+        }
+    }
+
+    fn list_pattern_refined_coverage(
+        &self,
+        prefix: &[Pattern],
+        item: &Type,
+    ) -> Option<(BTreeSet<Vec<String>>, usize)> {
+        let domain = self.finite_domain_for_type(item)?;
+        let expected = domain.len().checked_pow(prefix.len() as u32)?;
+        let mut combinations = BTreeSet::from([Vec::new()]);
+
+        for pattern in prefix {
+            let labels = self.pattern_labels_for_domain(pattern, item, &domain)?;
+            let mut next = BTreeSet::new();
+            for prefix in &combinations {
+                for label in &labels {
+                    let mut item = prefix.clone();
+                    item.push(label.clone());
+                    next.insert(item);
+                }
+            }
+            combinations = next;
+        }
+
+        Some((combinations, expected))
+    }
+
+    fn pattern_finite_refinement_coverage(
+        &self,
+        pattern: &Pattern,
+        ty: &Type,
+    ) -> Option<FiniteCoverage> {
+        let domain = self.finite_domain_for_type(ty);
+        if let Some(domain) = domain {
+            let labels = self.pattern_labels_for_domain(pattern, ty, &domain)?;
+            return Some(FiniteCoverage {
+                key: String::new(),
+                domain,
+                labels,
+            });
+        }
+
+        let Pattern::Object(fields) = pattern else {
+            return None;
+        };
+        let Type::Object(row) = self.apply(ty) else {
+            return None;
+        };
+
+        for (name, pattern) in fields {
+            let Some(field_ty) = row.fields.get(name) else {
+                continue;
+            };
+            let Some(mut coverage) = self.pattern_finite_refinement_coverage(pattern, field_ty)
+            else {
+                continue;
+            };
+            let other_fields_are_irrefutable = fields.iter().all(|(other_name, other_pattern)| {
+                other_name == name
+                    || row.fields.get(other_name).is_some_and(|other_ty| {
+                        self.pattern_is_irrefutable_for_type(other_pattern, other_ty)
+                    })
+            });
+            if !other_fields_are_irrefutable {
+                continue;
+            }
+
+            coverage.key = if coverage.key.is_empty() {
+                name.clone()
+            } else {
+                format!("{name}.{}", coverage.key)
+            };
+            return Some(coverage);
+        }
+
+        None
+    }
+
+    fn finite_domain_for_type(&self, ty: &Type) -> Option<BTreeSet<String>> {
+        match self.apply(ty) {
+            Type::Bool => Some(BTreeSet::from(["false".to_owned(), "true".to_owned()])),
+            Type::Null => Some(BTreeSet::from(["null".to_owned()])),
+            Type::Named { name, .. } => self.type_variants.get(&name).cloned(),
+            _ => None,
+        }
+    }
+
+    fn pattern_labels_for_domain(
+        &self,
+        pattern: &Pattern,
+        ty: &Type,
+        domain: &BTreeSet<String>,
+    ) -> Option<BTreeSet<String>> {
+        match pattern {
+            Pattern::Wildcard | Pattern::Bind(_) => Some(domain.clone()),
+            Pattern::Literal(Literal::Bool(value)) if matches!(self.apply(ty), Type::Bool) => {
+                let label = value.to_string();
+                domain.contains(&label).then(|| BTreeSet::from([label]))
+            }
+            Pattern::Literal(Literal::Null) if matches!(self.apply(ty), Type::Null) => domain
+                .contains("null")
+                .then(|| BTreeSet::from(["null".to_owned()])),
+            Pattern::Variant { tag, fields }
+                if fields.iter().all(pattern_is_always_irrefutable) =>
+            {
+                domain.contains(tag).then(|| BTreeSet::from([tag.clone()]))
+            }
+            _ => None,
         }
     }
 
@@ -1035,23 +1199,59 @@ fn pattern_name(pattern: &Pattern) -> String {
     }
 }
 
+struct FiniteCoverage {
+    key: String,
+    domain: BTreeSet<String>,
+    labels: BTreeSet<String>,
+}
+
+fn object_refinements_are_exhaustive(
+    refined_fields: &BTreeMap<String, (BTreeSet<String>, BTreeSet<String>)>,
+) -> bool {
+    refined_fields
+        .values()
+        .any(|(domain, covered)| domain.is_subset(covered))
+}
+
+fn pattern_is_always_irrefutable(pattern: &Pattern) -> bool {
+    matches!(pattern, Pattern::Wildcard | Pattern::Bind(_))
+}
+
 fn list_coverage_is_exhaustive(
     exact_lengths: &BTreeSet<usize>,
+    refined_exact_lengths: &BTreeMap<usize, BTreeSet<Vec<String>>>,
+    refined_exact_expected: &BTreeMap<usize, usize>,
     rest_lengths: &BTreeSet<usize>,
 ) -> bool {
     let Some(rest_start) = rest_lengths.first().copied() else {
         return false;
     };
-    (0..rest_start).all(|length| exact_lengths.contains(&length))
+    (0..rest_start).all(|length| {
+        exact_lengths.contains(&length)
+            || refined_list_length_is_exhaustive(
+                length,
+                refined_exact_lengths,
+                refined_exact_expected,
+            )
+    })
 }
 
 fn missing_list_patterns(
     exact_lengths: &BTreeSet<usize>,
+    refined_exact_lengths: &BTreeMap<usize, BTreeSet<Vec<String>>>,
+    refined_exact_expected: &BTreeMap<usize, usize>,
     rest_lengths: &BTreeSet<usize>,
 ) -> Vec<String> {
     if let Some(rest_start) = rest_lengths.first().copied() {
         return (0..rest_start)
-            .filter(|length| !exact_lengths.contains(length))
+            .filter(|length| {
+                !exact_lengths.contains(length)
+                    && !refined_list_length_is_exhaustive(
+                        *length,
+                        refined_exact_lengths,
+                        refined_exact_expected,
+                    )
+            })
             .map(list_length_pattern)
             .collect();
     }
@@ -1063,6 +1263,17 @@ fn missing_list_patterns(
         .collect::<Vec<_>>();
     missing.push(format!("list length >= {}", max_exact + 1));
     missing
+}
+
+fn refined_list_length_is_exhaustive(
+    length: usize,
+    refined_exact_lengths: &BTreeMap<usize, BTreeSet<Vec<String>>>,
+    refined_exact_expected: &BTreeMap<usize, usize>,
+) -> bool {
+    refined_exact_lengths
+        .get(&length)
+        .zip(refined_exact_expected.get(&length))
+        .is_some_and(|(covered, expected)| covered.len() == *expected)
 }
 
 fn list_length_pattern(length: usize) -> String {

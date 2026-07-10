@@ -10,7 +10,11 @@ This is the single authoritative list of intentionally unfinished work.
   function types, variadic `str.cat`/`list.cat` schemes, and conservative
   list/object exhaustiveness are implemented. Static-key `obj.get`, `obj.set`,
   `obj.del`, homogeneous `obj.values`, and closed-row `obj.cat` refinements are
-  implemented with dynamic-key fallback.
+  implemented with dynamic-key fallback. Refined exact-list and object-field
+  `case` coverage now handles finite domains such as `bool`, `null`, and enum
+  tags, including nested object fields and redundant refinement detection.
+  Remaining P0 work is a final audit of deeper structural object narrowing and
+  any gaps that block typed IR as the native-codegen input.
 ## P1 — native compiler and product validation
 
 - Implement `jisp-codegen-rust` from typed IR.

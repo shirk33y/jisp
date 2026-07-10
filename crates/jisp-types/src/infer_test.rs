@@ -665,6 +665,147 @@ fn rejects_redundant_list_case_pattern() {
 }
 
 #[test]
+fn accepts_refined_exhaustive_bool_list_case() {
+    let mut inferencer = Inferencer::default();
+    let expression = expr(ExprKind::Case {
+        subject: Box::new(expr(ExprKind::List(vec![bool_(true)]))),
+        branches: vec![
+            branch(
+                Pattern::List {
+                    prefix: vec![],
+                    rest: None,
+                },
+                int(0),
+            ),
+            branch(
+                Pattern::List {
+                    prefix: vec![Pattern::Literal(Literal::Bool(true))],
+                    rest: None,
+                },
+                int(1),
+            ),
+            branch(
+                Pattern::List {
+                    prefix: vec![Pattern::Literal(Literal::Bool(false))],
+                    rest: None,
+                },
+                int(2),
+            ),
+            branch(
+                Pattern::List {
+                    prefix: vec![Pattern::Bind("head".to_owned())],
+                    rest: Some("tail".to_owned()),
+                },
+                int(3),
+            ),
+        ],
+    });
+
+    assert_eq!(inferencer.infer_expr(&expression).unwrap(), Type::Int);
+}
+
+#[test]
+fn rejects_redundant_refined_bool_list_case_pattern() {
+    let mut inferencer = Inferencer::default();
+    let expression = expr(ExprKind::Case {
+        subject: Box::new(expr(ExprKind::List(vec![bool_(true)]))),
+        branches: vec![
+            branch(
+                Pattern::List {
+                    prefix: vec![Pattern::Literal(Literal::Bool(true))],
+                    rest: None,
+                },
+                int(1),
+            ),
+            branch(
+                Pattern::List {
+                    prefix: vec![Pattern::Literal(Literal::Bool(true))],
+                    rest: None,
+                },
+                int(2),
+            ),
+            branch(
+                Pattern::List {
+                    prefix: vec![],
+                    rest: Some("items".to_owned()),
+                },
+                int(0),
+            ),
+        ],
+    });
+
+    assert!(matches!(
+        inferencer.infer_expr(&expression),
+        Err(InferError::RedundantCasePattern(pattern)) if pattern == "list pattern"
+    ));
+}
+
+#[test]
+fn rejects_refined_bool_list_case_pattern_covered_by_exact_length() {
+    let mut inferencer = Inferencer::default();
+    let expression = expr(ExprKind::Case {
+        subject: Box::new(expr(ExprKind::List(vec![bool_(true)]))),
+        branches: vec![
+            branch(
+                Pattern::List {
+                    prefix: vec![Pattern::Bind("item".to_owned())],
+                    rest: None,
+                },
+                int(0),
+            ),
+            branch(
+                Pattern::List {
+                    prefix: vec![Pattern::Literal(Literal::Bool(true))],
+                    rest: None,
+                },
+                int(1),
+            ),
+        ],
+    });
+
+    assert!(matches!(
+        inferencer.infer_expr(&expression),
+        Err(InferError::RedundantCasePattern(pattern)) if pattern == "list pattern"
+    ));
+}
+
+#[test]
+fn rejects_exact_bool_list_case_pattern_covered_by_refinements() {
+    let mut inferencer = Inferencer::default();
+    let expression = expr(ExprKind::Case {
+        subject: Box::new(expr(ExprKind::List(vec![bool_(true)]))),
+        branches: vec![
+            branch(
+                Pattern::List {
+                    prefix: vec![Pattern::Literal(Literal::Bool(true))],
+                    rest: None,
+                },
+                int(1),
+            ),
+            branch(
+                Pattern::List {
+                    prefix: vec![Pattern::Literal(Literal::Bool(false))],
+                    rest: None,
+                },
+                int(2),
+            ),
+            branch(
+                Pattern::List {
+                    prefix: vec![Pattern::Bind("item".to_owned())],
+                    rest: None,
+                },
+                int(0),
+            ),
+        ],
+    });
+
+    assert!(matches!(
+        inferencer.infer_expr(&expression),
+        Err(InferError::RedundantCasePattern(pattern)) if pattern == "list pattern"
+    ));
+}
+
+#[test]
 fn accepts_exhaustive_object_case_with_required_field_bindings() {
     let mut inferencer = Inferencer::default();
     let expression = expr(ExprKind::Case {
@@ -702,6 +843,166 @@ fn infers_nested_object_case_pattern_bindings() {
     });
 
     assert_eq!(inferencer.infer_expr(&expression).unwrap(), Type::Str);
+}
+
+#[test]
+fn accepts_refined_exhaustive_bool_field_object_case() {
+    let mut inferencer = Inferencer::default();
+    let expression = expr(ExprKind::Case {
+        subject: Box::new(expr(ExprKind::Object(vec![
+            (string("active"), bool_(true)),
+            (string("name"), string("Ada")),
+        ]))),
+        branches: vec![
+            branch(
+                Pattern::Object(vec![(
+                    "active".to_owned(),
+                    Pattern::Literal(Literal::Bool(true)),
+                )]),
+                int(1),
+            ),
+            branch(
+                Pattern::Object(vec![(
+                    "active".to_owned(),
+                    Pattern::Literal(Literal::Bool(false)),
+                )]),
+                int(0),
+            ),
+        ],
+    });
+
+    assert_eq!(inferencer.infer_expr(&expression).unwrap(), Type::Int);
+}
+
+#[test]
+fn rejects_payload_refined_enum_field_as_exhaustive_object_case() {
+    let mut inferencer = Inferencer::default();
+    let result_decl = TypeDecl {
+        name: "result".to_owned(),
+        variants: vec![
+            VariantDecl {
+                name: "ok".to_owned(),
+                field_types: vec!["value".to_owned()],
+                span: span(),
+            },
+            VariantDecl {
+                name: "err".to_owned(),
+                field_types: vec!["error".to_owned()],
+                span: span(),
+            },
+        ],
+        span: span(),
+    };
+    let expression = expr(ExprKind::Case {
+        subject: Box::new(expr(ExprKind::Object(vec![(
+            string("status"),
+            expr(ExprKind::Call {
+                callee: Box::new(name("ok")),
+                arguments: vec![int(1)],
+            }),
+        )]))),
+        branches: vec![
+            branch(
+                Pattern::Object(vec![(
+                    "status".to_owned(),
+                    Pattern::Variant {
+                        tag: "ok".to_owned(),
+                        fields: vec![Pattern::Literal(Literal::Int(1))],
+                    },
+                )]),
+                int(1),
+            ),
+            branch(
+                Pattern::Object(vec![(
+                    "status".to_owned(),
+                    Pattern::Variant {
+                        tag: "err".to_owned(),
+                        fields: vec![Pattern::Wildcard],
+                    },
+                )]),
+                int(0),
+            ),
+        ],
+    });
+    let mut module = module(vec![definition("main", expression)]);
+    module.types.push(result_decl);
+
+    assert!(matches!(
+        inferencer.infer_module(&module),
+        Err(InferError::NonExhaustiveCase { type_name, missing })
+            if type_name == "object" && missing == vec!["object pattern".to_owned()]
+    ));
+}
+
+#[test]
+fn accepts_refined_exhaustive_nested_bool_field_object_case() {
+    let mut inferencer = Inferencer::default();
+    let expression = expr(ExprKind::Case {
+        subject: Box::new(expr(ExprKind::Object(vec![(
+            string("user"),
+            expr(ExprKind::Object(vec![
+                (string("active"), bool_(true)),
+                (string("name"), string("Ada")),
+            ])),
+        )]))),
+        branches: vec![
+            branch(
+                Pattern::Object(vec![(
+                    "user".to_owned(),
+                    Pattern::Object(vec![(
+                        "active".to_owned(),
+                        Pattern::Literal(Literal::Bool(true)),
+                    )]),
+                )]),
+                int(1),
+            ),
+            branch(
+                Pattern::Object(vec![(
+                    "user".to_owned(),
+                    Pattern::Object(vec![(
+                        "active".to_owned(),
+                        Pattern::Literal(Literal::Bool(false)),
+                    )]),
+                )]),
+                int(0),
+            ),
+        ],
+    });
+
+    assert_eq!(inferencer.infer_expr(&expression).unwrap(), Type::Int);
+}
+
+#[test]
+fn rejects_redundant_refined_object_case_pattern() {
+    let mut inferencer = Inferencer::default();
+    let expression = expr(ExprKind::Case {
+        subject: Box::new(expr(ExprKind::Object(vec![(
+            string("active"),
+            bool_(true),
+        )]))),
+        branches: vec![
+            branch(
+                Pattern::Object(vec![(
+                    "active".to_owned(),
+                    Pattern::Literal(Literal::Bool(true)),
+                )]),
+                int(1),
+            ),
+            branch(
+                Pattern::Object(vec![(
+                    "active".to_owned(),
+                    Pattern::Literal(Literal::Bool(true)),
+                )]),
+                int(2),
+            ),
+            branch(Pattern::Object(vec![]), int(0)),
+        ],
+    });
+
+    assert!(matches!(
+        inferencer.infer_expr(&expression),
+        Err(InferError::RedundantCasePattern(pattern)) if pattern == "object pattern"
+    ));
 }
 
 #[test]
