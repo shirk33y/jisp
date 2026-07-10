@@ -8,6 +8,9 @@
   `docs/AGENT_HANDOFF.md`, and `TODO.md` before changing language semantics.
 - Do not redesign surface syntax before completing the existing seams.
 - Treat the `old` branch and earlier TypeScript code as reference material only.
+- Treat `GLEAM.md` as the external compiler reference for ADTs, inference,
+  exhaustiveness, diagnostics, and module loading. Use CMM project
+  `home-shirk3y-stuff-gleam` for Gleam compiler research.
 
 ## Architecture Rules
 
@@ -23,6 +26,8 @@
 - When porting code from another project, record a GitHub permalink for every
   copied or closely adapted source. Include repository URL, commit hash, file
   path, and line numbers.
+- Keep `GLEAM.md` current as Gleam-inspired features are ported, including
+  rationale and source attribution for copied or closely adapted code.
 
 ## Workflow
 

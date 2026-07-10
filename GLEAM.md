@@ -2,7 +2,7 @@
 
 Jisp uses the Gleam compiler as a design reference for a small, statically typed,
 friendly language implemented in Rust. This file tracks what is ported or closely
-inspired so future work can stay explicit about rationale and source attribution.
+inspired so the relationship stays explicit.
 
 Reference checkout:
 
@@ -11,9 +11,7 @@ Reference checkout:
 - Local checkout: `~/stuff/gleam`
 - CMM project: `home-shirk3y-stuff-gleam`
 
-No Gleam source code is vendored in this repository. If future work copies or
-closely adapts implementation code, record a GitHub permalink with repository
-URL, commit hash, file path, and line numbers in the same change.
+No Gleam source code is vendored in this repository.
 
 ## Ported or inspired features
 
@@ -26,14 +24,3 @@ URL, commit hash, file path, and line numbers in the same change.
 | Module graph, imports, stale tracking, and cycle checks | Planned P0. | [`module_loader.rs`](https://github.com/gleam-lang/gleam/blob/833732c523441043868877d159988ba2d21538cd/compiler-core/src/build/module_loader.rs#L45-L84), [`project_compiler.rs`](https://github.com/gleam-lang/gleam/blob/833732c523441043868877d159988ba2d21538cd/compiler-core/src/build/project_compiler.rs#L105-L151), [`call_graph.rs`](https://github.com/gleam-lang/gleam/blob/833732c523441043868877d159988ba2d21538cd/compiler-core/src/call_graph.rs#L530-L544) | Directory-as-module loading needs deterministic resolution, useful cycle errors, and future incremental compilation. |
 | Source-ranged diagnostics | Ported as source-aware AST and diagnostic foundations; rendering needs more work. | [`diagnostic.rs`](https://github.com/gleam-lang/gleam/blob/833732c523441043868877d159988ba2d21538cd/compiler-core/src/diagnostic.rs), [`expression.rs`](https://github.com/gleam-lang/gleam/blob/833732c523441043868877d159988ba2d21538cd/compiler-core/src/type_/expression.rs#L5355-L5395) | Multi-syntax input only works if errors stay attached to original source spans through parsing, lowering, macros, and typing. |
 | Immutable values with backend-friendly representation | Partially ported in evaluator/runtime helpers; native ABI remains intentionally undesigned. | [`typed.rs`](https://github.com/gleam-lang/gleam/blob/833732c523441043868877d159988ba2d21538cd/compiler-core/src/ast/typed.rs), [`project_compiler.rs`](https://github.com/gleam-lang/gleam/blob/833732c523441043868877d159988ba2d21538cd/compiler-core/src/build/project_compiler.rs#L202-L238) | Runtime semantics should remain portable while Rust codegen gets a typed representation instead of mirroring interpreter internals. |
-
-## Working rules
-
-- Use CMM project `home-shirk3y-stuff-gleam` before broad text search when
-  researching Gleam compiler internals.
-- Treat Gleam as a reference implementation and product benchmark, not as a
-  syntax authority for Jisp.
-- Port behavior and architecture deliberately. Do not import Gleam features that
-  conflict with the existing Jisp syntax, multi-reader model, or deferred FFI
-  boundary.
-- Add regression tests in Jisp when adopting a behavior from Gleam.

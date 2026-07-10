@@ -41,7 +41,7 @@ JSON / restricted YAML / Lisp
 
 ## Design reference
 
-Use repository-root `GLEAM.md` when implementing ADTs, inference,
-exhaustiveness, diagnostics, or module loading. Gleam is a reference for
-architecture and behavior, not a source of vendored code or a reason to redesign
-Jisp surface syntax.
+Gleam is the external reference for ADTs, inference, exhaustiveness,
+diagnostics, and module loading. Repository-root `GLEAM.md` tracks the feature
+mapping and rationale. It is a reference for architecture and behavior, not a
+source of vendored code or a reason to redesign Jisp surface syntax.

@@ -52,7 +52,7 @@ See [`TODO.md`](TODO.md) and [`docs/AGENT_HANDOFF.md`](docs/AGENT_HANDOFF.md) be
 
 Gleam is the main compiler reference for several type-system, diagnostic, and
 module-loading choices. See [`GLEAM.md`](GLEAM.md) for the tracked feature
-mapping, rationale, local CMM project, and source attribution policy.
+mapping, rationale, local checkout, and CMM project.
 
 ## Canonical JSON
 

@@ -12,8 +12,6 @@ This is the single authoritative list of intentionally unfinished work.
 - Improve diagnostics rendering and preserve macro-origin chains.
 - Decide and specify exact numeric semantics: integer overflow, division, mixed
   integer/float operations, and NaN equality.
-- Keep `GLEAM.md` current as Gleam-inspired features are ported, including
-  rationale and source attribution for copied or closely adapted code.
 
 ## P1 — native compiler
 
