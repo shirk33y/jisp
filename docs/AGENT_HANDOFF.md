@@ -26,9 +26,10 @@ type-system work includes richer exhaustiveness for lists, objects, redundant
 patterns, and stdlib schemes for variadic, overloaded, and
 object/row-polymorphic builtins.
 
-Portable Lisp fixture tests now live under `tests/language/` and are exercised
-by `crates/jisp-eval/tests/portable_lisp.rs`. The current harness strips
-top-level `(test "name" (assert.equal expected actual))` forms into synthetic
+Portable Lisp fixture tests now live under `tests/language/` and are registered
+as Cargo-visible tests by `crates/jisp-eval/build.rs`. The generated tests call
+`crates/jisp-eval/tests/portable_lisp_support.rs`, which strips the selected
+top-level `(test "name" (assert.equal expected actual))` form into synthetic
 exports, evaluates the module normally, and compares the exported values
 structurally. This is intentionally a test fixture format, not core language
 semantics yet.

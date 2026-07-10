@@ -11,6 +11,10 @@ jisp-ir.workspace = true
 jisp-runtime.workspace = true
 thiserror.workspace = true
 
+[build-dependencies]
+jisp-core.workspace = true
+jisp-syntax-lisp.workspace = true
+
 [dev-dependencies]
 jisp-syntax-json.workspace = true
 jisp-syntax-lisp.workspace = true
