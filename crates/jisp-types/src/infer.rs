@@ -1,6 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 
-use jisp_ir::{Expr, ExprKind, Literal, StringPart};
+use jisp_ir::{Expr, ExprKind, Literal, Module, StringPart, TypeDecl};
 use thiserror::Error;
 
 use crate::{ObjectRow, Scheme, Type, TypeVar, Unifier, UnifyError};
@@ -19,10 +19,9 @@ pub enum InferError {
 
 /// Reusable state for Hindley–Milner-style inference.
 ///
-/// The unification engine is implemented and tested. The next implementation
-/// step is to add `infer_expr` over `jisp_ir::Expr`, generalize `let` bindings,
-/// instantiate schemes at use sites, and infer recursive SCCs monomorphically
-/// before generalization.
+/// Expressions are inferred against the current environment. Module inference
+/// adds type constructors, gives top-level definitions recursive placeholders,
+/// solves them monomorphically, and generalizes the resulting schemes.
 #[derive(Clone, Debug, Default)]
 pub struct Inferencer {
     next_var: u32,
@@ -48,6 +47,48 @@ impl Inferencer {
             .cloned()
             .ok_or_else(|| InferError::UnknownName(name.to_owned()))?;
         Ok(self.instantiate(&scheme))
+    }
+
+    pub fn infer_module(
+        &mut self,
+        module: &Module,
+    ) -> Result<BTreeMap<String, Scheme>, InferError> {
+        if !module.imports.is_empty() {
+            return Err(InferError::NotImplemented("import type environments"));
+        }
+
+        self.install_type_constructors(&module.types)?;
+        let base_environment = self.environment.clone();
+        let mut placeholders = BTreeMap::new();
+
+        for definition in &module.definitions {
+            let ty = self.fresh_type();
+            self.define(&definition.name, Scheme::mono(ty.clone()));
+            placeholders.insert(definition.name.clone(), ty);
+        }
+
+        for definition in &module.definitions {
+            let value = self.infer_expr(&definition.value)?;
+            let placeholder = placeholders
+                .get(&definition.name)
+                .expect("definition placeholders are installed first")
+                .clone();
+            self.unify(placeholder, value)?;
+        }
+
+        let mut schemes = BTreeMap::new();
+        for definition in &module.definitions {
+            let ty = self.apply(
+                placeholders
+                    .get(&definition.name)
+                    .expect("definition placeholders are installed first"),
+            );
+            let scheme = generalize_with_environment(&ty, &base_environment);
+            self.define(definition.name.clone(), scheme.clone());
+            schemes.insert(definition.name.clone(), scheme);
+        }
+
+        Ok(schemes)
     }
 
     pub fn infer_expr(&mut self, expr: &Expr) -> Result<Type, InferError> {
@@ -155,14 +196,88 @@ impl Inferencer {
 
     pub fn generalize(&self, ty: &Type) -> Scheme {
         let ty = self.apply(ty);
-        let mut variables = free_type_vars(&ty);
-        for var in self.environment.values().flat_map(free_scheme_vars) {
-            variables.remove(&var);
+        generalize_with_environment(&ty, &self.environment)
+    }
+
+    fn install_type_constructors(&mut self, declarations: &[TypeDecl]) -> Result<(), InferError> {
+        for declaration in declarations {
+            let mut parameters = TypeParameters::default();
+            for variant in &declaration.variants {
+                for field in &variant.field_types {
+                    self.declared_type(field, &mut parameters)?;
+                }
+            }
+
+            for variant in &declaration.variants {
+                let fields = variant
+                    .field_types
+                    .iter()
+                    .map(|field| self.declared_type(field, &mut parameters))
+                    .collect::<Result<Vec<_>, _>>()?;
+                let result = Type::Named {
+                    name: declaration.name.clone(),
+                    arguments: parameters.types(),
+                };
+                let body = if fields.is_empty() {
+                    result
+                } else {
+                    Type::Function {
+                        parameters: fields,
+                        result: Box::new(result),
+                    }
+                };
+                self.define(
+                    variant.name.clone(),
+                    Scheme {
+                        variables: parameters.vars(),
+                        body,
+                    },
+                );
+            }
         }
-        Scheme {
-            variables: variables.into_iter().collect(),
-            body: ty,
-        }
+        Ok(())
+    }
+
+    fn declared_type(
+        &mut self,
+        text: &str,
+        parameters: &mut TypeParameters,
+    ) -> Result<Type, InferError> {
+        let text = text.trim();
+        Ok(match text {
+            "never" => Type::Never,
+            "null" => Type::Null,
+            "bool" => Type::Bool,
+            "int" => Type::Int,
+            "float" => Type::Float,
+            "str" | "string" => Type::Str,
+            _ if is_parenthesized(text) => {
+                let inner = &text[1..text.len() - 1];
+                let items = split_type_items(inner)?;
+                let Some((head, tail)) = items.split_first() else {
+                    return Err(InferError::NotImplemented("empty declared type form"));
+                };
+                if *head == "list" && tail.len() == 1 {
+                    Type::List(Box::new(self.declared_type(tail[0], parameters)?))
+                } else {
+                    Type::Named {
+                        name: (*head).to_owned(),
+                        arguments: tail
+                            .iter()
+                            .map(|item| self.declared_type(item, parameters))
+                            .collect::<Result<Vec<_>, _>>()?,
+                    }
+                }
+            }
+            _ if is_type_parameter_name(text) => {
+                Type::Var(parameters.get_or_insert(text, || self.fresh_var()))
+            }
+            _ if is_type_name(text) => Type::Named {
+                name: text.to_owned(),
+                arguments: vec![],
+            },
+            _ => return Err(InferError::NotImplemented("declared type syntax")),
+        })
     }
 
     fn infer_literal(&self, literal: &Literal) -> Type {
@@ -302,6 +417,17 @@ fn replace(ty: &Type, replacements: &BTreeMap<TypeVar, Type>) -> Type {
     }
 }
 
+fn generalize_with_environment(ty: &Type, environment: &BTreeMap<String, Scheme>) -> Scheme {
+    let mut variables = free_type_vars(ty);
+    for var in environment.values().flat_map(free_scheme_vars) {
+        variables.remove(&var);
+    }
+    Scheme {
+        variables: variables.into_iter().collect(),
+        body: ty.clone(),
+    }
+}
+
 fn static_string_key(expr: &Expr) -> Option<String> {
     match &expr.kind {
         ExprKind::Literal(Literal::String(value)) => Some(value.clone()),
@@ -321,6 +447,94 @@ fn static_string_key(expr: &Expr) -> Option<String> {
         }
         _ => None,
     }
+}
+
+#[derive(Default)]
+struct TypeParameters {
+    variables: BTreeMap<String, TypeVar>,
+    order: Vec<String>,
+}
+
+impl TypeParameters {
+    fn get_or_insert(&mut self, name: &str, fresh: impl FnOnce() -> TypeVar) -> TypeVar {
+        if let Some(var) = self.variables.get(name) {
+            return *var;
+        }
+        let var = fresh();
+        self.variables.insert(name.to_owned(), var);
+        self.order.push(name.to_owned());
+        var
+    }
+
+    fn vars(&self) -> Vec<TypeVar> {
+        self.order
+            .iter()
+            .filter_map(|name| self.variables.get(name).copied())
+            .collect()
+    }
+
+    fn types(&self) -> Vec<Type> {
+        self.vars().into_iter().map(Type::Var).collect()
+    }
+}
+
+fn is_parenthesized(text: &str) -> bool {
+    text.starts_with('(') && text.ends_with(')')
+}
+
+fn split_type_items(text: &str) -> Result<Vec<&str>, InferError> {
+    let mut items = vec![];
+    let mut depth = 0usize;
+    let mut start = None;
+
+    for (index, ch) in text.char_indices() {
+        match ch {
+            '(' => {
+                if start.is_none() {
+                    start = Some(index);
+                }
+                depth += 1;
+            }
+            ')' => {
+                depth = depth
+                    .checked_sub(1)
+                    .ok_or(InferError::NotImplemented("declared type syntax"))?;
+            }
+            ch if ch.is_whitespace() && depth == 0 => {
+                if let Some(item_start) = start.take() {
+                    items.push(&text[item_start..index]);
+                }
+            }
+            _ if start.is_none() => start = Some(index),
+            _ => {}
+        }
+    }
+
+    if depth != 0 {
+        return Err(InferError::NotImplemented("declared type syntax"));
+    }
+    if let Some(item_start) = start {
+        items.push(&text[item_start..]);
+    }
+    Ok(items)
+}
+
+fn is_type_parameter_name(text: &str) -> bool {
+    text.chars()
+        .next()
+        .is_some_and(|ch| ch.is_ascii_lowercase())
+        && text
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || ch == '_' || ch == '-')
+}
+
+fn is_type_name(text: &str) -> bool {
+    text.chars()
+        .next()
+        .is_some_and(|ch| ch.is_ascii_alphabetic())
+        && text
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || ch == '_' || ch == '-' || ch == '/')
 }
 
 fn free_type_vars(ty: &Type) -> BTreeSet<TypeVar> {
@@ -367,96 +581,5 @@ fn collect_type_vars(ty: &Type, vars: &mut BTreeSet<TypeVar>) {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use jisp_core::{SourceId, Span};
-
-    fn span() -> Span {
-        Span::empty(SourceId(0), 0)
-    }
-
-    fn expr(kind: ExprKind) -> Expr {
-        Expr::new(kind, span())
-    }
-
-    fn name(value: &str) -> Expr {
-        expr(ExprKind::Name(value.to_owned()))
-    }
-
-    fn int(value: i64) -> Expr {
-        expr(ExprKind::Literal(Literal::Int(value)))
-    }
-
-    fn string(value: &str) -> Expr {
-        expr(ExprKind::Literal(Literal::String(value.to_owned())))
-    }
-
-    #[test]
-    fn instantiation_creates_fresh_variables() {
-        let mut inferencer = Inferencer::default();
-        let scheme = Scheme {
-            variables: vec![TypeVar(99)],
-            body: Type::Function {
-                parameters: vec![Type::Var(TypeVar(99))],
-                result: Box::new(Type::Var(TypeVar(99))),
-            },
-        };
-        let first = inferencer.instantiate(&scheme);
-        let second = inferencer.instantiate(&scheme);
-        assert_ne!(first, second);
-    }
-
-    #[test]
-    fn infers_function_calls() {
-        let mut inferencer = Inferencer::default();
-        let expression = expr(ExprKind::Call {
-            callee: Box::new(expr(ExprKind::Lambda {
-                params: vec!["value".to_owned()],
-                rest: None,
-                body: Box::new(name("value")),
-            })),
-            arguments: vec![int(1)],
-        });
-
-        assert_eq!(inferencer.infer_expr(&expression).unwrap(), Type::Int);
-    }
-
-    #[test]
-    fn generalizes_let_bindings() {
-        let mut inferencer = Inferencer::default();
-        let identity = expr(ExprKind::Lambda {
-            params: vec!["value".to_owned()],
-            rest: None,
-            body: Box::new(name("value")),
-        });
-        let expression = expr(ExprKind::Let {
-            bindings: vec![("id".to_owned(), identity)],
-            body: Box::new(expr(ExprKind::Do(vec![
-                expr(ExprKind::Call {
-                    callee: Box::new(name("id")),
-                    arguments: vec![int(1)],
-                }),
-                expr(ExprKind::Call {
-                    callee: Box::new(name("id")),
-                    arguments: vec![string("ok")],
-                }),
-            ]))),
-        });
-
-        assert_eq!(inferencer.infer_expr(&expression).unwrap(), Type::Str);
-    }
-
-    #[test]
-    fn infers_static_object_fields() {
-        let mut inferencer = Inferencer::default();
-        let expression = expr(ExprKind::Field {
-            object: Box::new(expr(ExprKind::Object(vec![(
-                string("name"),
-                string("Ada"),
-            )]))),
-            key: Box::new(string("name")),
-        });
-
-        assert_eq!(inferencer.infer_expr(&expression).unwrap(), Type::Str);
-    }
-}
+#[path = "infer_test.rs"]
+mod infer_test;
