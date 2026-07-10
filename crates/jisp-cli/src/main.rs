@@ -12,18 +12,32 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
-    Check { path: PathBuf },
-    Run { path: PathBuf },
-    Schema { output: Option<PathBuf> },
-    EmitRust { path: PathBuf },
+    Check {
+        path: PathBuf,
+        #[arg(long)]
+        types: bool,
+    },
+    Run {
+        path: PathBuf,
+    },
+    Schema {
+        output: Option<PathBuf>,
+    },
+    EmitRust {
+        path: PathBuf,
+    },
 }
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
     match cli.command {
-        Command::Check { path } => {
+        Command::Check { path, types } => {
             let text = read(&path)?;
-            jisp::parse(&path, &text)?;
+            if types {
+                jisp::check(&path, &text)?;
+            } else {
+                jisp::parse(&path, &text)?;
+            }
             println!("ok: {}", path.display());
         }
         Command::Run { path } => {

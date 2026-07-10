@@ -97,7 +97,7 @@ dates, and YAML 1.1 booleans are not accepted.
 ```lisp
 (export greet
   (fn (name)
-    (str "Hello, " (, name) "!")))
+    (str "Hello, " ,name "!")))
 ```
 
 ## Rust embedding

@@ -1,3 +1,3 @@
 (export main
   (fn ()
-    (str "Hello from " (, (str "Jisp")) "!")))
+    (str "Hello from " ,(str "Jisp") "!")))

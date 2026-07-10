@@ -1,6 +1,7 @@
 use indexmap::IndexMap;
 use jisp_core::Span;
 
+use crate::value::BuiltinFn;
 use crate::{Evaluator, RuntimeError, Value};
 
 pub fn install_builtins(evaluator: &mut Evaluator) {
@@ -9,8 +10,8 @@ pub fn install_builtins(evaluator: &mut Evaluator) {
     evaluator.define_constructor("some", 1);
     evaluator.define_constructor("none", 0);
 
-    for (name, function) in [
-        ("+", add as _),
+    let builtins: &[(&str, BuiltinFn)] = &[
+        ("+", add),
         ("-", subtract),
         ("*", multiply),
         ("/", divide),
@@ -73,7 +74,9 @@ pub fn install_builtins(evaluator: &mut Evaluator) {
         ("result.map-err", result_map_err),
         ("result.recover", result_recover),
         ("io.println", io_println),
-    ] {
+    ];
+
+    for &(name, function) in builtins {
         evaluator.define_builtin(name, function);
     }
 }
@@ -326,7 +329,10 @@ fn math_min(_: &mut Evaluator, args: &[Value], span: Span) -> Result<Value, Runt
     match (&args[0], &args[1]) {
         (Value::Int(a), Value::Int(b)) => Ok(Value::Int((*a).min(*b))),
         (Value::Float(a), Value::Float(b)) => Ok(Value::Float(a.min(*b))),
-        _ => Err(RuntimeError::at(span, "math.min requires matching numeric types")),
+        _ => Err(RuntimeError::at(
+            span,
+            "math.min requires matching numeric types",
+        )),
     }
 }
 
@@ -335,7 +341,10 @@ fn math_max(_: &mut Evaluator, args: &[Value], span: Span) -> Result<Value, Runt
     match (&args[0], &args[1]) {
         (Value::Int(a), Value::Int(b)) => Ok(Value::Int((*a).max(*b))),
         (Value::Float(a), Value::Float(b)) => Ok(Value::Float(a.max(*b))),
-        _ => Err(RuntimeError::at(span, "math.max requires matching numeric types")),
+        _ => Err(RuntimeError::at(
+            span,
+            "math.max requires matching numeric types",
+        )),
     }
 }
 
@@ -347,7 +356,10 @@ fn math_pow(_: &mut Evaluator, args: &[Value], span: Span) -> Result<Value, Runt
             .map(Value::Int)
             .ok_or_else(|| RuntimeError::at(span, "integer overflow")),
         (Value::Float(a), Value::Float(b)) => Ok(Value::Float(a.powf(*b))),
-        _ => Err(RuntimeError::at(span, "math.pow requires matching numeric types")),
+        _ => Err(RuntimeError::at(
+            span,
+            "math.pow requires matching numeric types",
+        )),
     }
 }
 
@@ -386,7 +398,9 @@ fn str_cat(_: &mut Evaluator, args: &[Value], span: Span) -> Result<Value, Runti
 }
 fn str_len(_: &mut Evaluator, args: &[Value], span: Span) -> Result<Value, RuntimeError> {
     arity(args, 1, span)?;
-    Ok(Value::Int(expect_str(&args[0], span)?.chars().count() as i64))
+    Ok(Value::Int(
+        expect_str(&args[0], span)?.chars().count() as i64
+    ))
 }
 fn str_join(_: &mut Evaluator, args: &[Value], span: Span) -> Result<Value, RuntimeError> {
     arity(args, 2, span)?;
@@ -441,12 +455,10 @@ fn str_ends(_: &mut Evaluator, args: &[Value], span: Span) -> Result<Value, Runt
 }
 fn str_replace(_: &mut Evaluator, args: &[Value], span: Span) -> Result<Value, RuntimeError> {
     arity(args, 3, span)?;
-    Ok(Value::string(
-        expect_str(&args[0], span)?.replace(
-            expect_str(&args[1], span)?,
-            expect_str(&args[2], span)?,
-        ),
-    ))
+    Ok(Value::string(expect_str(&args[0], span)?.replace(
+        expect_str(&args[1], span)?,
+        expect_str(&args[2], span)?,
+    )))
 }
 fn str_slice(_: &mut Evaluator, args: &[Value], span: Span) -> Result<Value, RuntimeError> {
     arity(args, 3, span)?;
@@ -456,10 +468,12 @@ fn str_slice(_: &mut Evaluator, args: &[Value], span: Span) -> Result<Value, Run
     if start < 0 || end < 0 {
         return Ok(err("string slice indices cannot be negative"));
     }
-    Ok(match jisp_runtime::string::slice(value, start as usize, end as usize) {
-        Some(value) => ok(Value::string(value)),
-        None => err("string slice is out of bounds"),
-    })
+    Ok(
+        match jisp_runtime::string::slice(value, start as usize, end as usize) {
+            Some(value) => ok(Value::string(value)),
+            None => err("string slice is out of bounds"),
+        },
+    )
 }
 
 fn list_is(_: &mut Evaluator, args: &[Value], span: Span) -> Result<Value, RuntimeError> {
@@ -512,10 +526,12 @@ fn list_slice(_: &mut Evaluator, args: &[Value], span: Span) -> Result<Value, Ru
     if start < 0 || end < 0 {
         return Ok(err("list slice indices cannot be negative"));
     }
-    Ok(match jisp_runtime::list::slice(list, start as usize, end as usize) {
-        Some(value) => ok(Value::List(value)),
-        None => err("list slice is out of bounds"),
-    })
+    Ok(
+        match jisp_runtime::list::slice(list, start as usize, end as usize) {
+            Some(value) => ok(Value::List(value)),
+            None => err("list slice is out of bounds"),
+        },
+    )
 }
 fn list_map(eval: &mut Evaluator, args: &[Value], span: Span) -> Result<Value, RuntimeError> {
     arity(args, 2, span)?;
@@ -547,11 +563,7 @@ fn list_fold(eval: &mut Evaluator, args: &[Value], span: Span) -> Result<Value, 
     let function = args[0].clone();
     let mut accumulator = args[1].clone();
     for value in expect_list(&args[2], span)? {
-        accumulator = eval.apply(
-            function.clone(),
-            &[accumulator, value.clone()],
-            span,
-        )?;
+        accumulator = eval.apply(function.clone(), &[accumulator, value.clone()], span)?;
     }
     Ok(accumulator)
 }
@@ -683,7 +695,10 @@ fn result_try(eval: &mut Evaluator, args: &[Value], span: Span) -> Result<Value,
             eval.apply(args[1].clone(), &fields[..], span)
         }
         Value::Variant { tag, fields } if tag == "err" && fields.len() == 1 => Ok(args[0].clone()),
-        _ => Err(RuntimeError::at(span, "result.try expects [ok, value] or [err, error]")),
+        _ => Err(RuntimeError::at(
+            span,
+            "result.try expects [ok, value] or [err, error]",
+        )),
     }
 }
 fn result_map(eval: &mut Evaluator, args: &[Value], span: Span) -> Result<Value, RuntimeError> {

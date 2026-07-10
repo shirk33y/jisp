@@ -10,6 +10,7 @@ jisp-syntax-json.workspace = true
 jisp-syntax-yaml.workspace = true
 jisp-syntax-lisp.workspace = true
 jisp-ir.workspace = true
+jisp-types.workspace = true
 jisp-eval.workspace = true
 jisp-macros.workspace = true
 thiserror.workspace = true

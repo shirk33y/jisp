@@ -1,5 +1,5 @@
 use jisp_core::{
-    Diagnostic, Node, NodeKind, ParseError, SourceId, Span, Syntax, SyntaxParser,
+    Diagnostic, Node, NodeKind, ParseError, SourceId, Span, Symbol, Syntax, SyntaxParser,
 };
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -81,8 +81,7 @@ impl<'a> Reader<'a> {
 
     fn error_here(&self, message: impl Into<String>) -> ParseError {
         ParseError::single(
-            Diagnostic::error(Span::empty(self.source, self.pos), message)
-                .with_code("JISP-Y000"),
+            Diagnostic::error(Span::empty(self.source, self.pos), message).with_code("JISP-Y000"),
         )
     }
 
@@ -151,10 +150,7 @@ impl<'a> Reader<'a> {
             }
         }
 
-        Ok(Node::form(
-            items,
-            Span::new(self.source, start, self.pos),
-        ))
+        Ok(Node::form(items, Span::new(self.source, start, self.pos)))
     }
 
     fn parse_quoted(&mut self) -> Result<Node, ParseError> {
@@ -177,10 +173,7 @@ impl<'a> Reader<'a> {
                                 .with_code("JISP-Y004"),
                             )
                         })?;
-                        return Ok(Node::string(
-                            value,
-                            Span::new(self.source, start, self.pos),
-                        ));
+                        return Ok(Node::string(value, Span::new(self.source, start, self.pos)));
                     }
                     _ => {}
                 }
@@ -194,10 +187,7 @@ impl<'a> Reader<'a> {
                         value.push('\'');
                         continue;
                     }
-                    return Ok(Node::string(
-                        value,
-                        Span::new(self.source, start, self.pos),
-                    ));
+                    return Ok(Node::string(value, Span::new(self.source, start, self.pos)));
                 }
                 value.push(ch);
             }
@@ -232,12 +222,12 @@ impl<'a> Reader<'a> {
             _ if looks_like_float(value) => value
                 .parse::<f64>()
                 .map(NodeKind::Float)
-                .unwrap_or_else(|_| NodeKind::Symbol(value.into())),
+                .unwrap_or_else(|_| NodeKind::Symbol(Symbol::new(value.to_owned()))),
             _ if looks_like_int(value) => value
                 .parse::<i64>()
                 .map(NodeKind::Int)
-                .unwrap_or_else(|_| NodeKind::Symbol(value.into())),
-            _ => NodeKind::Symbol(value.into()),
+                .unwrap_or_else(|_| NodeKind::Symbol(Symbol::new(value.to_owned()))),
+            _ => NodeKind::Symbol(Symbol::new(value.to_owned())),
         };
         Ok(Node::new(kind, span))
     }
@@ -280,8 +270,6 @@ mod tests {
 
     #[test]
     fn rejects_maps_until_metadata_is_designed() {
-        assert!(YamlParser
-            .parse_module(SourceId(0), "[{type: x}]")
-            .is_err());
+        assert!(YamlParser.parse_module(SourceId(0), "[{type: x}]").is_err());
     }
 }
