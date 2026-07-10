@@ -28,6 +28,10 @@
 
 - Batch related edits across files before verification. Prefer one coherent patch
   over many tiny edit/check loops.
+- Prefer long, forward-moving implementation sessions over cautious
+  micro-iterations. Build a coherent slice quickly, then run a repair/cleanup
+  pass, then validate and commit. Auto-compaction has enough context budget for
+  this style; do not prematurely stop just to preserve context.
 - Prefer fewer, denser shell tool calls. Chain related read-only or validation
   commands in one shell when ordering is clear, for example `cmd1 && cmd2` for
   dependent checks or `cmd1; cmd2` for independent diagnostics. Keep output
