@@ -72,8 +72,12 @@ fn main() -> Result<()> {
             }
         }
         Command::EmitRust { path } => {
-            let _ = path;
-            anyhow::bail!("native Rust code generation is listed in TODO.md");
+            let text = read(&path)?;
+            let generated = match jisp::emit_rust_detailed(&path, &text) {
+                Ok(generated) => generated,
+                Err(error) => report_jisp_module_error(&error),
+            };
+            println!("{}", generated.tokens);
         }
     }
     Ok(())

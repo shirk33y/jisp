@@ -13,13 +13,14 @@ This is the single authoritative list of intentionally unfinished work.
 
 ## P1 — native compiler and product validation
 
-- Implement `jisp-codegen-rust` from `jisp_types::TypedModule`.
+- Expand `jisp-codegen-rust` from the current monomorphic scalar/function subset
+  to the rest of `jisp_types::TypedModule`.
 - Follow `.agents/plans/0004-p1-runtime-abi-validation.md`: generated Rust must
   use concrete typed layouts or fail codegen explicitly, never a universal
   dynamic `Value` for ordinary program values.
 - Replace the compile-error scaffold in `jisp-macros` with validation and native
   token emission.
-- Add optional `emit-rust` output and generated-to-source mapping.
+- Add generated-to-source mapping for `emit-rust` output.
 - Wrap Cargo/rustc JSON diagnostics and remap them to Jisp source ranges.
 - Validate Jisp as a universal UI description language: React-like components,
   renderer targets, state/event bindings, and Tailwind-like first-class utility

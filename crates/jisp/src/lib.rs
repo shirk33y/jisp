@@ -10,7 +10,8 @@ use jisp_core::{detect_syntax, Diagnostic, Node, SourceMap, Syntax, SyntaxParser
 use jisp_eval::{Evaluator, ImportValues, LoadedModule, RuntimeError, Value};
 use jisp_expand::ExpansionMap;
 use jisp_ir::{LowerError, Lowerer, Module};
-use jisp_types::{ImportTypeEnvironments, Inferencer, Scheme};
+use jisp_types::{ImportTypeEnvironments, Inferencer, Scheme, TypedModule};
+use proc_macro2::TokenStream;
 use thiserror::Error;
 
 pub use jisp_core;
@@ -33,6 +34,8 @@ pub enum Error {
     Type(#[from] jisp_types::InferError),
     #[error(transparent)]
     Runtime(#[from] RuntimeError),
+    #[error(transparent)]
+    Codegen(#[from] jisp_codegen_rust::CodegenError),
     #[error("failed to read `{path}`: {source}")]
     Read {
         path: String,
@@ -55,6 +58,13 @@ pub struct ParsedModule {
     pub module: Module,
     pub expansion_map: ExpansionMap,
     pub types: Option<BTreeMap<String, Scheme>>,
+    pub dependencies: Vec<PathBuf>,
+}
+
+pub struct GeneratedRustModule {
+    pub sources: SourceMap,
+    pub expansion_map: ExpansionMap,
+    pub tokens: TokenStream,
     pub dependencies: Vec<PathBuf>,
 }
 
@@ -160,6 +170,92 @@ pub fn parse_as_detailed(
     options: ParseOptions,
 ) -> Result<ParsedModule, ModuleError> {
     let name = name.into();
+    let LoweredModule {
+        mut sources,
+        module,
+        expansion_map,
+    } = lower_as_detailed(name.clone(), syntax, text)?;
+    let mut dependencies = vec![];
+    let types = if options.infer_types {
+        let path = Path::new(&name);
+        let type_result = infer_module_types(&mut sources, path, &module);
+        let (inferred, resolved_dependencies) = match type_result {
+            Ok(result) => result,
+            Err(error) => {
+                return Err(ModuleError::new(sources, expansion_map.clone(), error));
+            }
+        };
+        dependencies = resolved_dependencies;
+        Some(inferred)
+    } else {
+        None
+    };
+    Ok(ParsedModule {
+        sources,
+        module,
+        expansion_map,
+        types,
+        dependencies,
+    })
+}
+
+pub fn emit_rust(path: impl AsRef<Path>, text: &str) -> Result<TokenStream, Error> {
+    emit_rust_detailed(path, text)
+        .map(|generated| generated.tokens)
+        .map_err(|error| error.error)
+}
+
+pub fn emit_rust_detailed(
+    path: impl AsRef<Path>,
+    text: &str,
+) -> Result<GeneratedRustModule, ModuleError> {
+    let path = path.as_ref();
+    let syntax = detect_syntax(path).ok_or_else(|| {
+        ModuleError::new(
+            SourceMap::default(),
+            ExpansionMap::default(),
+            Error::UnknownSyntax(path.display().to_string()),
+        )
+    })?;
+    emit_rust_as_detailed(path.display().to_string(), syntax, text)
+}
+
+pub fn emit_rust_as_detailed(
+    name: impl Into<String>,
+    syntax: Syntax,
+    text: &str,
+) -> Result<GeneratedRustModule, ModuleError> {
+    let name = name.into();
+    let LoweredModule {
+        mut sources,
+        module,
+        expansion_map,
+    } = lower_as_detailed(name.clone(), syntax, text)?;
+    let path = Path::new(&name);
+    let codegen_result = generate_rust_module(&mut sources, path, module);
+    let (tokens, dependencies) = match codegen_result {
+        Ok(result) => result,
+        Err(error) => return Err(ModuleError::new(sources, expansion_map.clone(), error)),
+    };
+    Ok(GeneratedRustModule {
+        sources,
+        expansion_map,
+        tokens,
+        dependencies,
+    })
+}
+
+struct LoweredModule {
+    sources: SourceMap,
+    module: Module,
+    expansion_map: ExpansionMap,
+}
+
+fn lower_as_detailed(
+    name: String,
+    syntax: Syntax,
+    text: &str,
+) -> Result<LoweredModule, ModuleError> {
     let mut sources = SourceMap::default();
     let source = sources.add(name.clone(), text.to_owned());
     let nodes = match match syntax {
@@ -196,38 +292,45 @@ pub fn parse_as_detailed(
             ))
         }
     };
-    let mut dependencies = vec![];
-    let types = if options.infer_types {
-        let path = Path::new(&name);
-        let type_result = (|| -> Result<_, Error> {
-            let mut resolver = TypeResolver::new(&mut sources);
-            let imports = resolver.import_environments(path, &module)?;
-            let dependencies = resolver.dependencies();
-            let types = Inferencer::with_prelude().infer_module_with_imports(&module, &imports)?;
-            Ok((types, dependencies))
-        })();
-        let (inferred, resolved_dependencies) = match type_result {
-            Ok(result) => result,
-            Err(error) => {
-                return Err(ModuleError::new(
-                    sources,
-                    expanded.expansion_map.clone(),
-                    error,
-                ))
-            }
-        };
-        dependencies = resolved_dependencies;
-        Some(inferred)
-    } else {
-        None
-    };
-    Ok(ParsedModule {
+    Ok(LoweredModule {
         sources,
         module,
         expansion_map: expanded.expansion_map,
-        types,
-        dependencies,
     })
+}
+
+fn infer_module_types(
+    sources: &mut SourceMap,
+    path: &Path,
+    module: &Module,
+) -> Result<(BTreeMap<String, Scheme>, Vec<PathBuf>), Error> {
+    let mut resolver = TypeResolver::new(sources);
+    let imports = resolver.import_environments(path, module)?;
+    let dependencies = resolver.dependencies();
+    let types = Inferencer::with_prelude().infer_module_with_imports(module, &imports)?;
+    Ok((types, dependencies))
+}
+
+fn infer_typed_module(
+    sources: &mut SourceMap,
+    path: &Path,
+    module: Module,
+) -> Result<(TypedModule, Vec<PathBuf>), Error> {
+    let mut resolver = TypeResolver::new(sources);
+    let imports = resolver.import_environments(path, &module)?;
+    let dependencies = resolver.dependencies();
+    let typed = Inferencer::with_prelude().infer_typed_module_with_imports(module, &imports)?;
+    Ok((typed, dependencies))
+}
+
+fn generate_rust_module(
+    sources: &mut SourceMap,
+    path: &Path,
+    module: Module,
+) -> Result<(TokenStream, Vec<PathBuf>), Error> {
+    let (typed, dependencies) = infer_typed_module(sources, path, module)?;
+    let tokens = jisp_codegen_rust::generate(&typed)?;
+    Ok((tokens, dependencies))
 }
 
 pub fn check(path: impl AsRef<Path>, text: &str) -> Result<ParsedModule, Error> {

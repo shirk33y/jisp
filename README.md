@@ -2,8 +2,8 @@
 
 Jisp is a small statically oriented language frontend that reads Lisp,
 canonical JSON, and restricted YAML-like source into the same source-aware AST,
-then expands, lowers, checks, interprets, or eventually compiles it through a
-shared Rust implementation.
+then expands, lowers, checks, interprets, or compiles the currently supported
+native subset through a shared Rust implementation.
 
 Rust is the implementation backend, not the surface language. The three input
 syntaxes are meant to be semantically equivalent, so tooling can choose the most
@@ -22,15 +22,17 @@ source file
   -> interpreter or Rust codegen
 ```
 
-Today the interpreter path is the useful path. Native Rust code generation and
-proc-macro embedding are intentionally scaffolded behind stable typed-module
-seams until the backend is implemented.
+Today the interpreter path is still the broadest path. Native Rust code
+generation exists for a deliberately small typed subset and fails explicitly for
+unsupported layouts or expressions instead of falling back to a dynamic runtime
+`Value`. Proc-macro embedding still uses the stable facade seam only for Cargo
+dependency tracking.
 
 ## Why This Exists
 
 Jisp is exploring a compact language core with JSON-native data shapes,
 multiple equivalent source syntaxes, structural objects, algebraic data types,
-portable tests written as data, and a future native Rust backend.
+portable tests written as data, and a native Rust backend.
 
 The practical goal is not to make Rust syntax nicer. The goal is to keep Jisp's
 surface language small and portable while using Rust for implementation,
@@ -48,18 +50,22 @@ Implemented or substantially wired:
 - lexical evaluator with closures, recursive definitions, enum constructors,
   `case`, lists, objects, string templates, imports, and builtins;
 - type inference over Core IR, including module schemes and the `TypedModule`
-  contract consumed by the future native backend;
+  contract consumed by the native backend;
+- limited native Rust token emission for monomorphic scalar definitions and
+  zero-capture top-level functions;
 - generated core JSON Schema;
-- CLI commands for checking, running, schema generation, and codegen scaffolding;
+- CLI commands for checking, running, schema generation, and limited Rust
+  emission;
 - proc-macro scaffolds that track direct and transitive Jisp source imports for
-  Cargo before failing clearly until native codegen exists;
+  Cargo before failing clearly until they are wired to native codegen;
 - language, architecture, diagnostics, schema, stdlib, FFI, and handoff docs.
 
 Still incomplete:
 
 - compile-time evaluation for user macros;
 - complete package/module loading;
-- native Rust code generation;
+- broader native Rust code generation for data structures, case, imports, and
+  runtime helper calls;
 - rustc diagnostic remapping through Jisp source maps;
 - formatter, LSP, FFI, and binding generation.
 
@@ -78,11 +84,11 @@ before changing language semantics.
 | `jisp-expand` | Macro-preparation layer for quote/quasiquote/unquote expansion and generated-to-origin span tracking. |
 | `jisp-ir` | Core IR crate that lowers source AST forms into syntax-independent modules, definitions, expressions, and patterns. |
 | `jisp-types` | Type-system crate for type representations, unification, prelude schemes, dependency grouping, import environments, inference, and typed-module output. |
-| `jisp-runtime` | Pure runtime helper crate for reusable math, string, list, and object operations shared by evaluator and future backends. |
+| `jisp-runtime` | Pure runtime helper crate for reusable math, string, list, and object operations shared by evaluator and backends. |
 | `jisp-eval` | Tree interpreter for lowered IR with lexical environments, builtins, imports, runtime errors, and portable fixture tests. |
-| `jisp-codegen-rust` | Native Rust backend seam that accepts typed modules and currently remains a deliberate scaffold. |
-| `jisp-macros` | Proc-macro crate that tracks Jisp source dependencies through the facade resolver and fails clearly until native codegen is implemented. |
-| `jisp-cli` | Command-line frontend for checking, running, schema emission, and the future Rust-emission flow. |
+| `jisp-codegen-rust` | Native Rust backend that accepts typed modules, emits a limited concrete Rust subset, and rejects unsupported shapes without a dynamic fallback. |
+| `jisp-macros` | Proc-macro crate that tracks Jisp source dependencies through the facade resolver and fails clearly until it is wired to native codegen. |
+| `jisp-cli` | Command-line frontend for checking, running, schema emission, and Rust token emission for the supported native subset. |
 
 ## Source Syntaxes
 
@@ -139,17 +145,20 @@ Top-level executable expressions are rejected; execution starts at exported
 cargo run -p jisp-cli -- check examples/hello.lisp
 cargo run -p jisp-cli -- run examples/hello.lisp
 cargo run -p jisp-cli -- schema
-cargo run -p jisp-cli -- emit-rust examples/hello.lisp
+cargo run -p jisp-cli -- emit-rust examples/native.lisp
 ```
 
-`emit-rust` currently reports that native codegen is unfinished.
+`emit-rust` prints Rust tokens for the currently supported monomorphic native
+subset. Unsupported programs report a codegen error rather than falling back to
+the interpreter.
 
 ## Rust Embedding
 
 The public facade supports parsing, expansion, lowering, checking, interpreter
-execution, and dependency listing. The `jisp-macros` crate already records direct
-and imported source files for Cargo rebuilds, then deliberately emits a clear
-compile error until typed native code generation is implemented.
+execution, dependency listing, and limited Rust token emission. The
+`jisp-macros` crate already records direct and imported source files for Cargo
+rebuilds, then deliberately emits a clear compile error until it is wired to the
+native codegen facade.
 
 ## Development
 
@@ -157,17 +166,17 @@ Focused smoke checks:
 
 ```text
 cargo fmt --all -- --check
-cargo test -p jisp
-cargo test -p jisp-types
+cargo test --workspace --exclude jisp-macros --quiet
 cargo run -q -p jisp-cli -- check examples/hello.lisp
 cargo run -q -p jisp-cli -- run examples/hello.lisp
+cargo run -q -p jisp-cli -- emit-rust examples/native.lisp
 ```
 
 Current CI validation target:
 
 ```text
 cargo fmt --all -- --check
-cargo test --workspace --exclude jisp-macros
+cargo test --workspace --exclude jisp-macros --quiet
 ```
 
 ## Reference

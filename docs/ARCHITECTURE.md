@@ -13,7 +13,7 @@ JSON / restricted YAML / Lisp
               ↓
      typed Core IR / TypedModule
           ↙          ↘
- tree evaluator    Rust codegen (TODO)
+ tree evaluator    Rust codegen subset
 ```
 
 ## Crates
@@ -29,12 +29,14 @@ JSON / restricted YAML / Lisp
   backend consumers.
 - `jisp-runtime`: reusable pure implementations of math/string/list/object ops.
 - `jisp-eval`: lexical typed-IR-oriented evaluator and tests.
-- `jisp-codegen-rust`: stable native backend seam over `TypedModule`, currently
-  a scaffold.
+- `jisp-codegen-rust`: native backend over `TypedModule`; it emits the current
+  monomorphic scalar/function subset and rejects unsupported shapes without
+  introducing a dynamic `Value` ABI.
 - `jisp-macros`: Cargo dependency-tracking macro scaffold using the facade
   import resolver.
 - `jisp`: facade API.
-- `jisp-cli`: `check`, `run`, `schema`, `emit-rust` scaffold.
+- `jisp-cli`: `check`, `run`, `schema`, and `emit-rust` for the supported
+  native subset.
 
 ## Invariants
 
