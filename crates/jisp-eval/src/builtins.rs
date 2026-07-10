@@ -4,6 +4,7 @@ use num_bigint::BigInt;
 use num_traits::{Signed, Zero};
 use std::str::FromStr;
 
+use crate::ui;
 use crate::value::BuiltinFn;
 use crate::{Evaluator, RuntimeError, Value};
 
@@ -73,6 +74,7 @@ pub fn install_builtins(evaluator: &mut Evaluator) {
         ("obj.keys", obj_keys),
         ("obj.values", obj_values),
         ("obj.cat", obj_cat),
+        ("ui.html", ui_html),
         ("result.try", result_try),
         ("result.map", result_map),
         ("result.map-err", result_map_err),
@@ -802,6 +804,11 @@ fn obj_cat(_: &mut Evaluator, args: &[Value], span: Span) -> Result<Value, Runti
         .map(|value| expect_obj(value, span).cloned())
         .collect::<Result<Vec<_>, _>>()?;
     Ok(Value::Obj(jisp_runtime::object::concat(objects)))
+}
+
+fn ui_html(_: &mut Evaluator, args: &[Value], span: Span) -> Result<Value, RuntimeError> {
+    arity(args, 1, span)?;
+    Ok(Value::string(ui::render_html(&args[0], span)?))
 }
 
 fn result_try(eval: &mut Evaluator, args: &[Value], span: Span) -> Result<Value, RuntimeError> {

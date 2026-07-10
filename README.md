@@ -78,8 +78,6 @@ Still incomplete and tracked as P2:
 - later native backend work for first-class function values, nested functions,
   variadic user functions, `bigint` emission, open or dynamic object rows,
   dynamic field access, and `obj.get`;
-- a minimal UI renderer proof from Jisp structural UI data to HTML/string or
-  JSON vnode output;
 - richer portable `.lisp` test runner UX;
 - compile-time evaluation for user macros;
 - richer `case` patterns and exhaustiveness, including guards, alternatives,

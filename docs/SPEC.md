@@ -82,6 +82,12 @@ for `result.try`, resource scopes, transactions, and parsers.
 collection where practical. `obj` is created with alternating key/value
 arguments. Raw `{}` syntax is reserved and currently rejected.
 
+The current UI proof uses ordinary objects rather than new syntax. A node has a
+string `tag`, optional scalar attributes, optional `classes` object whose keys
+are utility class names and whose values are booleans, and optional `children`
+list. Text is represented as `{tag: "text", value: "..."}` in object form. The
+prototype `ui.html` builtin renders this data shape to an escaped HTML string.
+
 `[., object, key]` is field/map lookup only. Jisp has no method syntax or
 implicit receiver. A function stored in a field is called normally.
 

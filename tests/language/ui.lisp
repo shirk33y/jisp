@@ -1,0 +1,24 @@
+(def saving false)
+(def active true)
+
+(def save-button
+  (obj
+    "tag" "button"
+    "id" "save-button"
+    "title" "Save <draft>"
+    "classes"
+      (obj
+        "px-4" true
+        "py-2" true
+        "opacity-50" saving
+        "bg-emerald-600" (and active (not saving)))
+    "children"
+      (list
+        (obj
+          "tag" "text"
+          "value" "Save & close"))))
+
+(test "ui html renders active classes attributes and escaped text"
+  (assert.equal
+    "<button class=\"px-4 py-2 bg-emerald-600\" id=\"save-button\" title=\"Save &lt;draft&gt;\">Save &amp; close</button>"
+    (ui.html save-button)))

@@ -117,9 +117,9 @@ multi-line spans.
   codegen; the backend still lacks source-ranged remapping for runtime failures
   inside generated Rust.
 - P1 UI-language work is proof-of-shape/spec and feature pressure for native
-  Jisp. A real renderer/prototype, formatter, richer portable test UX, native
-  bigint emission, project-aware schema, and fine-grained generated diagnostics
-  are P2.
+  Jisp. The P2 `ui.html` prototype renders structural UI objects to escaped HTML
+  strings. Formatter, richer portable test UX, native bigint emission,
+  project-aware schema, and fine-grained generated diagnostics remain P2.
 - P1 is complete as of the native imports, UI data-shape, and static object
   helper milestones. Remaining native gaps are P2 unless they are regressions
   inside the documented P1 subset.

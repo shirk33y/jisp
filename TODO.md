@@ -41,9 +41,8 @@ This is the single authoritative list of intentionally unfinished work.
      `Value` fallback.
   3. Done: add `use` desugaring for callback-last flows, including
      multi-binding callbacks and portable `.lisp` coverage.
-  4. Build a minimal UI proof prototype once P1 validates the data shape,
-     starting with Jisp structural UI data rendered to a simple HTML/string or
-     JSON vnode target before a full renderer.
+  4. Done: build a minimal UI proof prototype with Jisp structural UI data
+     rendered to escaped HTML strings through `ui.html`.
   5. Improve portable `.lisp` test runner UX with better listing, filtering, and
      failure reporting.
 - Add native backend support for first-class function values, nested functions,

@@ -14,6 +14,8 @@ Initial modules:
   every, has, cat, prepend, append.
 - `obj`: is, len, has, get, set, del, keys, values, cat.
 - `result`: map, map-err, try, recover.
+- `ui`: html. `ui.html` is a prototype renderer from structural UI objects to
+  escaped HTML strings; it is not a full UI framework.
 
 Not every listed function is implemented in the evaluator yet. Keep the surface
 small and add functions with tests rather than copying all of Gleam stdlib.

@@ -260,6 +260,11 @@ pub fn environment() -> BTreeMap<String, Scheme> {
         "obj.cat",
         scheme(vec![0], variadic_fun(vec![], object_row(0), object_row(0))),
     );
+    add(
+        &mut env,
+        "ui.html",
+        scheme(vec![0], fun(vec![var(0)], Type::Str)),
+    );
 
     add(
         &mut env,
