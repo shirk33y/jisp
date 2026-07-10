@@ -5,6 +5,7 @@ use jisp_types::{ObjectRow, Scheme, Type, TypedModule};
 use proc_macro2::{Ident, TokenStream};
 use quote::{format_ident, quote};
 
+use crate::enum_types::EnumTypes;
 use crate::CodegenError;
 
 pub(crate) fn emit_module(module: &TypedModule) -> Result<TokenStream, CodegenError> {
@@ -15,14 +16,16 @@ pub(crate) fn emit_module(module: &TypedModule) -> Result<TokenStream, CodegenEr
         .map(|definition| definition.name.clone())
         .collect::<BTreeSet<_>>();
     let object_types = ObjectTypes::from_module(module)?;
-    let object_structs = emit_object_structs(&object_types)?;
+    let enum_types = EnumTypes::from_declarations(&module.module.types)?;
+    let object_structs = emit_object_structs(&object_types, &enum_types)?;
+    let enum_definitions = emit_enum_definitions(&enum_types, &object_types)?;
     let definitions = module
         .module
         .definitions
         .iter()
-        .map(|definition| emit_definition(module, definition, &names, &object_types))
+        .map(|definition| emit_definition(module, definition, &names, &object_types, &enum_types))
         .collect::<Result<Vec<_>, _>>()?;
-    Ok(quote! { #(#object_structs)* #(#definitions)* })
+    Ok(quote! { #(#object_structs)* #(#enum_definitions)* #(#definitions)* })
 }
 
 fn emit_definition(
@@ -30,6 +33,7 @@ fn emit_definition(
     definition: &Definition,
     top_level_names: &BTreeSet<String>,
     object_types: &ObjectTypes,
+    enum_types: &EnumTypes,
 ) -> Result<TokenStream, CodegenError> {
     let Some(scheme) = module.schemes.get(&definition.name) else {
         return Err(CodegenError::Unsupported(
@@ -58,19 +62,20 @@ fn emit_definition(
                     "function definitions with mismatched inferred arity",
                 ));
             }
-            let mut context = EmitContext::new(top_level_names, &module.schemes, object_types);
+            let mut context =
+                EmitContext::new(top_level_names, &module.schemes, object_types, enum_types);
             let params = params
                 .iter()
                 .zip(parameters)
                 .map(|(name, ty)| {
                     context.locals.insert(name.clone(), Some(ty.clone()));
                     let name = rust_ident(name);
-                    let ty = emit_type(ty, object_types)?;
+                    let ty = emit_type(ty, object_types, enum_types)?;
                     Ok(quote! { #name: #ty })
                 })
                 .collect::<Result<Vec<_>, _>>()?;
             let result_ty = result.as_ref();
-            let result = emit_type(result_ty, object_types)?;
+            let result = emit_type(result_ty, object_types, enum_types)?;
             let body = context.emit_expr(body, Some(result_ty))?;
             Ok(quote! {
                 #visibility fn #name(#(#params),*) -> #result {
@@ -79,8 +84,8 @@ fn emit_definition(
             })
         }
         (_, ty) => {
-            let result = emit_type(ty, object_types)?;
-            let body = EmitContext::new(top_level_names, &module.schemes, object_types)
+            let result = emit_type(ty, object_types, enum_types)?;
+            let body = EmitContext::new(top_level_names, &module.schemes, object_types, enum_types)
                 .emit_expr(&definition.value, Some(ty))?;
             Ok(quote! {
                 #visibility fn #name() -> #result {
@@ -95,6 +100,7 @@ struct EmitContext<'a> {
     top_level_names: &'a BTreeSet<String>,
     top_level_schemes: &'a BTreeMap<String, Scheme>,
     object_types: &'a ObjectTypes,
+    enum_types: &'a EnumTypes,
     locals: BTreeMap<String, Option<Type>>,
 }
 
@@ -103,11 +109,13 @@ impl<'a> EmitContext<'a> {
         top_level_names: &'a BTreeSet<String>,
         top_level_schemes: &'a BTreeMap<String, Scheme>,
         object_types: &'a ObjectTypes,
+        enum_types: &'a EnumTypes,
     ) -> Self {
         Self {
             top_level_names,
             top_level_schemes,
             object_types,
+            enum_types,
             locals: BTreeMap::new(),
         }
     }
@@ -125,6 +133,10 @@ impl<'a> EmitContext<'a> {
                     Ok(quote! { #ident })
                 } else if self.top_level_names.contains(name) {
                     Ok(quote! { #ident() })
+                } else if let Some(variant) = self.enum_types.zero_field_variant(name) {
+                    let enum_ident = &variant.enum_ident;
+                    let variant_ident = &variant.ident;
+                    Ok(quote! { #enum_ident::#variant_ident })
                 } else {
                     Err(CodegenError::Unsupported("names outside native module"))
                 }
@@ -298,6 +310,12 @@ impl<'a> EmitContext<'a> {
         branches: &[CaseBranch],
         expected: Option<&Type>,
     ) -> Result<TokenStream, CodegenError> {
+        if branches
+            .iter()
+            .any(|branch| matches!(branch.pattern, Pattern::Variant { .. }))
+        {
+            return self.emit_variant_case(subject, branches, expected);
+        }
         let subject = self.emit_expr(subject, None)?;
         let subject_name = format_ident!("__jisp_case_subject");
         let mut output = quote! { unreachable!("typechecked Jisp case should be exhaustive") };
@@ -335,6 +353,90 @@ impl<'a> EmitContext<'a> {
             let #subject_name = #subject;
             #output
         }})
+    }
+
+    fn emit_variant_case(
+        &mut self,
+        subject: &Expr,
+        branches: &[CaseBranch],
+        expected: Option<&Type>,
+    ) -> Result<TokenStream, CodegenError> {
+        let subject = self.emit_expr(subject, None)?;
+        let subject_name = format_ident!("__jisp_case_subject");
+        let arms = branches
+            .iter()
+            .map(|branch| self.emit_variant_case_arm(&branch.pattern, &branch.body, expected))
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(quote! {{
+            let #subject_name = #subject;
+            match #subject_name {
+                #(#arms,)*
+            }
+        }})
+    }
+
+    fn emit_variant_case_arm(
+        &mut self,
+        pattern: &Pattern,
+        body: &Expr,
+        expected: Option<&Type>,
+    ) -> Result<TokenStream, CodegenError> {
+        let PatternMatch { tokens, bindings } = self.emit_variant_match_pattern(pattern)?;
+        let mut previous_locals = Vec::new();
+        for binding in &bindings {
+            previous_locals.push((binding.clone(), self.locals.insert(binding.clone(), None)));
+        }
+        let body = self.emit_expr(body, expected)?;
+        for (name, previous) in previous_locals.into_iter().rev() {
+            if let Some(previous) = previous {
+                self.locals.insert(name, previous);
+            } else {
+                self.locals.remove(&name);
+            }
+        }
+        Ok(quote! { #tokens => { #body } })
+    }
+
+    fn emit_variant_match_pattern(&self, pattern: &Pattern) -> Result<PatternMatch, CodegenError> {
+        match pattern {
+            Pattern::Variant { tag, fields } => {
+                let variant = self.enum_types.variant(tag)?;
+                if fields.len() != variant.fields.len() {
+                    return Err(CodegenError::Unsupported(
+                        "variant case pattern arity mismatch",
+                    ));
+                }
+                let enum_ident = &variant.enum_ident;
+                let variant_ident = &variant.ident;
+                let mut bindings = Vec::new();
+                let fields = fields
+                    .iter()
+                    .map(|field| emit_variant_field_pattern(field, &mut bindings))
+                    .collect::<Result<Vec<_>, _>>()?;
+                let tokens = if fields.is_empty() {
+                    quote! { #enum_ident::#variant_ident }
+                } else {
+                    quote! { #enum_ident::#variant_ident(#(#fields),*) }
+                };
+                Ok(PatternMatch { tokens, bindings })
+            }
+            Pattern::Wildcard => Ok(PatternMatch {
+                tokens: quote! { _ },
+                bindings: vec![],
+            }),
+            Pattern::Bind(name) => {
+                let ident = rust_ident(name);
+                Ok(PatternMatch {
+                    tokens: quote! { #ident },
+                    bindings: vec![name.clone()],
+                })
+            }
+            Pattern::Literal(_) => Err(CodegenError::Unsupported(
+                "literal patterns in native variant case",
+            )),
+            Pattern::List { .. } => Err(CodegenError::Unsupported("list case patterns")),
+            Pattern::Object(_) => Err(CodegenError::Unsupported("object case patterns")),
+        }
     }
 
     fn emit_pattern(
@@ -388,6 +490,21 @@ impl<'a> EmitContext<'a> {
         let ExprKind::Name(name) = &callee.kind else {
             return Err(CodegenError::Unsupported("first-class function calls"));
         };
+        if let Some(variant) = self.enum_types.variants.get(name).cloned() {
+            if variant.fields.len() != arguments.len() {
+                return Err(CodegenError::Unsupported(
+                    "variant constructor arity mismatch",
+                ));
+            }
+            let enum_ident = &variant.enum_ident;
+            let variant_ident = &variant.ident;
+            let arguments = arguments
+                .iter()
+                .zip(&variant.fields)
+                .map(|(argument, ty)| self.emit_expr(argument, Some(ty)))
+                .collect::<Result<Vec<_>, _>>()?;
+            return Ok(quote! { #enum_ident::#variant_ident(#(#arguments),*) });
+        }
         if !self.locals.contains_key(name) && !self.top_level_names.contains(name) {
             if let Some(operator) = binary_intrinsic_operator(name) {
                 return self.emit_binary_intrinsic(arguments, operator);
@@ -475,6 +592,65 @@ struct PatternBinding {
 }
 
 #[derive(Clone, Debug)]
+struct PatternMatch {
+    tokens: TokenStream,
+    bindings: Vec<String>,
+}
+
+fn emit_variant_field_pattern(
+    pattern: &Pattern,
+    bindings: &mut Vec<String>,
+) -> Result<TokenStream, CodegenError> {
+    match pattern {
+        Pattern::Wildcard => Ok(quote! { _ }),
+        Pattern::Bind(name) => {
+            bindings.push(name.clone());
+            let ident = rust_ident(name);
+            Ok(quote! { #ident })
+        }
+        Pattern::Literal(_) => Err(CodegenError::Unsupported("literal variant field patterns")),
+        Pattern::Variant { .. } => Err(CodegenError::Unsupported("nested variant case patterns")),
+        Pattern::List { .. } => Err(CodegenError::Unsupported("list case patterns")),
+        Pattern::Object(_) => Err(CodegenError::Unsupported("object case patterns")),
+    }
+}
+
+fn emit_enum_definitions(
+    enum_types: &EnumTypes,
+    object_types: &ObjectTypes,
+) -> Result<Vec<TokenStream>, CodegenError> {
+    enum_types
+        .enums
+        .values()
+        .map(|shape| {
+            let name = &shape.ident;
+            let variants = shape
+                .variants
+                .iter()
+                .map(|variant| {
+                    let ident = &variant.ident;
+                    if variant.fields.is_empty() {
+                        return Ok(quote! { #ident });
+                    }
+                    let fields = variant
+                        .fields
+                        .iter()
+                        .map(|ty| emit_type(ty, object_types, enum_types))
+                        .collect::<Result<Vec<_>, _>>()?;
+                    Ok(quote! { #ident(#(#fields),*) })
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(quote! {
+                #[derive(Clone, Debug, PartialEq)]
+                pub enum #name {
+                    #(#variants,)*
+                }
+            })
+        })
+        .collect()
+}
+
+#[derive(Clone, Debug)]
 struct ObjectShape {
     fields: BTreeMap<String, Type>,
 }
@@ -556,7 +732,10 @@ fn collect_object_shapes(
     Ok(())
 }
 
-fn emit_object_structs(object_types: &ObjectTypes) -> Result<Vec<TokenStream>, CodegenError> {
+fn emit_object_structs(
+    object_types: &ObjectTypes,
+    enum_types: &EnumTypes,
+) -> Result<Vec<TokenStream>, CodegenError> {
     object_types
         .shapes
         .iter()
@@ -576,7 +755,7 @@ fn emit_object_structs(object_types: &ObjectTypes) -> Result<Vec<TokenStream>, C
                             "object fields with colliding Rust identifiers",
                         ));
                     }
-                    let ty = emit_type(ty, object_types)?;
+                    let ty = emit_type(ty, object_types, enum_types)?;
                     Ok(quote! { pub #field: #ty })
                 })
                 .collect::<Result<Vec<_>, _>>()?;
@@ -615,11 +794,29 @@ fn type_signature(ty: &Type) -> Result<String, CodegenError> {
         Type::Function { .. } => return Err(CodegenError::Unsupported("function value types")),
         Type::Never => return Err(CodegenError::Unsupported("never type emission")),
         Type::Var(_) => return Err(CodegenError::Unsupported("unresolved type variables")),
-        Type::Named { .. } => return Err(CodegenError::Unsupported("named type emission")),
+        Type::Named { name, arguments } => {
+            if arguments.is_empty() {
+                name.clone()
+            } else {
+                format!(
+                    "{}<{}>",
+                    name,
+                    arguments
+                        .iter()
+                        .map(type_signature)
+                        .collect::<Result<Vec<_>, _>>()?
+                        .join(",")
+                )
+            }
+        }
     })
 }
 
-fn emit_type(ty: &Type, object_types: &ObjectTypes) -> Result<TokenStream, CodegenError> {
+fn emit_type(
+    ty: &Type,
+    object_types: &ObjectTypes,
+    enum_types: &EnumTypes,
+) -> Result<TokenStream, CodegenError> {
     match ty {
         Type::Null => Ok(quote! { () }),
         Type::Bool => Ok(quote! { bool }),
@@ -627,7 +824,7 @@ fn emit_type(ty: &Type, object_types: &ObjectTypes) -> Result<TokenStream, Codeg
         Type::Float => Ok(quote! { f64 }),
         Type::Str => Ok(quote! { String }),
         Type::List(item) => {
-            let item = emit_type(item, object_types)?;
+            let item = emit_type(item, object_types, enum_types)?;
             Ok(quote! { Vec<#item> })
         }
         Type::Object(row) => object_types
@@ -636,7 +833,14 @@ fn emit_type(ty: &Type, object_types: &ObjectTypes) -> Result<TokenStream, Codeg
         Type::Never => Err(CodegenError::Unsupported("never type emission")),
         Type::Var(_) => Err(CodegenError::Unsupported("unresolved type variables")),
         Type::Function { .. } => Err(CodegenError::Unsupported("function value types")),
-        Type::Named { .. } => Err(CodegenError::Unsupported("named type emission")),
+        Type::Named { name, arguments } => {
+            if !arguments.is_empty() {
+                return Err(CodegenError::Unsupported("generic named type emission"));
+            }
+            enum_types
+                .ident_for_name(name)
+                .map(|ident| quote! { #ident })
+        }
     }
 }
 

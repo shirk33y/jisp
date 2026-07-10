@@ -7,6 +7,7 @@
 mod emit;
 #[cfg(test)]
 mod emit_test;
+mod enum_types;
 mod layout;
 #[cfg(test)]
 mod layout_test;

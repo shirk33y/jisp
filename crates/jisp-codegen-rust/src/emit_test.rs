@@ -1,5 +1,8 @@
 use jisp_core::{SourceId, Span};
-use jisp_ir::{CaseBranch, Definition, Expr, ExprKind, Literal, Module, Pattern, StringPart};
+use jisp_ir::{
+    CaseBranch, Definition, Expr, ExprKind, Literal, Module, Pattern, StringPart, TypeDecl,
+    VariantDecl,
+};
 use jisp_types::{ObjectRow, Scheme, Type, TypedModule};
 
 use crate::{generate, CodegenError};
@@ -30,11 +33,33 @@ fn object_type(fields: impl IntoIterator<Item = (&'static str, Type)>) -> Type {
     })
 }
 
+fn named_type(name: &str) -> Type {
+    Type::Named {
+        name: name.to_owned(),
+        arguments: vec![],
+    }
+}
+
 fn definition(name: &str, public: bool, value: Expr) -> Definition {
     Definition {
         name: name.to_owned(),
         public,
         value,
+        span: span(),
+    }
+}
+
+fn type_decl(name: &str, variants: Vec<(&str, Vec<&str>)>) -> TypeDecl {
+    TypeDecl {
+        name: name.to_owned(),
+        variants: variants
+            .into_iter()
+            .map(|(name, field_types)| VariantDecl {
+                name: name.to_owned(),
+                field_types: field_types.into_iter().map(ToOwned::to_owned).collect(),
+                span: span(),
+            })
+            .collect(),
         span: span(),
     }
 }
@@ -363,6 +388,83 @@ fn emits_bind_and_wildcard_case_patterns_without_value_fallback() {
     assert!(generated.contains("let value = __jisp_case_subject . clone ()"));
     assert!(generated.contains("(value + 1i64)"));
     assert!(generated.contains("if true"));
+    assert!(!generated.contains("Value"));
+    assert!(!generated.contains("jisp_eval"));
+}
+
+#[test]
+fn emits_native_enum_constructors() {
+    let mut module = typed_module(
+        vec![definition(
+            "main",
+            true,
+            expr(ExprKind::Call {
+                callee: Box::new(name("ok")),
+                arguments: vec![literal(Literal::Int(42))],
+            }),
+        )],
+        vec![("main", named_type("result"))],
+    );
+    module.module.types.push(type_decl(
+        "result",
+        vec![("ok", vec!["int"]), ("err", vec!["str"])],
+    ));
+
+    let generated = generate(&module).unwrap().to_string();
+
+    assert!(generated.contains("pub enum JispEnum0"));
+    assert!(generated.contains("Ok (i64)"));
+    assert!(generated.contains("Err (String)"));
+    assert!(generated.contains("pub fn main () -> JispEnum0"));
+    assert!(generated.contains("JispEnum0 :: Ok (42i64)"));
+    assert!(!generated.contains("Value"));
+    assert!(!generated.contains("jisp_eval"));
+}
+
+#[test]
+fn emits_variant_case_as_native_match() {
+    let mut module = typed_module(
+        vec![definition(
+            "main",
+            true,
+            expr(ExprKind::Case {
+                subject: Box::new(expr(ExprKind::Call {
+                    callee: Box::new(name("ok")),
+                    arguments: vec![literal(Literal::Int(41))],
+                })),
+                branches: vec![
+                    branch(
+                        Pattern::Variant {
+                            tag: "ok".to_owned(),
+                            fields: vec![Pattern::Bind("value".to_owned())],
+                        },
+                        expr(ExprKind::Call {
+                            callee: Box::new(name("+")),
+                            arguments: vec![name("value"), literal(Literal::Int(1))],
+                        }),
+                    ),
+                    branch(
+                        Pattern::Variant {
+                            tag: "err".to_owned(),
+                            fields: vec![Pattern::Wildcard],
+                        },
+                        literal(Literal::Int(0)),
+                    ),
+                ],
+            }),
+        )],
+        vec![("main", Type::Int)],
+    );
+    module.module.types.push(type_decl(
+        "result",
+        vec![("ok", vec!["int"]), ("err", vec!["str"])],
+    ));
+
+    let generated = generate(&module).unwrap().to_string();
+
+    assert!(generated.contains("match __jisp_case_subject"));
+    assert!(generated.contains("JispEnum0 :: Ok (value) => { (value + 1i64) }"));
+    assert!(generated.contains("JispEnum0 :: Err (_) => { 0i64 }"));
     assert!(!generated.contains("Value"));
     assert!(!generated.contains("jisp_eval"));
 }

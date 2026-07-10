@@ -133,6 +133,38 @@ fn emit_rust_detailed_emits_simple_case_patterns() {
 }
 
 #[test]
+fn emit_rust_detailed_emits_native_enum_case() {
+    let generated = jisp::emit_rust_as_detailed(
+        "main.lisp",
+        Syntax::Lisp,
+        r#"
+(type result
+  (ok int)
+  (err str))
+
+(export main
+  (fn ()
+    (case (ok 41)
+      ((ok value) (+ value 1))
+      ((err _) 0))))
+"#,
+    )
+    .unwrap();
+
+    let tokens = generated.tokens.to_string();
+
+    assert!(tokens.contains("pub enum JispEnum0"));
+    assert!(tokens.contains("Ok (i64)"));
+    assert!(tokens.contains("Err (String)"));
+    assert!(tokens.contains("pub fn main () -> i64"));
+    assert!(tokens.contains("match __jisp_case_subject"));
+    assert!(tokens.contains("JispEnum0 :: Ok (value) => { (value + 1i64) }"));
+    assert!(tokens.contains("JispEnum0 :: Err (_) => { 0i64 }"));
+    assert!(!tokens.contains("Value"));
+    assert!(!tokens.contains("jisp_eval"));
+}
+
+#[test]
 fn emit_rust_detailed_rejects_unsupported_shapes_without_runtime_fallback() {
     let error = match jisp::emit_rust_as_detailed(
         "main.lisp",
