@@ -24,7 +24,11 @@ impl Span {
 
     pub fn merge(self, other: Self) -> Self {
         debug_assert_eq!(self.source, other.source);
-        Self::new(self.source, self.start.min(other.start), self.end.max(other.end))
+        Self::new(
+            self.source,
+            self.start.min(other.start),
+            self.end.max(other.end),
+        )
     }
 }
 

@@ -102,7 +102,10 @@ impl Lowerer {
             }
             "type" => {
                 if items.len() < 3 {
-                    return Err(error(node.span, "type expects a name and at least one variant"));
+                    return Err(error(
+                        node.span,
+                        "type expects a name and at least one variant",
+                    ));
                 }
                 let name = expect_symbol(&items[1], "type name")?.to_owned();
                 let variants = items[2..]
@@ -242,7 +245,10 @@ impl Lowerer {
         while index < params_node.len() {
             if params_node[index].as_symbol() == Some("...") {
                 let Some(name_node) = params_node.get(index + 1) else {
-                    return Err(error(params_node[index].span, "`...` must be followed by a name"));
+                    return Err(error(
+                        params_node[index].span,
+                        "`...` must be followed by a name",
+                    ));
                 };
                 rest = Some(expect_symbol(name_node, "rest parameter")?.to_owned());
                 if index + 2 != params_node.len() {
@@ -364,7 +370,10 @@ impl Lowerer {
 
     fn lower_case(&self, span: Span, items: &[Node]) -> Result<Expr, LowerError> {
         if items.len() < 3 {
-            return Err(error(span, "case expects a subject and at least one branch"));
+            return Err(error(
+                span,
+                "case expects a subject and at least one branch",
+            ));
         }
         let subject = Box::new(self.lower_expr(&items[1])?);
         let mut branches = vec![];
@@ -446,7 +455,10 @@ impl Lowerer {
 fn lower_variant(node: &Node) -> Result<VariantDecl, LowerError> {
     let items = expect_form(node, "type variant")?;
     let Some(name) = items.first().and_then(Node::as_symbol) else {
-        return Err(error(node.span, "type variant must start with a constructor name"));
+        return Err(error(
+            node.span,
+            "type variant must start with a constructor name",
+        ));
     };
     Ok(VariantDecl {
         name: name.to_owned(),
@@ -599,10 +611,7 @@ fn default_alias(path: &str) -> String {
 }
 
 fn error(span: Span, message: impl Into<String>) -> LowerError {
-    LowerError::single(
-        Diagnostic::error(span, message)
-            .with_code("JISP-LOWER"),
-    )
+    LowerError::single(Diagnostic::error(span, message).with_code("JISP-LOWER"))
 }
 
 #[cfg(test)]

@@ -22,7 +22,13 @@ impl Syntax {
 }
 
 pub fn detect_syntax(path: impl AsRef<Path>) -> Option<Syntax> {
-    match path.as_ref().extension()?.to_str()?.to_ascii_lowercase().as_str() {
+    match path
+        .as_ref()
+        .extension()?
+        .to_str()?
+        .to_ascii_lowercase()
+        .as_str()
+    {
         "json" => Some(Syntax::Json),
         "yaml" | "yml" => Some(Syntax::Yaml),
         "lisp" | "jisp" => Some(Syntax::Lisp),

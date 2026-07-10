@@ -8,10 +8,7 @@ use jisp_syntax_yaml::YamlParser;
 fn result(parser: &dyn SyntaxParser, source: &str) -> String {
     let nodes = parser.parse_module(SourceId(0), source).unwrap();
     let module = Lowerer.lower_module(&nodes).unwrap();
-    Evaluator::new()
-        .run_main(&module)
-        .unwrap()
-        .display_string()
+    Evaluator::new().run_main(&module).unwrap().display_string()
 }
 
 #[test]

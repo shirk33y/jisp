@@ -9,16 +9,24 @@ use quote::quote;
 use syn::{parse_macro_input, LitStr};
 
 #[proc_macro]
-pub fn file(input: TokenStream) -> TokenStream { tracked_file(input) }
+pub fn file(input: TokenStream) -> TokenStream {
+    tracked_file(input)
+}
 
 #[proc_macro]
-pub fn json_file(input: TokenStream) -> TokenStream { tracked_file(input) }
+pub fn json_file(input: TokenStream) -> TokenStream {
+    tracked_file(input)
+}
 
 #[proc_macro]
-pub fn yaml_file(input: TokenStream) -> TokenStream { tracked_file(input) }
+pub fn yaml_file(input: TokenStream) -> TokenStream {
+    tracked_file(input)
+}
 
 #[proc_macro]
-pub fn lisp_file(input: TokenStream) -> TokenStream { tracked_file(input) }
+pub fn lisp_file(input: TokenStream) -> TokenStream {
+    tracked_file(input)
+}
 
 fn tracked_file(input: TokenStream) -> TokenStream {
     let path = parse_macro_input!(input as LitStr);

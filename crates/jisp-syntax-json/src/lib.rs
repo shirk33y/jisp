@@ -161,8 +161,7 @@ impl<'a> Reader<'a> {
 
     fn error_here(&self, message: impl Into<String>) -> ParseError {
         ParseError::single(
-            Diagnostic::error(Span::empty(self.source, self.pos), message)
-                .with_code("JISP-J000"),
+            Diagnostic::error(Span::empty(self.source, self.pos), message).with_code("JISP-J000"),
         )
     }
 
@@ -279,9 +278,9 @@ impl<'a> Reader<'a> {
                 }
                 Some(']') => break,
                 Some(ch) => {
-                    return Err(self.error_here(format!(
-                        "expected `,` or `]` in array, found `{ch}`"
-                    )))
+                    return Err(
+                        self.error_here(format!("expected `,` or `]` in array, found `{ch}`"))
+                    )
                 }
                 None => return Err(self.error_here("unterminated JSON array")),
             }
@@ -295,9 +294,10 @@ impl<'a> Reader<'a> {
 
     fn parse_number(&mut self) -> Result<RawNode, ParseError> {
         let start = self.pos;
-        while self.peek().is_some_and(|ch| {
-            ch.is_ascii_digit() || matches!(ch, '-' | '+' | '.' | 'e' | 'E')
-        }) {
+        while self
+            .peek()
+            .is_some_and(|ch| ch.is_ascii_digit() || matches!(ch, '-' | '+' | '.' | 'e' | 'E'))
+        {
             self.bump();
         }
         let slice = &self.text[start..self.pos];

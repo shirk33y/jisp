@@ -38,10 +38,7 @@ pub enum Value {
     Str(Rc<str>),
     List(Vec<Value>),
     Obj(IndexMap<String, Value>),
-    Variant {
-        tag: String,
-        fields: Vec<Value>,
-    },
+    Variant { tag: String, fields: Vec<Value> },
     Builtin(Builtin),
     Closure(Closure),
     Constructor(Constructor),
@@ -164,10 +161,11 @@ impl Value {
                 }
                 Ok(true)
             }
-            (Self::Builtin(_) | Self::Closure(_), _)
-            | (_, Self::Builtin(_) | Self::Closure(_)) => Err(RuntimeError::message(
-                "functions do not support structural equality",
-            )),
+            (Self::Builtin(_) | Self::Closure(_), _) | (_, Self::Builtin(_) | Self::Closure(_)) => {
+                Err(RuntimeError::message(
+                    "functions do not support structural equality",
+                ))
+            }
             _ => Ok(false),
         }
     }
