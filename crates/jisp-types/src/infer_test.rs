@@ -26,6 +26,10 @@ fn bool_(value: bool) -> Expr {
     expr(ExprKind::Literal(Literal::Bool(value)))
 }
 
+fn null() -> Expr {
+    expr(ExprKind::Literal(Literal::Null))
+}
+
 fn definition(name: &str, value: Expr) -> Definition {
     Definition {
         name: name.to_owned(),
@@ -267,6 +271,32 @@ fn rejects_case_branch_type_mismatch() {
         inferencer.infer_expr(&expression),
         Err(InferError::Unify(UnifyError::Mismatch { .. }))
     ));
+}
+
+#[test]
+fn rejects_non_exhaustive_bool_case() {
+    let mut inferencer = Inferencer::default();
+    let expression = expr(ExprKind::Case {
+        subject: Box::new(bool_(true)),
+        branches: vec![branch(Pattern::Literal(Literal::Bool(true)), int(1))],
+    });
+
+    assert!(matches!(
+        inferencer.infer_expr(&expression),
+        Err(InferError::NonExhaustiveCase { type_name, missing })
+            if type_name == "bool" && missing == vec!["false".to_owned()]
+    ));
+}
+
+#[test]
+fn accepts_exhaustive_null_case() {
+    let mut inferencer = Inferencer::default();
+    let expression = expr(ExprKind::Case {
+        subject: Box::new(null()),
+        branches: vec![branch(Pattern::Literal(Literal::Null), int(1))],
+    });
+
+    assert_eq!(inferencer.infer_expr(&expression).unwrap(), Type::Int);
 }
 
 #[test]

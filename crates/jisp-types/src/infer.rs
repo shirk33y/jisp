@@ -19,7 +19,7 @@ pub enum InferError {
     #[error("pattern binds `{0}` more than once")]
     DuplicatePatternBinding(String),
 
-    #[error("non-exhaustive case for `{type_name}`, missing variants: {missing:?}")]
+    #[error("non-exhaustive case for `{type_name}`, missing patterns: {missing:?}")]
     NonExhaustiveCase {
         type_name: String,
         missing: Vec<String>,
@@ -406,11 +406,19 @@ impl Inferencer {
         subject_ty: &Type,
         branches: &[CaseBranch],
     ) -> Result<(), InferError> {
-        let Type::Named { name, .. } = self.apply(subject_ty) else {
-            return Ok(());
-        };
-        let Some(variants) = self.type_variants.get(&name) else {
-            return Ok(());
+        let (type_name, expected) = match self.apply(subject_ty) {
+            Type::Named { name, .. } => {
+                let Some(variants) = self.type_variants.get(&name) else {
+                    return Ok(());
+                };
+                (name, variants.clone())
+            }
+            Type::Bool => (
+                "bool".to_owned(),
+                BTreeSet::from(["false".to_owned(), "true".to_owned()]),
+            ),
+            Type::Null => ("null".to_owned(), BTreeSet::from(["null".to_owned()])),
+            _ => return Ok(()),
         };
 
         let mut covered = BTreeSet::new();
@@ -420,18 +428,21 @@ impl Inferencer {
                 Pattern::Variant { tag, .. } => {
                     covered.insert(tag.clone());
                 }
+                Pattern::Literal(Literal::Bool(value)) if type_name == "bool" => {
+                    covered.insert(value.to_string());
+                }
+                Pattern::Literal(Literal::Null) if type_name == "null" => {
+                    covered.insert("null".to_owned());
+                }
                 Pattern::Literal(_) | Pattern::List { .. } | Pattern::Object(_) => {}
             }
         }
 
-        let missing = variants.difference(&covered).cloned().collect::<Vec<_>>();
+        let missing = expected.difference(&covered).cloned().collect::<Vec<_>>();
         if missing.is_empty() {
             Ok(())
         } else {
-            Err(InferError::NonExhaustiveCase {
-                type_name: name,
-                missing,
-            })
+            Err(InferError::NonExhaustiveCase { type_name, missing })
         }
     }
 
