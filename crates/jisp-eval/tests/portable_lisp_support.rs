@@ -2,6 +2,7 @@ use jisp_core::{Node, SourceId, SyntaxParser};
 use jisp_eval::Evaluator;
 use jisp_ir::Lowerer;
 use jisp_syntax_lisp::LispParser;
+use jisp_types::Inferencer;
 
 struct PortableTest {
     name: String,
@@ -19,6 +20,9 @@ pub fn run_lisp_test(file: &str, source: &str, test_index: usize, test_name: &st
     let module = Lowerer
         .lower_module(&module_nodes)
         .unwrap_or_else(|error| panic!("{file}: lower failed: {error}"));
+    Inferencer::with_prelude()
+        .infer_module(&module)
+        .unwrap_or_else(|error| panic!("{file}: type check failed: {error}"));
     let loaded = Evaluator::new()
         .load_module(&module)
         .unwrap_or_else(|error| panic!("{file}: evaluation failed: {error}"));

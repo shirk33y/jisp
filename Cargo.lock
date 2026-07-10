@@ -201,6 +201,7 @@ dependencies = [
  "jisp-syntax-json",
  "jisp-syntax-lisp",
  "jisp-syntax-yaml",
+ "jisp-types",
  "thiserror",
 ]
 
