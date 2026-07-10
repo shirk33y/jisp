@@ -14,8 +14,8 @@ This is the single authoritative list of intentionally unfinished work.
 ## P1 — native compiler and product validation
 
 - Expand `jisp-codegen-rust` from the current monomorphic scalar/function plus
-  list literal and simple binary intrinsic subset to the rest of
-  `jisp_types::TypedModule`.
+  list literal, closed structural object, field access, and simple binary
+  intrinsic subset to the rest of `jisp_types::TypedModule`.
 - Follow `.agents/plans/0004-p1-runtime-abi-validation.md`: generated Rust must
   use concrete typed layouts or fail codegen explicitly, never a universal
   dynamic `Value` for ordinary program values.

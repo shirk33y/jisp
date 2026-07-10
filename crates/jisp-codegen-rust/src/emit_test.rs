@@ -1,6 +1,6 @@
 use jisp_core::{SourceId, Span};
 use jisp_ir::{Definition, Expr, ExprKind, Literal, Module};
-use jisp_types::{Scheme, Type, TypedModule};
+use jisp_types::{ObjectRow, Scheme, Type, TypedModule};
 
 use crate::{generate, CodegenError};
 
@@ -18,6 +18,16 @@ fn literal(literal: Literal) -> Expr {
 
 fn name(value: &str) -> Expr {
     expr(ExprKind::Name(value.to_owned()))
+}
+
+fn object_type(fields: impl IntoIterator<Item = (&'static str, Type)>) -> Type {
+    Type::Object(ObjectRow {
+        fields: fields
+            .into_iter()
+            .map(|(name, ty)| (name.to_owned(), ty))
+            .collect(),
+        rest: None,
+    })
 }
 
 fn definition(name: &str, public: bool, value: Expr) -> Definition {
@@ -185,6 +195,73 @@ fn emits_list_literals_as_vecs() {
 }
 
 #[test]
+fn emits_closed_object_literals_as_native_structs() {
+    let stats_type = object_type([("active", Type::Bool), ("age", Type::Int)]);
+    let stats = definition(
+        "stats",
+        false,
+        expr(ExprKind::Object(vec![
+            (
+                literal(Literal::String("active".to_owned())),
+                literal(Literal::Bool(true)),
+            ),
+            (
+                literal(Literal::String("age".to_owned())),
+                literal(Literal::Int(42)),
+            ),
+        ])),
+    );
+    let main = definition(
+        "main",
+        true,
+        expr(ExprKind::Field {
+            object: Box::new(name("stats")),
+            key: Box::new(literal(Literal::String("age".to_owned()))),
+        }),
+    );
+    let module = typed_module(
+        vec![stats, main],
+        vec![("stats", stats_type), ("main", Type::Int)],
+    );
+
+    let generated = generate(&module).unwrap().to_string();
+
+    assert!(generated.contains("pub struct JispObject0"));
+    assert!(generated.contains("pub active : bool"));
+    assert!(generated.contains("pub age : i64"));
+    assert!(generated.contains("fn stats () -> JispObject0"));
+    assert!(generated.contains("JispObject0 { active : true , age : 42i64 }"));
+    assert!(generated.contains("pub fn main () -> i64"));
+    assert!(generated.contains("stats () . age"));
+    assert!(!generated.contains("Value"));
+    assert!(!generated.contains("jisp_eval"));
+}
+
+#[test]
+fn propagates_expected_object_type_through_let_body() {
+    let stats_type = object_type([("age", Type::Int)]);
+    let module = typed_module(
+        vec![definition(
+            "main",
+            true,
+            expr(ExprKind::Let {
+                bindings: vec![("age".to_owned(), literal(Literal::Int(42)))],
+                body: Box::new(expr(ExprKind::Object(vec![(
+                    literal(Literal::String("age".to_owned())),
+                    name("age"),
+                )]))),
+            }),
+        )],
+        vec![("main", stats_type)],
+    );
+
+    let generated = generate(&module).unwrap().to_string();
+
+    assert!(generated.contains("pub fn main () -> JispObject0"));
+    assert!(generated.contains("JispObject0 { age : age }"));
+}
+
+#[test]
 fn rejects_non_binary_native_intrinsics() {
     let module = typed_module(
         vec![definition(
@@ -213,7 +290,7 @@ fn rejects_unsupported_native_shapes_without_value_fallback() {
 
     assert_eq!(
         generate(&module).unwrap_err(),
-        CodegenError::Unsupported("object expressions")
+        CodegenError::Unsupported("object expressions without expected native type")
     );
 }
 

@@ -52,8 +52,8 @@ Implemented or substantially wired:
 - type inference over Core IR, including module schemes and the `TypedModule`
   contract consumed by the native backend;
 - limited native Rust token emission for monomorphic scalar definitions,
-  zero-capture top-level functions, list literals, and simple binary
-  arithmetic/comparison prelude intrinsics;
+  zero-capture top-level functions, list literals, closed structural objects,
+  field access, and simple binary arithmetic/comparison prelude intrinsics;
 - generated core JSON Schema;
 - CLI commands for checking, running, schema generation, and limited Rust
   emission;
@@ -65,8 +65,8 @@ Still incomplete:
 
 - compile-time evaluation for user macros;
 - complete package/module loading;
-- broader native Rust code generation for objects, case, imports, and runtime
-  helper calls;
+- broader native Rust code generation for open/generic object rows, case,
+  imports, and runtime helper calls;
 - rustc diagnostic remapping through Jisp source maps;
 - formatter, LSP, FFI, and binding generation.
 
@@ -151,8 +151,8 @@ cargo run -p jisp-cli -- emit-rust examples/native.lisp
 
 `emit-rust` prints Rust tokens for the currently supported monomorphic native
 subset, including direct top-level calls and simple binary arithmetic/comparison
-prelude intrinsics plus list literals. Unsupported programs report a codegen
-error rather than falling back to the interpreter.
+prelude intrinsics plus list literals and closed structural objects. Unsupported
+programs report a codegen error rather than falling back to the interpreter.
 
 ## Rust Embedding
 
