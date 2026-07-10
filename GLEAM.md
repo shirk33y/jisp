@@ -26,6 +26,31 @@ No Gleam source code is vendored in this repository.
 | Source-ranged diagnostics | Ported as source-aware AST, diagnostic foundations, CLI rendering for parser/lowerer errors, and macro-origin labels through `ExpansionMap`. | [`diagnostic.rs`](https://github.com/gleam-lang/gleam/blob/833732c523441043868877d159988ba2d21538cd/compiler-core/src/diagnostic.rs), [`expression.rs`](https://github.com/gleam-lang/gleam/blob/833732c523441043868877d159988ba2d21538cd/compiler-core/src/type_/expression.rs#L5355-L5395) | Multi-syntax input only works if errors stay attached to original source spans through parsing, lowering, macros, and typing. |
 | Immutable values with backend-friendly representation | Partially ported in evaluator/runtime helpers; native ABI remains intentionally undesigned. | [`typed.rs`](https://github.com/gleam-lang/gleam/blob/833732c523441043868877d159988ba2d21538cd/compiler-core/src/ast/typed.rs), [`project_compiler.rs`](https://github.com/gleam-lang/gleam/blob/833732c523441043868877d159988ba2d21538cd/compiler-core/src/build/project_compiler.rs#L202-L238) | Runtime semantics should remain portable while Rust codegen gets a typed representation instead of mirroring interpreter internals. |
 
+## `case` test reference
+
+Gleam treats `case` as a compiler-wide seam, not just a type-checker feature:
+parser errors, subject/pattern unification, exhaustiveness, redundancy warnings,
+code generation, scope behavior, and editor actions all have focused tests.
+
+Relevant pinned test surfaces:
+
+- [`compiler-core/src/type_/tests/exhaustiveness.rs`](https://github.com/gleam-lang/gleam/blob/833732c523441043868877d159988ba2d21538cd/compiler-core/src/type_/tests/exhaustiveness.rs#L1048-L1315) covers empty and inexhaustive `case` expressions, including finite and open domains.
+- [`compiler-core/src/type_/tests/exhaustiveness.rs`](https://github.com/gleam-lang/gleam/blob/833732c523441043868877d159988ba2d21538cd/compiler-core/src/type_/tests/exhaustiveness.rs#L1482-L1850) covers unreachable and redundant patterns, alternatives, prefixes, and overlapping branches.
+- [`compiler-core/src/type_/tests/errors.rs`](https://github.com/gleam-lang/gleam/blob/833732c523441043868877d159988ba2d21538cd/compiler-core/src/type_/tests/errors.rs#L288-L299) covers subject and pattern type disagreement.
+- [`compiler-core/src/type_/tests/warnings.rs`](https://github.com/gleam-lang/gleam/blob/833732c523441043868877d159988ba2d21538cd/compiler-core/src/type_/tests/warnings.rs#L2040-L2064) covers unreachable code when a `case` subject diverges.
+- [`compiler-core/src/parse/tests.rs`](https://github.com/gleam-lang/gleam/blob/833732c523441043868877d159988ba2d21538cd/compiler-core/src/parse/tests.rs#L1189-L1212) covers malformed `case` syntax before type checking.
+- [`compiler-core/src/javascript/tests/case.rs`](https://github.com/gleam-lang/gleam/blob/833732c523441043868877d159988ba2d21538cd/compiler-core/src/javascript/tests/case.rs#L451-L790) covers backend output for list, tuple, record, string, alias, and label patterns.
+- [`language-server/src/tests/action.rs`](https://github.com/gleam-lang/gleam/blob/833732c523441043868877d159988ba2d21538cd/language-server/src/tests/action.rs#L3008-L3155) covers editor fixes for adding missing patterns and removing unreachable clauses.
+- [`test/language/test/language/directly_matching_case_subject_test.gleam`](https://github.com/gleam-lang/gleam/blob/833732c523441043868877d159988ba2d21538cd/test/language/test/language/directly_matching_case_subject_test.gleam#L17-L92) covers subject binding and scope behavior around `case`.
+
+The portable lesson for Jisp is that `case` tests should be grouped by compiler
+boundary: parser shape, IR lowering, type unification, exhaustiveness,
+redundancy, runtime behavior, backend output, and future editor actions. The
+highest-value test ideas to port are empty cases over finite and open subjects,
+duplicate and overlapping alternatives, guarded branches that keep later arms
+reachable, nested list/object/constructor patterns, imported constructor names
+under aliasing and shadowing, and exact source ranges for pattern type errors.
+
 ## Agent response review
 
 An agent response recommending Gleam as a source of compiler design patterns was
