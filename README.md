@@ -72,7 +72,8 @@ Still incomplete:
   enum declarations, nested or literal variant-field patterns, imports, and
   runtime helper calls;
 - P2 rustc diagnostic remapping through Jisp source maps;
-- formatter, LSP, FFI, and binding generation.
+- P2 formatter, richer portable `.lisp` test runner UX, UI renderer prototype,
+  LSP, FFI, and binding generation.
 
 See [`TODO.md`](TODO.md) and [`docs/AGENT_HANDOFF.md`](docs/AGENT_HANDOFF.md)
 before changing language semantics.

@@ -100,12 +100,17 @@ multi-line spans.
   Rust sourcemaps and rustc/Cargo diagnostic remapping are P2; P1 should favor
   native feature coverage.
 - Imports resolve directory modules independent of file order.
-- Proc macro emits native Rust tokens and tracks all imported source files.
+- Proc macro emits native Rust tokens through the existing file/item path and
+  tracks all imported source files. Broader macro embedding is P2 unless a small
+  integration change is required by a P1 backend feature.
 - No ordinary program value is represented as a catch-all dynamic enum in
   compiled output.
 - Native helper calls either emit concrete Rust over typed values or fail
   codegen; the backend still lacks source-ranged remapping for runtime failures
   inside generated Rust.
+- P1 UI-language work is proof-of-shape/spec and feature pressure for native
+  Jisp. A real renderer/prototype, formatter, richer portable test UX, bigint,
+  project-aware schema, and fine-grained generated diagnostics are P2.
 
 ## Do not implement yet
 
