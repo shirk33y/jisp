@@ -1,0 +1,57 @@
+(def select-label
+  (fn (flag value)
+    (if (and flag (> value 10))
+      "large"
+      (if (or flag (= value 10))
+        "maybe"
+        "small"))))
+
+(def shadow-score
+  (fn (seed)
+    (let (value (+ seed 1)
+          doubled (* value 2))
+      (let (value (+ doubled 3))
+        value))))
+
+(def describe-truth
+  (fn (value)
+    (if value "truthy" "falsey")))
+
+(def run-steps
+  (fn (start)
+    (do
+      (let (ignored (+ start 100))
+        ignored)
+      (+ start 7))))
+
+(test "let bindings are sequential and inner scopes shadow"
+  (assert.equal
+    15
+    (shadow-score 5)))
+
+(test "do returns the last expression"
+  (assert.equal
+    10
+    (run-steps 3)))
+
+(test "boolean forms compose inside conditionals"
+  (assert.equal
+    (list "large" "maybe" "small")
+    (list
+      (select-label true 12)
+      (select-label true 4)
+      (select-label false 4))))
+
+(test "not only flips boolean truth"
+  (assert.equal
+    (list true false)
+    (list (not false) (not true))))
+
+(test "only false and null are falsey"
+  (assert.equal
+    (list "truthy" "truthy" "falsey" "falsey")
+    (list
+      (describe-truth 0)
+      (describe-truth "")
+      (describe-truth false)
+      (describe-truth null))))

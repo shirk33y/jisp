@@ -44,10 +44,8 @@ impl Evaluator {
 
     pub fn define_constructor(&mut self, name: impl Into<String>, arity: usize) {
         let name = name.into();
-        self.root.define(
-            name.clone(),
-            Value::Constructor(Constructor { name, arity }),
-        );
+        self.root
+            .define(name.clone(), constructor_value(name, arity));
     }
 
     pub fn load_module(&mut self, module: &Module) -> Result<LoadedModule, RuntimeError> {
@@ -77,10 +75,7 @@ impl Evaluator {
             for variant in &declaration.variants {
                 env.define(
                     variant.name.clone(),
-                    Value::Constructor(Constructor {
-                        name: variant.name.clone(),
-                        arity: variant.field_types.len(),
-                    }),
+                    constructor_value(variant.name.clone(), variant.field_types.len()),
                 );
             }
         }
@@ -357,6 +352,17 @@ impl Evaluator {
             span,
             "non-exhaustive case reached at runtime; the typechecker should reject this",
         ))
+    }
+}
+
+fn constructor_value(name: String, arity: usize) -> Value {
+    if arity == 0 {
+        Value::Variant {
+            tag: name,
+            fields: vec![],
+        }
+    } else {
+        Value::Constructor(Constructor { name, arity })
     }
 }
 
