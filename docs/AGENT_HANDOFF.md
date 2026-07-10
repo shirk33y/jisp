@@ -20,10 +20,18 @@ The current local Gleam checkout is indexed as CMM project
 
 Type inference now covers core expressions, let-generalisation, enum
 constructors, `case` pattern typing, minimal variant exhaustiveness for
-user-defined ADTs and prelude `result`/`option`, and a conservative prelude for
-fixed-arity stdlib functions. Remaining type-system work includes richer
-exhaustiveness for literals, lists, objects, redundant patterns, and stdlib
-schemes for variadic, overloaded, and object/row-polymorphic builtins.
+user-defined ADTs and prelude `result`/`option`, finite `bool`/`null` literal
+cases, and a conservative prelude for fixed-arity stdlib functions. Remaining
+type-system work includes richer exhaustiveness for lists, objects, redundant
+patterns, and stdlib schemes for variadic, overloaded, and
+object/row-polymorphic builtins.
+
+Portable Lisp fixture tests now live under `tests/language/` and are exercised
+by `crates/jisp-eval/tests/portable_lisp.rs`. The current harness strips
+top-level `(test "name" (assert.equal expected actual))` forms into synthetic
+exports, evaluates the module normally, and compares the exported values
+structurally. This is intentionally a test fixture format, not core language
+semantics yet.
 
 ## Useful existing seams
 

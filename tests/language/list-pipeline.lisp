@@ -1,0 +1,17 @@
+(def numbers
+  (fn ()
+    (list 1 2 3 4)))
+
+(def inc
+  (fn (value)
+    (+ value 1)))
+
+(test "map, filter, and fold compose"
+  (assert.equal
+    12
+    (list.fold
+      (fn (total value) (+ total value))
+      0
+      (list.filter
+        (fn (value) (> value 2))
+        (list.map inc (numbers))))))
