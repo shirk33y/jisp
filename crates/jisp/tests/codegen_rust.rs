@@ -1,3 +1,6 @@
+use std::fs;
+use std::path::PathBuf;
+
 use jisp::jisp_core::Syntax;
 use jisp::RustItemKind;
 
@@ -327,4 +330,96 @@ fn emit_rust_detailed_rejects_unsupported_shapes_without_runtime_fallback() {
         error.to_string().contains("function value types"),
         "{error}"
     );
+}
+
+#[test]
+fn emit_rust_detailed_emits_native_file_imports() {
+    let dir = fixture_dir("native-file-imports");
+    let main = dir.join("main.lisp");
+    let math = dir.join("math.lisp");
+    fs::write(
+        &math,
+        r#"
+(def double (fn (value) (* value 2)))
+(export inc (fn (value) (+ (double value) 1)))
+"#,
+    )
+    .unwrap();
+    fs::write(
+        &main,
+        r#"
+(import math "math")
+(export main (fn () (math.inc 20)))
+"#,
+    )
+    .unwrap();
+
+    let text = fs::read_to_string(&main).unwrap();
+    let generated = jisp::emit_rust_detailed(&main, &text).unwrap();
+    let tokens = generated.tokens.to_string();
+
+    assert_eq!(generated.dependencies, vec![math.canonicalize().unwrap()]);
+    assert!(tokens.contains("fn math_double (value : i64) -> i64"));
+    assert!(tokens.contains("fn math_inc (value : i64) -> i64"));
+    assert!(tokens.contains("math_double (value)"));
+    assert!(tokens.contains("pub fn main () -> i64"));
+    assert!(tokens.contains("math_inc (20i64)"));
+    assert!(!tokens.contains("pub fn math_inc"));
+    assert!(!tokens.contains("Value"));
+    assert!(!tokens.contains("jisp_eval"));
+}
+
+#[test]
+fn emit_rust_detailed_emits_native_transitive_imports() {
+    let dir = fixture_dir("native-transitive-imports");
+    let main = dir.join("main.lisp");
+    let app = dir.join("app.lisp");
+    let math = dir.join("math.lisp");
+    fs::write(&math, "(export inc (fn (value) (+ value 1)))").unwrap();
+    fs::write(
+        &app,
+        r#"
+(import math "math")
+(def shifted (fn (value) (math.inc value)))
+(export answer (shifted 41))
+"#,
+    )
+    .unwrap();
+    fs::write(
+        &main,
+        r#"
+(import app "app")
+(export main (fn () app.answer))
+"#,
+    )
+    .unwrap();
+
+    let text = fs::read_to_string(&main).unwrap();
+    let generated = jisp::emit_rust_detailed(&main, &text).unwrap();
+    let tokens = generated.tokens.to_string();
+
+    assert_eq!(
+        generated.dependencies,
+        vec![app.canonicalize().unwrap(), math.canonicalize().unwrap()]
+    );
+    assert!(tokens.contains("fn app_math_inc (value : i64) -> i64"));
+    assert!(tokens.contains("fn app_shifted (value : i64) -> i64"));
+    assert!(tokens.contains("fn app_answer () -> i64"));
+    assert!(tokens.contains("app_math_inc (value)"));
+    assert!(tokens.contains("pub fn main () -> i64"));
+    assert!(tokens.contains("app_answer ()"));
+    assert!(!tokens.contains("pub fn app_answer"));
+    assert!(!tokens.contains("Value"));
+    assert!(!tokens.contains("jisp_eval"));
+}
+
+fn fixture_dir(name: &str) -> PathBuf {
+    let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../target/jisp-codegen-fixtures")
+        .join(format!("{}-{}", name, std::process::id()));
+    if dir.exists() {
+        fs::remove_dir_all(&dir).unwrap();
+    }
+    fs::create_dir_all(&dir).unwrap();
+    dir
 }

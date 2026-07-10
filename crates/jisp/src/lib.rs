@@ -1,5 +1,7 @@
 //! Public facade for parsing, lowering, and interpreting Jisp modules.
 
+mod native_imports;
+
 use std::{
     collections::{BTreeMap, BTreeSet, HashMap},
     fs, io,
@@ -10,7 +12,7 @@ use jisp_core::{detect_syntax, Diagnostic, Node, SourceMap, Syntax, SyntaxParser
 use jisp_eval::{Evaluator, ImportValues, LoadedModule, RuntimeError, Value};
 use jisp_expand::ExpansionMap;
 use jisp_ir::{LowerError, Lowerer, Module};
-use jisp_types::{ImportTypeEnvironments, Inferencer, Scheme, TypedModule};
+use jisp_types::{ImportTypeEnvironments, Inferencer, Scheme};
 use proc_macro2::TokenStream;
 use thiserror::Error;
 
@@ -314,24 +316,13 @@ fn infer_module_types(
     Ok((types, dependencies))
 }
 
-fn infer_typed_module(
-    sources: &mut SourceMap,
-    path: &Path,
-    module: Module,
-) -> Result<(TypedModule, Vec<PathBuf>), Error> {
-    let mut resolver = TypeResolver::new(sources);
-    let imports = resolver.import_environments(path, &module)?;
-    let dependencies = resolver.dependencies();
-    let typed = Inferencer::with_prelude().infer_typed_module_with_imports(module, &imports)?;
-    Ok((typed, dependencies))
-}
-
 fn generate_rust_module(
     sources: &mut SourceMap,
     path: &Path,
     module: Module,
 ) -> Result<(jisp_codegen_rust::GeneratedRust, Vec<PathBuf>), Error> {
-    let (typed, dependencies) = infer_typed_module(sources, path, module)?;
+    let (typed, dependencies) =
+        native_imports::infer_module_with_native_imports(sources, path, module)?;
     let generated = jisp_codegen_rust::generate_detailed(&typed)?;
     Ok((generated, dependencies))
 }
