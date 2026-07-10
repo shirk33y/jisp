@@ -1,4 +1,5 @@
 use jisp::jisp_core::Syntax;
+use jisp::RustItemKind;
 
 #[test]
 fn emit_rust_detailed_emits_native_tokens_for_typed_functions() {
@@ -19,6 +20,29 @@ fn emit_rust_detailed_emits_native_tokens_for_typed_functions() {
     assert!(tokens.contains("answer ()"));
     assert!(!tokens.contains("Value"));
     assert!(!tokens.contains("jisp_eval"));
+}
+
+#[test]
+fn emit_rust_detailed_maps_generated_functions_to_source_spans() {
+    let generated = jisp::emit_rust_as_detailed(
+        "main.lisp",
+        Syntax::Lisp,
+        r#"
+(def answer (fn () 42))
+(export main (fn () (answer)))
+"#,
+    )
+    .unwrap();
+
+    let item = generated
+        .source_map
+        .item(RustItemKind::Function, "main")
+        .unwrap();
+    let source_text = generated.sources.span_text(item.source_span).unwrap();
+
+    assert_eq!(item.rust_name, "main");
+    assert!(source_text.contains("export main"));
+    assert!(source_text.contains("answer"));
 }
 
 #[test]
@@ -120,6 +144,39 @@ fn emit_rust_detailed_emits_closed_objects_as_native_structs() {
     assert!(tokens.contains("stats () . age"));
     assert!(!tokens.contains("Value"));
     assert!(!tokens.contains("jisp_eval"));
+}
+
+#[test]
+fn emit_rust_detailed_maps_generated_structs_and_enums_to_source_spans() {
+    let generated = jisp::emit_rust_as_detailed(
+        "main.lisp",
+        Syntax::Lisp,
+        r#"
+(type result
+  (ok int)
+  (err str))
+
+(def stats (obj (str "active") true (str "age") 42))
+(export main (fn () (. stats (str "age"))))
+"#,
+    )
+    .unwrap();
+
+    let object = generated
+        .source_map
+        .item(RustItemKind::Struct, "JispObject0")
+        .unwrap();
+    let object_text = generated.sources.span_text(object.source_span).unwrap();
+    assert!(object_text.contains("def stats"));
+    assert!(object_text.contains("active"));
+
+    let result = generated
+        .source_map
+        .item(RustItemKind::Enum, "JispEnum0")
+        .unwrap();
+    let enum_text = generated.sources.span_text(result.source_span).unwrap();
+    assert!(enum_text.contains("type result"));
+    assert!(enum_text.contains("err str"));
 }
 
 #[test]

@@ -71,7 +71,7 @@ Still incomplete:
 - broader native Rust code generation for open/generic object rows, generic
   enum declarations, nested or literal variant-field patterns, imports, and
   runtime helper calls;
-- rustc diagnostic remapping through Jisp source maps;
+- P2 rustc diagnostic remapping through Jisp source maps;
 - formatter, LSP, FFI, and binding generation.
 
 See [`TODO.md`](TODO.md) and [`docs/AGENT_HANDOFF.md`](docs/AGENT_HANDOFF.md)
@@ -158,7 +158,9 @@ subset, including direct top-level calls and simple binary arithmetic/comparison
 prelude intrinsics plus list literals, closed structural objects, simple
 literal/bind/wildcard `case`, concrete native enum constructors, variant
 `case`, list/object `case` patterns, string templates, and typed string/list/math
-helper calls that can be emitted without a dynamic `Value` ABI. Unsupported
+helper calls that can be emitted without a dynamic `Value` ABI. The detailed
+facade result also exposes item-level source mapping from generated Rust
+functions, structs, and enums back to Jisp definition/type spans. Unsupported
 programs report a codegen error rather than falling back to the interpreter.
 
 ## Rust Embedding

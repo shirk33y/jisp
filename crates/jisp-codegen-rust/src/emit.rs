@@ -7,12 +7,12 @@ use quote::{format_ident, quote};
 
 use crate::enum_types::EnumTypes;
 use crate::patterns::{emit_pattern, emit_variant_match_pattern, PatternEmission, PatternMatch};
-use crate::CodegenError;
+use crate::{CodegenError, GeneratedRust, RustItemKind, RustSourceItem, RustSourceMap};
 
 #[path = "intrinsics.rs"]
 mod intrinsics;
 
-pub(crate) fn emit_module(module: &TypedModule) -> Result<TokenStream, CodegenError> {
+pub(crate) fn emit_module(module: &TypedModule) -> Result<GeneratedRust, CodegenError> {
     let names = module
         .module
         .definitions
@@ -29,7 +29,11 @@ pub(crate) fn emit_module(module: &TypedModule) -> Result<TokenStream, CodegenEr
         .iter()
         .map(|definition| emit_definition(module, definition, &names, &object_types, &enum_types))
         .collect::<Result<Vec<_>, _>>()?;
-    Ok(quote! { #(#object_structs)* #(#enum_definitions)* #(#definitions)* })
+    let source_map = rust_source_map(module, &object_types, &enum_types);
+    Ok(GeneratedRust {
+        tokens: quote! { #(#object_structs)* #(#enum_definitions)* #(#definitions)* },
+        source_map,
+    })
 }
 
 fn emit_definition(
@@ -516,6 +520,7 @@ fn emit_enum_definitions(
 #[derive(Clone, Debug)]
 struct ObjectShape {
     fields: BTreeMap<String, Type>,
+    source_span: jisp_core::Span,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -527,8 +532,17 @@ struct ObjectTypes {
 impl ObjectTypes {
     fn from_module(module: &TypedModule) -> Result<Self, CodegenError> {
         let mut shapes = BTreeMap::new();
+        for definition in &module.module.definitions {
+            if let Some(scheme) = module.schemes.get(&definition.name) {
+                collect_object_shapes(&scheme.body, definition.span, &mut shapes)?;
+            }
+        }
         for scheme in module.schemes.values() {
-            collect_object_shapes(&scheme.body, &mut shapes)?;
+            collect_object_shapes(
+                &scheme.body,
+                jisp_core::Span::empty(jisp_core::SourceId(0), 0),
+                &mut shapes,
+            )?;
         }
         let names = shapes
             .keys()
@@ -549,6 +563,7 @@ impl ObjectTypes {
 
 fn collect_object_shapes(
     ty: &Type,
+    source_span: jisp_core::Span,
     shapes: &mut BTreeMap<String, ObjectShape>,
 ) -> Result<(), CodegenError> {
     match ty {
@@ -557,31 +572,32 @@ fn collect_object_shapes(
                 return Err(CodegenError::Unsupported("open object row type emission"));
             }
             for ty in row.fields.values() {
-                collect_object_shapes(ty, shapes)?;
+                collect_object_shapes(ty, source_span, shapes)?;
             }
             shapes
                 .entry(object_signature(row)?)
                 .or_insert_with(|| ObjectShape {
                     fields: row.fields.clone(),
+                    source_span,
                 });
         }
-        Type::List(item) => collect_object_shapes(item, shapes)?,
+        Type::List(item) => collect_object_shapes(item, source_span, shapes)?,
         Type::Function {
             parameters,
             rest,
             result,
         } => {
             for ty in parameters {
-                collect_object_shapes(ty, shapes)?;
+                collect_object_shapes(ty, source_span, shapes)?;
             }
             if let Some(rest) = rest {
-                collect_object_shapes(rest, shapes)?;
+                collect_object_shapes(rest, source_span, shapes)?;
             }
-            collect_object_shapes(result, shapes)?;
+            collect_object_shapes(result, source_span, shapes)?;
         }
         Type::Named { arguments, .. } => {
             for ty in arguments {
-                collect_object_shapes(ty, shapes)?;
+                collect_object_shapes(ty, source_span, shapes)?;
             }
         }
         Type::Var(_)
@@ -593,6 +609,40 @@ fn collect_object_shapes(
         | Type::Str => {}
     }
     Ok(())
+}
+
+fn rust_source_map(
+    module: &TypedModule,
+    object_types: &ObjectTypes,
+    enum_types: &EnumTypes,
+) -> RustSourceMap {
+    let mut items = Vec::new();
+    for (signature, shape) in &object_types.shapes {
+        if let Some(ident) = object_types.names.get(signature) {
+            items.push(RustSourceItem {
+                kind: RustItemKind::Struct,
+                rust_name: ident.to_string(),
+                source_span: shape.source_span,
+            });
+        }
+    }
+    for declaration in &module.module.types {
+        if let Some(ident) = enum_types.names.get(&declaration.name) {
+            items.push(RustSourceItem {
+                kind: RustItemKind::Enum,
+                rust_name: ident.to_string(),
+                source_span: declaration.span,
+            });
+        }
+    }
+    for definition in &module.module.definitions {
+        items.push(RustSourceItem {
+            kind: RustItemKind::Function,
+            rust_name: rust_ident(&definition.name).to_string(),
+            source_span: definition.span,
+        });
+    }
+    RustSourceMap { items }
 }
 
 fn emit_object_structs(

@@ -23,8 +23,6 @@ This is the single authoritative list of intentionally unfinished work.
   dynamic `Value` for ordinary program values.
 - Expand `jisp-macros` beyond item-position native file emission once codegen
   supports more expression/data shapes.
-- Add generated-to-source mapping for `emit-rust` output.
-- Wrap Cargo/rustc JSON diagnostics and remap them to Jisp source ranges.
 - Validate Jisp as a universal UI description language: React-like components,
   renderer targets, state/event bindings, and Tailwind-like first-class utility
   class sets where class names are data keys or symbols with boolean activation,
@@ -38,6 +36,11 @@ This is the single authoritative list of intentionally unfinished work.
 - Add arbitrary-precision `bigint` values, with an explicit constructor form
   such as `[bigint, "32849384983498230592309502398509388908203986232306"]`
   before deciding whether plain integer literals may exceed `i64`.
+- Broaden the current item-level generated-to-source mapping for `emit-rust`
+  output into the granularity needed for diagnostics. The facade already maps
+  generated Rust functions, structs, and enums back to Jisp definition/type
+  spans.
+- Wrap Cargo/rustc JSON diagnostics and remap them to Jisp source ranges.
 - Finalise immutable/COW semantics for `list` and `obj` updates.
 - Add project-aware JSON Schema generated from resolved modules.
 - Add formatter, REPL persistence, LSP, and package tooling.

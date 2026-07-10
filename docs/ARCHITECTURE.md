@@ -37,7 +37,9 @@ JSON / restricted YAML / Lisp
   unsupported shapes without introducing a dynamic `Value` ABI.
 - `jisp-macros`: Cargo dependency-tracking proc macros that call the facade
   native-emission seam.
-- `jisp`: facade API.
+- `jisp`: facade API, including detailed native emission with source files,
+  expansion origins, dependencies, tokens, and item-level generated Rust source
+  mapping.
 - `jisp-cli`: `check`, `run`, `schema`, and `emit-rust` for the supported
   native subset.
 

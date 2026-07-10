@@ -96,7 +96,9 @@ multi-line spans.
 
 - Equivalent programs in all three syntaxes produce equivalent IR and values.
 - `type` constructors and `case` are statically checked and exhaustive.
-- Errors are source-ranged in original files.
+- Frontend errors are source-ranged in original files. Fine-grained generated
+  Rust sourcemaps and rustc/Cargo diagnostic remapping are P2; P1 should favor
+  native feature coverage.
 - Imports resolve directory modules independent of file order.
 - Proc macro emits native Rust tokens and tracks all imported source files.
 - No ordinary program value is represented as a catch-all dynamic enum in

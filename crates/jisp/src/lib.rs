@@ -14,6 +14,7 @@ use jisp_types::{ImportTypeEnvironments, Inferencer, Scheme, TypedModule};
 use proc_macro2::TokenStream;
 use thiserror::Error;
 
+pub use jisp_codegen_rust::{RustItemKind, RustSourceItem, RustSourceMap};
 pub use jisp_core;
 pub use jisp_eval;
 pub use jisp_expand;
@@ -65,6 +66,7 @@ pub struct GeneratedRustModule {
     pub sources: SourceMap,
     pub expansion_map: ExpansionMap,
     pub tokens: TokenStream,
+    pub source_map: RustSourceMap,
     pub dependencies: Vec<PathBuf>,
 }
 
@@ -233,14 +235,15 @@ pub fn emit_rust_as_detailed(
     } = lower_as_detailed(name.clone(), syntax, text)?;
     let path = Path::new(&name);
     let codegen_result = generate_rust_module(&mut sources, path, module);
-    let (tokens, dependencies) = match codegen_result {
+    let (generated, dependencies) = match codegen_result {
         Ok(result) => result,
         Err(error) => return Err(ModuleError::new(sources, expansion_map.clone(), error)),
     };
     Ok(GeneratedRustModule {
         sources,
         expansion_map,
-        tokens,
+        tokens: generated.tokens,
+        source_map: generated.source_map,
         dependencies,
     })
 }
@@ -327,10 +330,10 @@ fn generate_rust_module(
     sources: &mut SourceMap,
     path: &Path,
     module: Module,
-) -> Result<(TokenStream, Vec<PathBuf>), Error> {
+) -> Result<(jisp_codegen_rust::GeneratedRust, Vec<PathBuf>), Error> {
     let (typed, dependencies) = infer_typed_module(sources, path, module)?;
-    let tokens = jisp_codegen_rust::generate(&typed)?;
-    Ok((tokens, dependencies))
+    let generated = jisp_codegen_rust::generate_detailed(&typed)?;
+    Ok((generated, dependencies))
 }
 
 pub fn check(path: impl AsRef<Path>, text: &str) -> Result<ParsedModule, Error> {
