@@ -273,6 +273,54 @@ pub fn environment() -> BTreeMap<String, Scheme> {
     env
 }
 
+pub(crate) fn overloads() -> BTreeMap<String, Vec<Scheme>> {
+    let mut env = BTreeMap::new();
+
+    for name in ["+", "-", "*", "/", "//", "%"] {
+        add_overloads(
+            &mut env,
+            name,
+            vec![
+                mono(fun(vec![Type::Int, Type::Int], Type::Int)),
+                mono(fun(vec![Type::Float, Type::Float], Type::Float)),
+            ],
+        );
+    }
+
+    for name in ["<", ">", "<=", ">="] {
+        add_overloads(
+            &mut env,
+            name,
+            vec![
+                mono(fun(vec![Type::Int, Type::Int], Type::Bool)),
+                mono(fun(vec![Type::Float, Type::Float], Type::Bool)),
+                mono(fun(vec![Type::Str, Type::Str], Type::Bool)),
+            ],
+        );
+    }
+
+    add_overloads(
+        &mut env,
+        "math.abs",
+        vec![
+            mono(fun(vec![Type::Int], Type::Int)),
+            mono(fun(vec![Type::Float], Type::Float)),
+        ],
+    );
+    for name in ["math.min", "math.max", "math.pow"] {
+        add_overloads(
+            &mut env,
+            name,
+            vec![
+                mono(fun(vec![Type::Int, Type::Int], Type::Int)),
+                mono(fun(vec![Type::Float, Type::Float], Type::Float)),
+            ],
+        );
+    }
+
+    env
+}
+
 pub fn variants() -> BTreeMap<String, BTreeSet<String>> {
     BTreeMap::from([
         ("option".to_owned(), tags(["none", "some"])),
@@ -282,6 +330,10 @@ pub fn variants() -> BTreeMap<String, BTreeSet<String>> {
 
 fn add(env: &mut BTreeMap<String, Scheme>, name: &str, scheme: Scheme) {
     env.insert(name.to_owned(), scheme);
+}
+
+fn add_overloads(env: &mut BTreeMap<String, Vec<Scheme>>, name: &str, schemes: Vec<Scheme>) {
+    env.insert(name.to_owned(), schemes);
 }
 
 fn mono(body: Type) -> Scheme {

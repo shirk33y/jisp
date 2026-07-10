@@ -18,6 +18,10 @@ fn int(value: i64) -> Expr {
     expr(ExprKind::Literal(Literal::Int(value)))
 }
 
+fn float(value: f64) -> Expr {
+    expr(ExprKind::Literal(Literal::Float(value)))
+}
+
 fn string(value: &str) -> Expr {
     expr(ExprKind::Literal(Literal::String(value.to_owned())))
 }
@@ -443,6 +447,64 @@ fn prelude_infers_fixed_arity_numeric_builtins() {
     });
 
     assert_eq!(inferencer.infer_expr(&expression).unwrap(), Type::Int);
+}
+
+#[test]
+fn prelude_infers_float_numeric_overloads() {
+    let mut inferencer = Inferencer::with_prelude();
+
+    let add = expr(ExprKind::Call {
+        callee: Box::new(name("+")),
+        arguments: vec![float(1.0), float(2.0)],
+    });
+    assert_eq!(inferencer.infer_expr(&add).unwrap(), Type::Float);
+
+    let less = expr(ExprKind::Call {
+        callee: Box::new(name("<")),
+        arguments: vec![float(1.0), float(2.0)],
+    });
+    assert_eq!(inferencer.infer_expr(&less).unwrap(), Type::Bool);
+
+    let abs = expr(ExprKind::Call {
+        callee: Box::new(name("math.abs")),
+        arguments: vec![float(-1.0)],
+    });
+    assert_eq!(inferencer.infer_expr(&abs).unwrap(), Type::Float);
+}
+
+#[test]
+fn prelude_rejects_mixed_numeric_overloads() {
+    let mut inferencer = Inferencer::with_prelude();
+    let expression = expr(ExprKind::Call {
+        callee: Box::new(name("+")),
+        arguments: vec![int(1), float(2.0)],
+    });
+
+    assert!(matches!(
+        inferencer.infer_expr(&expression),
+        Err(InferError::Unify(_))
+    ));
+}
+
+#[test]
+fn local_bindings_shadow_prelude_overloads() {
+    let mut inferencer = Inferencer::with_prelude();
+    let expression = expr(ExprKind::Let {
+        bindings: vec![(
+            "+".to_owned(),
+            expr(ExprKind::Lambda {
+                params: vec!["value".to_owned()],
+                rest: None,
+                body: Box::new(bool_(true)),
+            }),
+        )],
+        body: Box::new(expr(ExprKind::Call {
+            callee: Box::new(name("+")),
+            arguments: vec![float(1.0)],
+        })),
+    });
+
+    assert_eq!(inferencer.infer_expr(&expression).unwrap(), Type::Bool);
 }
 
 #[test]

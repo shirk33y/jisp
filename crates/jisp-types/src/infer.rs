@@ -42,6 +42,7 @@ pub struct Inferencer {
     next_var: u32,
     pub unifier: Unifier,
     pub environment: BTreeMap<String, Scheme>,
+    overloads: BTreeMap<String, Vec<Scheme>>,
     type_variants: BTreeMap<String, BTreeSet<String>>,
 }
 
@@ -49,6 +50,7 @@ impl Inferencer {
     pub fn with_prelude() -> Self {
         Self {
             environment: crate::prelude::environment(),
+            overloads: crate::prelude::overloads(),
             type_variants: crate::prelude::variants(),
             ..Self::default()
         }
@@ -61,7 +63,9 @@ impl Inferencer {
     }
 
     pub fn define(&mut self, name: impl Into<String>, scheme: Scheme) {
-        self.environment.insert(name.into(), scheme);
+        let name = name.into();
+        self.overloads.remove(&name);
+        self.environment.insert(name, scheme);
     }
 
     pub fn lookup(&mut self, name: &str) -> Result<Type, InferError> {
@@ -188,6 +192,11 @@ impl Inferencer {
                 Type::Bool
             }
             ExprKind::Call { callee, arguments } => {
+                if let ExprKind::Name(name) = &callee.kind {
+                    if let Some(overloads) = self.overloads.get(name).cloned() {
+                        return self.infer_overloaded_call(&overloads, arguments);
+                    }
+                }
                 let callee_ty = self.infer_expr(callee)?;
                 let parameters = arguments
                     .iter()
@@ -590,9 +599,53 @@ impl Inferencer {
         f: impl FnOnce(&mut Self) -> Result<T, InferError>,
     ) -> Result<T, InferError> {
         let environment = self.environment.clone();
+        let overloads = self.overloads.clone();
         let result = f(self);
         self.environment = environment;
+        self.overloads = overloads;
         result
+    }
+
+    fn infer_overloaded_call(
+        &mut self,
+        overloads: &[Scheme],
+        arguments: &[Expr],
+    ) -> Result<Type, InferError> {
+        let mut last_error = None;
+
+        for overload in overloads {
+            let mut candidate = self.clone();
+            match candidate.infer_call_with_scheme(overload, arguments) {
+                Ok(result) => {
+                    *self = candidate;
+                    return Ok(self.apply(&result));
+                }
+                Err(error) => last_error = Some(error),
+            }
+        }
+
+        Err(last_error.expect("overloaded call has at least one candidate"))
+    }
+
+    fn infer_call_with_scheme(
+        &mut self,
+        scheme: &Scheme,
+        arguments: &[Expr],
+    ) -> Result<Type, InferError> {
+        let callee_ty = self.instantiate(scheme);
+        let parameters = arguments
+            .iter()
+            .map(|argument| self.infer_expr(argument))
+            .collect::<Result<Vec<_>, _>>()?;
+        let result = self.fresh_type();
+        self.unify(
+            callee_ty,
+            Type::Function {
+                parameters,
+                result: Box::new(result.clone()),
+            },
+        )?;
+        Ok(result)
     }
 }
 
