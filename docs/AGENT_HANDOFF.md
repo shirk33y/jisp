@@ -33,16 +33,19 @@ are typed as lists of extra arguments, and runtime-variadic `str.cat` and
 `obj.get`, `obj.set`, `obj.del`, `obj.values`, and variadic `obj.cat` have broad
 object-row prelude schemes, plus static-key refinements for `obj.get`,
 `obj.set`, and `obj.del`, homogeneous closed-row `obj.values`, and closed-row
-`obj.cat` with dynamic-key fallback. The prelude also has fixed-arity stdlib
-functions plus simple runtime helpers such as predicates, `result.recover`,
-numeric overloads, `io.println`, and basic object introspection. P0 is complete:
-`jisp-types` exposes `TypedModule`, and `jisp-codegen-rust::generate` accepts it
-as the native backend contract. Native token emission remains P1; it now covers
-monomorphic scalar/function definitions, list literals, closed structural
-objects, field access, string templates, simple literal/bind/wildcard `case`,
-concrete enum constructors, variant `case`, list/object `case` patterns, and
-the current binary intrinsic plus typed string/list/math helper subset without a
-dynamic `Value` ABI fallback.
+`obj.cat` with dynamic-key fallback. Native codegen emits static closed-row
+`obj.len`, `obj.has`, `obj.keys`, `obj.set`, `obj.del`, `obj.values`, and
+`obj.cat`; `obj.get` still depends on the P2 generic `result<T,E>` native
+layout. The prelude also has fixed-arity stdlib functions plus simple runtime
+helpers such as predicates, `result.recover`, numeric overloads, `io.println`,
+and basic object introspection. P0 is complete: `jisp-types` exposes
+`TypedModule`, and `jisp-codegen-rust::generate` accepts it as the native
+backend contract. Native token emission P1 covers monomorphic scalar/function
+definitions, list literals, closed structural objects, field access, string
+templates, simple literal/bind/wildcard `case`, concrete enum constructors,
+variant `case`, list/object `case` patterns, imports, and the current binary
+intrinsic plus typed string/list/math/object helper subset without a dynamic
+`Value` ABI fallback.
 
 `jisp-types` now exposes `Inferencer::infer_module_with_imports`,
 `Inferencer::infer_typed_module_with_imports`, `ImportTypeEnvironments`, and
@@ -111,6 +114,9 @@ multi-line spans.
 - P1 UI-language work is proof-of-shape/spec and feature pressure for native
   Jisp. A real renderer/prototype, formatter, richer portable test UX, bigint,
   project-aware schema, and fine-grained generated diagnostics are P2.
+- P1 is complete as of the native imports, UI data-shape, and static object
+  helper milestones. Remaining native gaps are P2 unless they are regressions
+  inside the documented P1 subset.
 
 ## Do not implement yet
 
