@@ -1,6 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 
-use jisp_ir::{Definition, Expr, ExprKind, Literal, StringPart};
+use jisp_ir::{CaseBranch, Definition, Expr, ExprKind, Literal, Pattern, StringPart};
 use jisp_types::{ObjectRow, Scheme, Type, TypedModule};
 use proc_macro2::{Ident, TokenStream};
 use quote::{format_ident, quote};
@@ -153,7 +153,7 @@ impl<'a> EmitContext<'a> {
             ExprKind::Object(fields) => self.emit_object(fields, expected),
             ExprKind::Field { object, key } => self.emit_field(object, key),
             ExprKind::StringTemplate { lines, parts } => self.emit_string_template(*lines, parts),
-            ExprKind::Case { .. } => Err(CodegenError::Unsupported("case expressions")),
+            ExprKind::Case { subject, branches } => self.emit_case(subject, branches, expected),
         }
     }
 
@@ -292,6 +292,78 @@ impl<'a> EmitContext<'a> {
         }})
     }
 
+    fn emit_case(
+        &mut self,
+        subject: &Expr,
+        branches: &[CaseBranch],
+        expected: Option<&Type>,
+    ) -> Result<TokenStream, CodegenError> {
+        let subject = self.emit_expr(subject, None)?;
+        let subject_name = format_ident!("__jisp_case_subject");
+        let mut output = quote! { unreachable!("typechecked Jisp case should be exhaustive") };
+        for branch in branches.iter().rev() {
+            let PatternEmission {
+                condition,
+                bindings,
+            } = self.emit_pattern(&branch.pattern, quote! { #subject_name })?;
+            let mut previous_locals = Vec::new();
+            for binding in &bindings {
+                previous_locals.push((
+                    binding.name.clone(),
+                    self.locals.insert(binding.name.clone(), None),
+                ));
+            }
+            let body = self.emit_expr(&branch.body, expected)?;
+            for (name, previous) in previous_locals.into_iter().rev() {
+                if let Some(previous) = previous {
+                    self.locals.insert(name, previous);
+                } else {
+                    self.locals.remove(&name);
+                }
+            }
+            let bindings = bindings.iter().map(|binding| &binding.tokens);
+            let branch = quote! {{ #(#bindings)* #body }};
+            output = quote! {
+                if #condition {
+                    #branch
+                } else {
+                    #output
+                }
+            };
+        }
+        Ok(quote! {{
+            let #subject_name = #subject;
+            #output
+        }})
+    }
+
+    fn emit_pattern(
+        &mut self,
+        pattern: &Pattern,
+        value: TokenStream,
+    ) -> Result<PatternEmission, CodegenError> {
+        match pattern {
+            Pattern::Wildcard => Ok(PatternEmission::empty(quote! { true })),
+            Pattern::Bind(name) => {
+                let ident = rust_ident(name);
+                Ok(PatternEmission {
+                    condition: quote! { true },
+                    bindings: vec![PatternBinding {
+                        name: name.clone(),
+                        tokens: quote! { let #ident = #value.clone(); },
+                    }],
+                })
+            }
+            Pattern::Literal(literal) => {
+                let literal = emit_literal(literal)?;
+                Ok(PatternEmission::empty(quote! { #value == #literal }))
+            }
+            Pattern::Variant { .. } => Err(CodegenError::Unsupported("variant case patterns")),
+            Pattern::List { .. } => Err(CodegenError::Unsupported("list case patterns")),
+            Pattern::Object(_) => Err(CodegenError::Unsupported("object case patterns")),
+        }
+    }
+
     fn emit_bool_chain(
         &mut self,
         expressions: &[Expr],
@@ -379,6 +451,27 @@ fn binary_intrinsic_operator(name: &str) -> Option<TokenStream> {
         ">=" => Some(quote! { >= }),
         _ => None,
     }
+}
+
+#[derive(Clone, Debug)]
+struct PatternEmission {
+    condition: TokenStream,
+    bindings: Vec<PatternBinding>,
+}
+
+impl PatternEmission {
+    fn empty(condition: TokenStream) -> Self {
+        Self {
+            condition,
+            bindings: vec![],
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+struct PatternBinding {
+    name: String,
+    tokens: TokenStream,
 }
 
 #[derive(Clone, Debug)]

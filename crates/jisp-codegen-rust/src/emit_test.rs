@@ -1,5 +1,5 @@
 use jisp_core::{SourceId, Span};
-use jisp_ir::{Definition, Expr, ExprKind, Literal, Module, StringPart};
+use jisp_ir::{CaseBranch, Definition, Expr, ExprKind, Literal, Module, Pattern, StringPart};
 use jisp_types::{ObjectRow, Scheme, Type, TypedModule};
 
 use crate::{generate, CodegenError};
@@ -35,6 +35,14 @@ fn definition(name: &str, public: bool, value: Expr) -> Definition {
         name: name.to_owned(),
         public,
         value,
+        span: span(),
+    }
+}
+
+fn branch(pattern: Pattern, body: Expr) -> CaseBranch {
+    CaseBranch {
+        pattern,
+        body,
         span: span(),
     }
 }
@@ -289,6 +297,72 @@ fn emits_string_templates_with_splices() {
     assert!(generated.contains("fragments . push (String :: from (\"second\"))"));
     assert!(generated.contains("fragments . extend (vec ! [String :: from (\"third\")"));
     assert!(generated.contains("fragments . join (\"\\n\")"));
+    assert!(!generated.contains("Value"));
+    assert!(!generated.contains("jisp_eval"));
+}
+
+#[test]
+fn emits_literal_case_as_native_if_chain() {
+    let module = typed_module(
+        vec![definition(
+            "main",
+            true,
+            expr(ExprKind::Case {
+                subject: Box::new(literal(Literal::Bool(true))),
+                branches: vec![
+                    branch(
+                        Pattern::Literal(Literal::Bool(true)),
+                        literal(Literal::Int(1)),
+                    ),
+                    branch(
+                        Pattern::Literal(Literal::Bool(false)),
+                        literal(Literal::Int(0)),
+                    ),
+                ],
+            }),
+        )],
+        vec![("main", Type::Int)],
+    );
+
+    let generated = generate(&module).unwrap().to_string();
+
+    assert!(generated.contains("let __jisp_case_subject = true"));
+    assert!(generated.contains("if __jisp_case_subject == true"));
+    assert!(generated.contains("else { if __jisp_case_subject == false"));
+    assert!(!generated.contains("Value"));
+    assert!(!generated.contains("jisp_eval"));
+}
+
+#[test]
+fn emits_bind_and_wildcard_case_patterns_without_value_fallback() {
+    let module = typed_module(
+        vec![definition(
+            "main",
+            true,
+            expr(ExprKind::Case {
+                subject: Box::new(literal(Literal::Int(41))),
+                branches: vec![
+                    branch(Pattern::Literal(Literal::Int(0)), literal(Literal::Int(0))),
+                    branch(
+                        Pattern::Bind("value".to_owned()),
+                        expr(ExprKind::Call {
+                            callee: Box::new(name("+")),
+                            arguments: vec![name("value"), literal(Literal::Int(1))],
+                        }),
+                    ),
+                    branch(Pattern::Wildcard, literal(Literal::Int(-1))),
+                ],
+            }),
+        )],
+        vec![("main", Type::Int)],
+    );
+
+    let generated = generate(&module).unwrap().to_string();
+
+    assert!(generated.contains("if __jisp_case_subject == 0i64"));
+    assert!(generated.contains("let value = __jisp_case_subject . clone ()"));
+    assert!(generated.contains("(value + 1i64)"));
+    assert!(generated.contains("if true"));
     assert!(!generated.contains("Value"));
     assert!(!generated.contains("jisp_eval"));
 }

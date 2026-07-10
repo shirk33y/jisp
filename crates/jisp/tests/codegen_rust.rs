@@ -108,6 +108,31 @@ fn emit_rust_detailed_emits_string_templates() {
 }
 
 #[test]
+fn emit_rust_detailed_emits_simple_case_patterns() {
+    let generated = jisp::emit_rust_as_detailed(
+        "main.lisp",
+        Syntax::Lisp,
+        r#"
+(export main
+  (fn (flag)
+    (case flag
+      (true 1)
+      (false 0))))
+"#,
+    )
+    .unwrap();
+
+    let tokens = generated.tokens.to_string();
+
+    assert!(tokens.contains("pub fn main (flag : bool) -> i64"));
+    assert!(tokens.contains("let __jisp_case_subject = flag"));
+    assert!(tokens.contains("if __jisp_case_subject == true"));
+    assert!(tokens.contains("else { if __jisp_case_subject == false"));
+    assert!(!tokens.contains("Value"));
+    assert!(!tokens.contains("jisp_eval"));
+}
+
+#[test]
 fn emit_rust_detailed_rejects_unsupported_shapes_without_runtime_fallback() {
     let error = match jisp::emit_rust_as_detailed(
         "main.lisp",

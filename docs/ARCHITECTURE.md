@@ -31,8 +31,9 @@ JSON / restricted YAML / Lisp
 - `jisp-eval`: lexical typed-IR-oriented evaluator and tests.
 - `jisp-codegen-rust`: native backend over `TypedModule`; it emits the current
   monomorphic scalar/function plus list literal, closed structural object, field
-  access, string template, and simple binary intrinsic subset and rejects
-  unsupported shapes without introducing a dynamic `Value` ABI.
+  access, string template, simple literal/bind/wildcard `case`, and simple
+  binary intrinsic subset and rejects unsupported shapes without introducing a
+  dynamic `Value` ABI.
 - `jisp-macros`: Cargo dependency-tracking proc macros that call the facade
   native-emission seam.
 - `jisp`: facade API.
