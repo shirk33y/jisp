@@ -54,7 +54,7 @@ Implemented or substantially wired:
 - limited native Rust token emission for monomorphic scalar definitions,
   zero-capture top-level functions, list literals, closed structural objects,
   field access, string templates, simple literal/bind/wildcard `case`, concrete
-  native enum constructors, variant `case`, and simple binary
+  native enum constructors, variant `case`, list/object `case` patterns, and simple binary
   arithmetic/comparison prelude intrinsics;
 - generated core JSON Schema;
 - CLI commands for checking, running, schema generation, and limited Rust
@@ -68,8 +68,8 @@ Still incomplete:
 - compile-time evaluation for user macros;
 - complete package/module loading;
 - broader native Rust code generation for open/generic object rows, generic
-  enum declarations, list/object case patterns, nested or literal variant-field
-  patterns, imports, and runtime helper calls;
+  enum declarations, nested or literal variant-field patterns, imports, and
+  runtime helper calls;
 - rustc diagnostic remapping through Jisp source maps;
 - formatter, LSP, FFI, and binding generation.
 
@@ -156,8 +156,8 @@ cargo run -p jisp-cli -- emit-rust examples/native.lisp
 subset, including direct top-level calls and simple binary arithmetic/comparison
 prelude intrinsics plus list literals, closed structural objects, simple
 literal/bind/wildcard `case`, concrete native enum constructors, variant
-`case`, and string templates. Unsupported programs report a codegen error
-rather than falling back to the interpreter.
+`case`, list/object `case` patterns, and string templates. Unsupported programs
+report a codegen error rather than falling back to the interpreter.
 
 ## Rust Embedding
 

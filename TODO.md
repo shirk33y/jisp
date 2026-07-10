@@ -16,7 +16,7 @@ This is the single authoritative list of intentionally unfinished work.
 - Expand `jisp-codegen-rust` from the current monomorphic scalar/function plus
   list literal, closed structural object, field access, string template, and
   simple literal/bind/wildcard `case`, concrete native enum constructors,
-  variant `case`, and binary intrinsic subset to the rest of
+  variant `case`, list/object `case` patterns, and binary intrinsic subset to the rest of
   `jisp_types::TypedModule`.
 - Follow `.agents/plans/0004-p1-runtime-abi-validation.md`: generated Rust must
   use concrete typed layouts or fail codegen explicitly, never a universal

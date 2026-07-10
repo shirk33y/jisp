@@ -13,6 +13,7 @@ mod layout;
 mod layout_test;
 #[cfg(test)]
 mod lib_test;
+mod patterns;
 
 use jisp_types::TypedModule;
 use proc_macro2::TokenStream;

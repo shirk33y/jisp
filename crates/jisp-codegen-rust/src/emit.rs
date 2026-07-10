@@ -6,6 +6,7 @@ use proc_macro2::{Ident, TokenStream};
 use quote::{format_ident, quote};
 
 use crate::enum_types::EnumTypes;
+use crate::patterns::{emit_pattern, emit_variant_match_pattern, PatternEmission, PatternMatch};
 use crate::CodegenError;
 
 pub(crate) fn emit_module(module: &TypedModule) -> Result<TokenStream, CodegenError> {
@@ -323,7 +324,7 @@ impl<'a> EmitContext<'a> {
             let PatternEmission {
                 condition,
                 bindings,
-            } = self.emit_pattern(&branch.pattern, quote! { #subject_name })?;
+            } = emit_pattern(&branch.pattern, quote! { #subject_name })?;
             let mut previous_locals = Vec::new();
             for binding in &bindings {
                 previous_locals.push((
@@ -381,7 +382,8 @@ impl<'a> EmitContext<'a> {
         body: &Expr,
         expected: Option<&Type>,
     ) -> Result<TokenStream, CodegenError> {
-        let PatternMatch { tokens, bindings } = self.emit_variant_match_pattern(pattern)?;
+        let PatternMatch { tokens, bindings } =
+            emit_variant_match_pattern(pattern, self.enum_types)?;
         let mut previous_locals = Vec::new();
         for binding in &bindings {
             previous_locals.push((binding.clone(), self.locals.insert(binding.clone(), None)));
@@ -395,75 +397,6 @@ impl<'a> EmitContext<'a> {
             }
         }
         Ok(quote! { #tokens => { #body } })
-    }
-
-    fn emit_variant_match_pattern(&self, pattern: &Pattern) -> Result<PatternMatch, CodegenError> {
-        match pattern {
-            Pattern::Variant { tag, fields } => {
-                let variant = self.enum_types.variant(tag)?;
-                if fields.len() != variant.fields.len() {
-                    return Err(CodegenError::Unsupported(
-                        "variant case pattern arity mismatch",
-                    ));
-                }
-                let enum_ident = &variant.enum_ident;
-                let variant_ident = &variant.ident;
-                let mut bindings = Vec::new();
-                let fields = fields
-                    .iter()
-                    .map(|field| emit_variant_field_pattern(field, &mut bindings))
-                    .collect::<Result<Vec<_>, _>>()?;
-                let tokens = if fields.is_empty() {
-                    quote! { #enum_ident::#variant_ident }
-                } else {
-                    quote! { #enum_ident::#variant_ident(#(#fields),*) }
-                };
-                Ok(PatternMatch { tokens, bindings })
-            }
-            Pattern::Wildcard => Ok(PatternMatch {
-                tokens: quote! { _ },
-                bindings: vec![],
-            }),
-            Pattern::Bind(name) => {
-                let ident = rust_ident(name);
-                Ok(PatternMatch {
-                    tokens: quote! { #ident },
-                    bindings: vec![name.clone()],
-                })
-            }
-            Pattern::Literal(_) => Err(CodegenError::Unsupported(
-                "literal patterns in native variant case",
-            )),
-            Pattern::List { .. } => Err(CodegenError::Unsupported("list case patterns")),
-            Pattern::Object(_) => Err(CodegenError::Unsupported("object case patterns")),
-        }
-    }
-
-    fn emit_pattern(
-        &mut self,
-        pattern: &Pattern,
-        value: TokenStream,
-    ) -> Result<PatternEmission, CodegenError> {
-        match pattern {
-            Pattern::Wildcard => Ok(PatternEmission::empty(quote! { true })),
-            Pattern::Bind(name) => {
-                let ident = rust_ident(name);
-                Ok(PatternEmission {
-                    condition: quote! { true },
-                    bindings: vec![PatternBinding {
-                        name: name.clone(),
-                        tokens: quote! { let #ident = #value.clone(); },
-                    }],
-                })
-            }
-            Pattern::Literal(literal) => {
-                let literal = emit_literal(literal)?;
-                Ok(PatternEmission::empty(quote! { #value == #literal }))
-            }
-            Pattern::Variant { .. } => Err(CodegenError::Unsupported("variant case patterns")),
-            Pattern::List { .. } => Err(CodegenError::Unsupported("list case patterns")),
-            Pattern::Object(_) => Err(CodegenError::Unsupported("object case patterns")),
-        }
     }
 
     fn emit_bool_chain(
@@ -567,51 +500,6 @@ fn binary_intrinsic_operator(name: &str) -> Option<TokenStream> {
         "<=" => Some(quote! { <= }),
         ">=" => Some(quote! { >= }),
         _ => None,
-    }
-}
-
-#[derive(Clone, Debug)]
-struct PatternEmission {
-    condition: TokenStream,
-    bindings: Vec<PatternBinding>,
-}
-
-impl PatternEmission {
-    fn empty(condition: TokenStream) -> Self {
-        Self {
-            condition,
-            bindings: vec![],
-        }
-    }
-}
-
-#[derive(Clone, Debug)]
-struct PatternBinding {
-    name: String,
-    tokens: TokenStream,
-}
-
-#[derive(Clone, Debug)]
-struct PatternMatch {
-    tokens: TokenStream,
-    bindings: Vec<String>,
-}
-
-fn emit_variant_field_pattern(
-    pattern: &Pattern,
-    bindings: &mut Vec<String>,
-) -> Result<TokenStream, CodegenError> {
-    match pattern {
-        Pattern::Wildcard => Ok(quote! { _ }),
-        Pattern::Bind(name) => {
-            bindings.push(name.clone());
-            let ident = rust_ident(name);
-            Ok(quote! { #ident })
-        }
-        Pattern::Literal(_) => Err(CodegenError::Unsupported("literal variant field patterns")),
-        Pattern::Variant { .. } => Err(CodegenError::Unsupported("nested variant case patterns")),
-        Pattern::List { .. } => Err(CodegenError::Unsupported("list case patterns")),
-        Pattern::Object(_) => Err(CodegenError::Unsupported("object case patterns")),
     }
 }
 
@@ -844,7 +732,7 @@ fn emit_type(
     }
 }
 
-fn emit_literal(literal: &Literal) -> Result<TokenStream, CodegenError> {
+pub(crate) fn emit_literal(literal: &Literal) -> Result<TokenStream, CodegenError> {
     Ok(match literal {
         Literal::Null => quote! { () },
         Literal::Bool(value) => quote! { #value },
@@ -875,7 +763,7 @@ fn static_string_key(expr: &Expr) -> Option<String> {
     }
 }
 
-fn rust_ident(name: &str) -> Ident {
+pub(crate) fn rust_ident(name: &str) -> Ident {
     let mut output = String::new();
     for (index, ch) in name.chars().enumerate() {
         let valid = ch == '_' || ch.is_ascii_alphanumeric();

@@ -165,6 +165,60 @@ fn emit_rust_detailed_emits_native_enum_case() {
 }
 
 #[test]
+fn emit_rust_detailed_emits_native_list_case_patterns() {
+    let generated = jisp::emit_rust_as_detailed(
+        "main.lisp",
+        Syntax::Lisp,
+        r#"
+(export main
+  (fn ()
+    (case (list 1 41 99)
+      ((list 1 value ... tail) (+ value 1))
+      (_ 0))))
+"#,
+    )
+    .unwrap();
+
+    let tokens = generated.tokens.to_string();
+
+    assert!(tokens.contains("pub fn main () -> i64"));
+    assert!(tokens.contains("__jisp_case_subject . len () >= 2usize"));
+    assert!(tokens.contains("__jisp_case_subject [0usize] == 1i64"));
+    assert!(tokens.contains("let value = __jisp_case_subject [1usize] . clone ()"));
+    assert!(tokens.contains("let tail = __jisp_case_subject [2usize ..] . to_vec ()"));
+    assert!(!tokens.contains("Value"));
+    assert!(!tokens.contains("jisp_eval"));
+}
+
+#[test]
+fn emit_rust_detailed_emits_native_object_case_patterns() {
+    let generated = jisp::emit_rust_as_detailed(
+        "main.lisp",
+        Syntax::Lisp,
+        r#"
+(def stats (obj (str "active") true (str "age") 41))
+
+(export main
+  (fn ()
+    (case stats
+      ((obj "active" true "age" age) (+ age 1))
+      (_ 0))))
+"#,
+    )
+    .unwrap();
+
+    let tokens = generated.tokens.to_string();
+
+    assert!(tokens.contains("pub struct JispObject0"));
+    assert!(tokens.contains("pub fn main () -> i64"));
+    assert!(tokens.contains("__jisp_case_subject . active == true"));
+    assert!(tokens.contains("let age = __jisp_case_subject . age . clone ()"));
+    assert!(tokens.contains("(age + 1i64)"));
+    assert!(!tokens.contains("Value"));
+    assert!(!tokens.contains("jisp_eval"));
+}
+
+#[test]
 fn emit_rust_detailed_rejects_unsupported_shapes_without_runtime_fallback() {
     let error = match jisp::emit_rust_as_detailed(
         "main.lisp",

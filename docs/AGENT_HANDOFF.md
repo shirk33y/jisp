@@ -37,7 +37,11 @@ object-row prelude schemes, plus static-key refinements for `obj.get`,
 functions plus simple runtime helpers such as predicates, `result.recover`,
 numeric overloads, `io.println`, and basic object introspection. P0 is complete:
 `jisp-types` exposes `TypedModule`, and `jisp-codegen-rust::generate` accepts it
-as the native backend contract. Native token emission remains P1.
+as the native backend contract. Native token emission remains P1; it now covers
+monomorphic scalar/function definitions, list literals, closed structural
+objects, field access, string templates, simple literal/bind/wildcard `case`,
+concrete enum constructors, variant `case`, list/object `case` patterns, and
+the current binary intrinsic subset without a dynamic `Value` ABI fallback.
 
 `jisp-types` now exposes `Inferencer::infer_module_with_imports`,
 `Inferencer::infer_typed_module_with_imports`, `ImportTypeEnvironments`, and

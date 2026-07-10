@@ -393,6 +393,104 @@ fn emits_bind_and_wildcard_case_patterns_without_value_fallback() {
 }
 
 #[test]
+fn emits_list_case_patterns_with_rest_without_value_fallback() {
+    let module = typed_module(
+        vec![definition(
+            "main",
+            true,
+            expr(ExprKind::Case {
+                subject: Box::new(expr(ExprKind::List(vec![
+                    literal(Literal::Int(1)),
+                    literal(Literal::Int(41)),
+                    literal(Literal::Int(99)),
+                ]))),
+                branches: vec![
+                    branch(
+                        Pattern::List {
+                            prefix: vec![
+                                Pattern::Literal(Literal::Int(1)),
+                                Pattern::Bind("value".to_owned()),
+                            ],
+                            rest: Some("tail".to_owned()),
+                        },
+                        expr(ExprKind::Call {
+                            callee: Box::new(name("+")),
+                            arguments: vec![name("value"), literal(Literal::Int(1))],
+                        }),
+                    ),
+                    branch(Pattern::Wildcard, literal(Literal::Int(0))),
+                ],
+            }),
+        )],
+        vec![("main", Type::Int)],
+    );
+
+    let generated = generate(&module).unwrap().to_string();
+
+    assert!(generated.contains("let __jisp_case_subject = vec ! [1i64 , 41i64 , 99i64]"));
+    assert!(generated.contains("__jisp_case_subject . len () >= 2usize"));
+    assert!(generated.contains("__jisp_case_subject [0usize] == 1i64"));
+    assert!(generated.contains("let value = __jisp_case_subject [1usize] . clone ()"));
+    assert!(generated.contains("let tail = __jisp_case_subject [2usize ..] . to_vec ()"));
+    assert!(generated.contains("(value + 1i64)"));
+    assert!(!generated.contains("Value"));
+    assert!(!generated.contains("jisp_eval"));
+}
+
+#[test]
+fn emits_object_case_patterns_against_native_structs() {
+    let stats_type = object_type([("active", Type::Bool), ("age", Type::Int)]);
+    let stats = definition(
+        "stats",
+        false,
+        expr(ExprKind::Object(vec![
+            (
+                literal(Literal::String("active".to_owned())),
+                literal(Literal::Bool(true)),
+            ),
+            (
+                literal(Literal::String("age".to_owned())),
+                literal(Literal::Int(41)),
+            ),
+        ])),
+    );
+    let main = definition(
+        "main",
+        true,
+        expr(ExprKind::Case {
+            subject: Box::new(name("stats")),
+            branches: vec![
+                branch(
+                    Pattern::Object(vec![
+                        ("active".to_owned(), Pattern::Literal(Literal::Bool(true))),
+                        ("age".to_owned(), Pattern::Bind("age".to_owned())),
+                    ]),
+                    expr(ExprKind::Call {
+                        callee: Box::new(name("+")),
+                        arguments: vec![name("age"), literal(Literal::Int(1))],
+                    }),
+                ),
+                branch(Pattern::Wildcard, literal(Literal::Int(0))),
+            ],
+        }),
+    );
+    let module = typed_module(
+        vec![stats, main],
+        vec![("stats", stats_type), ("main", Type::Int)],
+    );
+
+    let generated = generate(&module).unwrap().to_string();
+
+    assert!(generated.contains("pub struct JispObject0"));
+    assert!(generated.contains("let __jisp_case_subject = stats ()"));
+    assert!(generated.contains("__jisp_case_subject . active == true"));
+    assert!(generated.contains("let age = __jisp_case_subject . age . clone ()"));
+    assert!(generated.contains("(age + 1i64)"));
+    assert!(!generated.contains("Value"));
+    assert!(!generated.contains("jisp_eval"));
+}
+
+#[test]
 fn emits_native_enum_constructors() {
     let mut module = typed_module(
         vec![definition(
