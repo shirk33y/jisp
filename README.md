@@ -60,7 +60,8 @@ Implemented or substantially wired:
   math, object helpers, and native imports;
 - Cargo-visible portable Lisp fixture tests under `tests/language/`, including
   regression coverage for control-flow laziness, result callbacks, Unicode
-  strings, list bounds, variadic rests, object updates, and UI-shaped data;
+  strings, list bounds, variadic rests, object updates, UI-shaped data, and
+  normal libtest listing/filtering;
 - generated core JSON Schema;
 - CLI commands for checking, running, schema generation, and limited Rust
   emission;
@@ -70,15 +71,14 @@ Implemented or substantially wired:
 
 Still incomplete and tracked as P2:
 
-- broader native Rust code generation, starting with the ordered P2 queue in
-  `TODO.md`: explicit `bigint` language support is done, and the current focus
-  is typed prelude helpers such as `str.slice`, `list.get`, `list.slice`, plus
-  concrete `result<T,E>` / `option<T>` helpers that compile without a dynamic
-  `Value` fallback;
+- broader native Rust code generation. The first ordered P2 queue in `TODO.md`
+  is done: explicit `bigint` language support, typed prelude helpers such as
+  `str.slice`, `list.get`, `list.slice`, first concrete `result<T,E>` /
+  `option<T>` helpers, `use` desugaring, `ui.html`, and Cargo-visible portable
+  Lisp tests;
 - later native backend work for first-class function values, nested functions,
   variadic user functions, `bigint` emission, open or dynamic object rows,
   dynamic field access, and `obj.get`;
-- richer portable `.lisp` test runner UX;
 - compile-time evaluation for user macros;
 - richer `case` patterns and exhaustiveness, including guards, alternatives,
   aliases, and nested/literal variant-field refinements;

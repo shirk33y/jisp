@@ -35,16 +35,16 @@ This is the single authoritative list of intentionally unfinished work.
 - P2 milestone queue:
   1. Done: add explicit `bigint` values to the language, interpreter, type
      prelude, docs, and portable tests.
-  2. Add native backend support for the remaining typed prelude helpers such as
-     `str.slice`, `list.get`, `list.slice`, and the first concrete
+  2. Done: add native backend support for the remaining typed prelude helpers
+     such as `str.slice`, `list.get`, `list.slice`, and the first concrete
      `result<T,E>` / `option<T>` helpers that can compile without a dynamic
      `Value` fallback.
   3. Done: add `use` desugaring for callback-last flows, including
      multi-binding callbacks and portable `.lisp` coverage.
   4. Done: build a minimal UI proof prototype with Jisp structural UI data
      rendered to escaped HTML strings through `ui.html`.
-  5. Improve portable `.lisp` test runner UX with better listing, filtering, and
-     failure reporting.
+  5. Done: improve portable `.lisp` test runner UX with Cargo-visible listing,
+     filtering, and fixture/test-aware failure reporting.
 - Add native backend support for first-class function values, nested functions,
   variadic user functions, `bigint` emission, `obj.get`, dynamic object
   helpers/open rows, and dynamic field access.
