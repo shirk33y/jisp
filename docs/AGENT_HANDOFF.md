@@ -56,6 +56,11 @@ Numeric semantics are now specified in `SPEC.md`: integers are checked `i64`,
 float arithmetic is `f64`, numeric builtins do not coerce int/float operands,
 division by zero is an error, and NaN is not equal to itself.
 
+Diagnostic rendering in `jisp-core` supports source snippets, notes, cross-file
+secondary labels, and multi-line spans. Macro-origin chains are still pending
+and should be designed with the macro expander rather than bolted onto the
+renderer alone.
+
 ## Useful existing seams
 
 - New syntax: implement `jisp_core::SyntaxParser` only.

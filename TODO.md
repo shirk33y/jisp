@@ -15,7 +15,9 @@ This is the single authoritative list of intentionally unfinished work.
   `jisp::check` and `jisp::run_main`. The facade exposes
   `jisp::import_dependencies`, and `jisp check --deps` lists imported source
   files for CLI tooling.
-- Improve diagnostics rendering and preserve macro-origin chains.
+- Preserve macro-origin chains in diagnostics. Basic primary/secondary
+  diagnostic rendering includes source snippets, notes, cross-file labels, and
+  multi-line spans.
 
 ## P1 — native compiler and product validation
 

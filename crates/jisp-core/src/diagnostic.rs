@@ -106,21 +106,36 @@ fn render_label(sources: &SourceMap, label: &Label, marker: char, include_header
     let Some(file) = sources.get(label.span.source) else {
         return format!("   | {}{}", marker, label_suffix(label));
     };
-    let (line, column) = file.line_col(label.span.start);
-    let line_text = file.line_text(line).unwrap_or_default();
-    let width = label_width(file, label.span, line, column);
-    let caret = format!(
-        "{}{}{}",
-        " ".repeat(column.saturating_sub(1)),
-        marker.to_string().repeat(width),
-        label_suffix(label)
-    );
+    let (start_line, start_column) = file.line_col(label.span.start);
+    let (end_line, end_column) = normalized_end(file, label.span, start_line);
 
     let mut out = String::new();
     if include_header {
-        out.push_str(&format!("  --> {}:{line}:{column}\n   |\n", file.name()));
+        out.push_str(&format!(
+            "  --> {}:{start_line}:{start_column}\n   |\n",
+            file.name()
+        ));
     }
-    out.push_str(&format!("{line:>3} | {line_text}\n   | {caret}"));
+    for line in start_line..=end_line {
+        if line > start_line {
+            out.push('\n');
+        }
+        let column = if line == start_line { start_column } else { 1 };
+        let line_text = file.line_text(line).unwrap_or_default();
+        let width = label_width(file, line, column, end_line, end_column);
+        let suffix = if line == start_line {
+            label_suffix(label)
+        } else {
+            String::new()
+        };
+        let caret = format!(
+            "{}{}{}",
+            " ".repeat(column.saturating_sub(1)),
+            marker.to_string().repeat(width),
+            suffix
+        );
+        out.push_str(&format!("{line:>3} | {line_text}\n   | {caret}"));
+    }
     out
 }
 
@@ -132,8 +147,27 @@ fn label_suffix(label: &Label) -> String {
     }
 }
 
-fn label_width(file: &crate::SourceFile, span: Span, line: usize, column: usize) -> usize {
-    let (end_line, end_column) = file.line_col(span.end);
+fn normalized_end(file: &crate::SourceFile, span: Span, start_line: usize) -> (usize, usize) {
+    let (line, column) = file.line_col(span.end);
+    if span.end > span.start && column == 1 && line > start_line {
+        let previous_line = line - 1;
+        let previous_end = file
+            .line_text(previous_line)
+            .map(|text| text.len() + 1)
+            .unwrap_or(1);
+        (previous_line, previous_end)
+    } else {
+        (line, column)
+    }
+}
+
+fn label_width(
+    file: &crate::SourceFile,
+    line: usize,
+    column: usize,
+    end_line: usize,
+    end_column: usize,
+) -> usize {
     if end_line == line && end_column > column {
         return end_column - column;
     }
