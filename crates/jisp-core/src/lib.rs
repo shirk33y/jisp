@@ -1,5 +1,7 @@
 mod ast;
 mod diagnostic;
+#[cfg(test)]
+mod diagnostic_test;
 mod registry;
 mod schema;
 mod source;

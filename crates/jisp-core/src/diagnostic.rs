@@ -77,23 +77,22 @@ impl Diagnostic {
             return format!("{severity}{code}: {}", self.message);
         };
         let (line, column) = file.line_col(self.primary.span.start);
-        let line_text = file.line_text(line).unwrap_or_default();
-        let width = self
-            .primary
-            .span
-            .end
-            .saturating_sub(self.primary.span.start)
-            .max(1);
-        let caret = format!("{}{}", " ".repeat(column.saturating_sub(1)), "^".repeat(width));
 
         let mut out = format!(
-            "{severity}{code}: {}\n  --> {}:{line}:{column}\n   |\n{line:>3} | {line_text}\n   | {caret}",
+            "{severity}{code}: {}\n  --> {}:{line}:{column}\n   |",
             self.message,
             file.name(),
         );
-        if !self.primary.message.is_empty() {
-            out.push(' ');
-            out.push_str(&self.primary.message);
+        out.push('\n');
+        out.push_str(&render_label(sources, &self.primary, '^', false));
+        for secondary in &self.secondary {
+            out.push('\n');
+            out.push_str(&render_label(
+                sources,
+                secondary,
+                '-',
+                secondary.span.source != self.primary.span.source,
+            ));
         }
         for note in &self.notes {
             out.push_str("\n   = note: ");
@@ -101,4 +100,44 @@ impl Diagnostic {
         }
         out
     }
+}
+
+fn render_label(sources: &SourceMap, label: &Label, marker: char, include_header: bool) -> String {
+    let Some(file) = sources.get(label.span.source) else {
+        return format!("   | {}{}", marker, label_suffix(label));
+    };
+    let (line, column) = file.line_col(label.span.start);
+    let line_text = file.line_text(line).unwrap_or_default();
+    let width = label_width(file, label.span, line, column);
+    let caret = format!(
+        "{}{}{}",
+        " ".repeat(column.saturating_sub(1)),
+        marker.to_string().repeat(width),
+        label_suffix(label)
+    );
+
+    let mut out = String::new();
+    if include_header {
+        out.push_str(&format!("  --> {}:{line}:{column}\n   |\n", file.name()));
+    }
+    out.push_str(&format!("{line:>3} | {line_text}\n   | {caret}"));
+    out
+}
+
+fn label_suffix(label: &Label) -> String {
+    if label.message.is_empty() {
+        String::new()
+    } else {
+        format!(" {}", label.message)
+    }
+}
+
+fn label_width(file: &crate::SourceFile, span: Span, line: usize, column: usize) -> usize {
+    let (end_line, end_column) = file.line_col(span.end);
+    if end_line == line && end_column > column {
+        return end_column - column;
+    }
+    file.line_text(line)
+        .map(|text| text.len().saturating_sub(column.saturating_sub(1)).max(1))
+        .unwrap_or(1)
 }

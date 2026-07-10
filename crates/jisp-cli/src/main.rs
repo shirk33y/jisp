@@ -1,4 +1,4 @@
-use std::{fs, path::PathBuf};
+use std::{fs, path::PathBuf, process};
 
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
@@ -33,16 +33,22 @@ fn main() -> Result<()> {
     match cli.command {
         Command::Check { path, types } => {
             let text = read(&path)?;
-            if types {
-                jisp::check(&path, &text)?;
+            let checked = if types {
+                jisp::check(&path, &text).map(|_| ())
             } else {
-                jisp::parse(&path, &text)?;
+                jisp::parse(&path, &text).map(|_| ())
+            };
+            if let Err(error) = checked {
+                report_jisp_error(&path, &text, &error);
             }
             println!("ok: {}", path.display());
         }
         Command::Run { path } => {
             let text = read(&path)?;
-            let value = jisp::run_main(&path, &text)?;
+            let value = match jisp::run_main(&path, &text) {
+                Ok(value) => value,
+                Err(error) => report_jisp_error(&path, &text, &error),
+            };
             println!("{}", value.display_string());
         }
         Command::Schema { output } => {
@@ -63,4 +69,31 @@ fn main() -> Result<()> {
 
 fn read(path: &PathBuf) -> Result<String> {
     fs::read_to_string(path).with_context(|| format!("read {}", path.display()))
+}
+
+fn report_jisp_error(path: &PathBuf, text: &str, error: &jisp::Error) -> ! {
+    if let Some(rendered) = render_diagnostics(path, text, error) {
+        eprintln!("{rendered}");
+    } else {
+        eprintln!("{error}");
+    }
+    process::exit(1);
+}
+
+fn render_diagnostics(path: &PathBuf, text: &str, error: &jisp::Error) -> Option<String> {
+    let diagnostics = match error {
+        jisp::Error::Parse(error) => &error.diagnostics,
+        jisp::Error::Lower(error) => &error.diagnostics,
+        _ => return None,
+    };
+
+    let mut sources = jisp::jisp_core::SourceMap::default();
+    sources.add(path.display().to_string(), text.to_owned());
+    Some(
+        diagnostics
+            .iter()
+            .map(|diagnostic| diagnostic.render(&sources))
+            .collect::<Vec<_>>()
+            .join("\n"),
+    )
 }

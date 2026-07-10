@@ -1,4 +1,4 @@
-use jisp_core::{Diagnostic, Node, NodeKind, ParseError, Span};
+use jisp_core::{Diagnostic, Node, NodeKind, Span};
 use thiserror::Error;
 
 use crate::{

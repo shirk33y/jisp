@@ -1,6 +1,4 @@
-use jisp_core::{
-    Diagnostic, Node, NodeKind, ParseError, SourceId, Span, Symbol, Syntax, SyntaxParser,
-};
+use jisp_core::{Diagnostic, Node, NodeKind, ParseError, SourceId, Span, Syntax, SyntaxParser};
 
 #[derive(Clone, Copy, Debug, Default)]
 pub struct JsonParser;
