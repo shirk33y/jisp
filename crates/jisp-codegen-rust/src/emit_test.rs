@@ -1,5 +1,5 @@
 use jisp_core::{SourceId, Span};
-use jisp_ir::{Definition, Expr, ExprKind, Literal, Module};
+use jisp_ir::{Definition, Expr, ExprKind, Literal, Module, StringPart};
 use jisp_types::{ObjectRow, Scheme, Type, TypedModule};
 
 use crate::{generate, CodegenError};
@@ -259,6 +259,38 @@ fn propagates_expected_object_type_through_let_body() {
 
     assert!(generated.contains("pub fn main () -> JispObject0"));
     assert!(generated.contains("JispObject0 { age : age }"));
+}
+
+#[test]
+fn emits_string_templates_with_splices() {
+    let module = typed_module(
+        vec![definition(
+            "main",
+            true,
+            expr(ExprKind::StringTemplate {
+                lines: true,
+                parts: vec![
+                    StringPart::Literal("first".to_owned()),
+                    StringPart::Expr(literal(Literal::String("second".to_owned()))),
+                    StringPart::Splice(expr(ExprKind::List(vec![
+                        literal(Literal::String("third".to_owned())),
+                        literal(Literal::String("fourth".to_owned())),
+                    ]))),
+                ],
+            }),
+        )],
+        vec![("main", Type::Str)],
+    );
+
+    let generated = generate(&module).unwrap().to_string();
+
+    assert!(generated.contains("let mut fragments : Vec < String > = Vec :: new ()"));
+    assert!(generated.contains("fragments . push (String :: from (\"first\"))"));
+    assert!(generated.contains("fragments . push (String :: from (\"second\"))"));
+    assert!(generated.contains("fragments . extend (vec ! [String :: from (\"third\")"));
+    assert!(generated.contains("fragments . join (\"\\n\")"));
+    assert!(!generated.contains("Value"));
+    assert!(!generated.contains("jisp_eval"));
 }
 
 #[test]

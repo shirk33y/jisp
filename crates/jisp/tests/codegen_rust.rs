@@ -87,13 +87,40 @@ fn emit_rust_detailed_emits_closed_objects_as_native_structs() {
 }
 
 #[test]
+fn emit_rust_detailed_emits_string_templates() {
+    let generated = jisp::emit_rust_as_detailed(
+        "main.lisp",
+        Syntax::Lisp,
+        r#"
+(export main (fn () (str "Hello " ,(str "Ada"))))
+"#,
+    )
+    .unwrap();
+
+    let tokens = generated.tokens.to_string();
+
+    assert!(tokens.contains("pub fn main () -> String"));
+    assert!(tokens.contains("fragments . push (String :: from (\"Hello \"))"));
+    assert!(tokens.contains("fragments . push"));
+    assert!(tokens.contains("fragments . concat ()"));
+    assert!(!tokens.contains("Value"));
+    assert!(!tokens.contains("jisp_eval"));
+}
+
+#[test]
 fn emit_rust_detailed_rejects_unsupported_shapes_without_runtime_fallback() {
-    let error =
-        match jisp::emit_rust_as_detailed("main.lisp", Syntax::Lisp, r#"(def xs (str "x"))"#) {
-            Ok(_) => panic!("expected unsupported native codegen shape"),
-            Err(error) => error.error,
-        };
+    let error = match jisp::emit_rust_as_detailed(
+        "main.lisp",
+        Syntax::Lisp,
+        "(export main (fn () (fn () 1)))",
+    ) {
+        Ok(_) => panic!("expected unsupported native codegen shape"),
+        Err(error) => error.error,
+    };
 
     assert!(matches!(error, jisp::Error::Codegen(_)), "{error}");
-    assert!(error.to_string().contains("string templates"), "{error}");
+    assert!(
+        error.to_string().contains("function value types"),
+        "{error}"
+    );
 }

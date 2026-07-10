@@ -1,6 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 
-use jisp_ir::{Definition, Expr, ExprKind, Literal};
+use jisp_ir::{Definition, Expr, ExprKind, Literal, StringPart};
 use jisp_types::{ObjectRow, Scheme, Type, TypedModule};
 use proc_macro2::{Ident, TokenStream};
 use quote::{format_ident, quote};
@@ -152,7 +152,7 @@ impl<'a> EmitContext<'a> {
             ExprKind::List(items) => self.emit_list(items, expected),
             ExprKind::Object(fields) => self.emit_object(fields, expected),
             ExprKind::Field { object, key } => self.emit_field(object, key),
-            ExprKind::StringTemplate { .. } => Err(CodegenError::Unsupported("string templates")),
+            ExprKind::StringTemplate { lines, parts } => self.emit_string_template(*lines, parts),
             ExprKind::Case { .. } => Err(CodegenError::Unsupported("case expressions")),
         }
     }
@@ -256,6 +256,40 @@ impl<'a> EmitContext<'a> {
         let object = self.emit_expr(object, None)?;
         let key = rust_ident(&key);
         Ok(quote! { #object.#key })
+    }
+
+    fn emit_string_template(
+        &mut self,
+        lines: bool,
+        parts: &[StringPart],
+    ) -> Result<TokenStream, CodegenError> {
+        let mut statements = Vec::new();
+        for part in parts {
+            match part {
+                StringPart::Literal(value) => {
+                    statements.push(quote! { fragments.push(String::from(#value)); });
+                }
+                StringPart::Expr(expression) => {
+                    let expression = self.emit_expr(expression, Some(&Type::Str))?;
+                    statements.push(quote! { fragments.push(#expression); });
+                }
+                StringPart::Splice(expression) => {
+                    let expected = Type::List(Box::new(Type::Str));
+                    let expression = self.emit_expr(expression, Some(&expected))?;
+                    statements.push(quote! { fragments.extend(#expression); });
+                }
+            }
+        }
+        let result = if lines {
+            quote! { fragments.join("\n") }
+        } else {
+            quote! { fragments.concat() }
+        };
+        Ok(quote! {{
+            let mut fragments: Vec<String> = Vec::new();
+            #(#statements)*
+            #result
+        }})
     }
 
     fn emit_bool_chain(
