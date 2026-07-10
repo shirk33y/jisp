@@ -71,7 +71,7 @@ It expands `quote`, `quasiquote`/`` ` ``, `unquote`/`,`, and
 Detailed facade errors retain the `SourceMap` and `ExpansionMap`, and
 `ModuleError::render_diagnostics` renders macro-origin chains as secondary
 labels. `jisp check` uses the detailed path for parse/check failures.
-Compile-time user macro evaluation remains P1. Diagnostic rendering in
+Compile-time user macro evaluation remains P2. Diagnostic rendering in
 `jisp-core` supports source snippets, notes, cross-file secondary labels, and
 multi-line spans.
 
