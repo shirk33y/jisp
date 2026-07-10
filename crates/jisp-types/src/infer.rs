@@ -454,21 +454,36 @@ impl Inferencer {
         subject_ty: &Type,
         branches: &[CaseBranch],
     ) -> Result<(), InferError> {
-        let (type_name, expected) = match self.apply(subject_ty) {
+        let subject_ty = self.apply(subject_ty);
+        match &subject_ty {
             Type::Named { name, .. } => {
-                let Some(variants) = self.type_variants.get(&name) else {
+                let Some(variants) = self.type_variants.get(name) else {
                     return Ok(());
                 };
-                (name, variants.clone())
+                self.check_finite_case_exhaustive(name, variants.clone(), branches)
             }
-            Type::Bool => (
-                "bool".to_owned(),
+            Type::Bool => self.check_finite_case_exhaustive(
+                "bool",
                 BTreeSet::from(["false".to_owned(), "true".to_owned()]),
+                branches,
             ),
-            Type::Null => ("null".to_owned(), BTreeSet::from(["null".to_owned()])),
-            _ => return Ok(()),
-        };
+            Type::Null => self.check_finite_case_exhaustive(
+                "null",
+                BTreeSet::from(["null".to_owned()]),
+                branches,
+            ),
+            Type::List(item) => self.check_list_case_exhaustive(item, branches),
+            Type::Object(_) => self.check_object_case_exhaustive(&subject_ty, branches),
+            _ => Ok(()),
+        }
+    }
 
+    fn check_finite_case_exhaustive(
+        &self,
+        type_name: &str,
+        expected: BTreeSet<String>,
+        branches: &[CaseBranch],
+    ) -> Result<(), InferError> {
         let mut covered = BTreeSet::new();
         let mut has_catch_all = false;
         for branch in branches {
@@ -507,7 +522,126 @@ impl Inferencer {
         if missing.is_empty() {
             Ok(())
         } else {
-            Err(InferError::NonExhaustiveCase { type_name, missing })
+            Err(InferError::NonExhaustiveCase {
+                type_name: type_name.to_owned(),
+                missing,
+            })
+        }
+    }
+
+    fn check_list_case_exhaustive(
+        &self,
+        item: &Type,
+        branches: &[CaseBranch],
+    ) -> Result<(), InferError> {
+        let mut exact_lengths = BTreeSet::new();
+        let mut rest_lengths = BTreeSet::new();
+        let mut has_catch_all = false;
+
+        for branch in branches {
+            if has_catch_all {
+                return Err(InferError::RedundantCasePattern(pattern_name(
+                    &branch.pattern,
+                )));
+            }
+
+            match &branch.pattern {
+                Pattern::Wildcard | Pattern::Bind(_) => has_catch_all = true,
+                Pattern::List { prefix, rest } => {
+                    let irrefutable_prefix = prefix
+                        .iter()
+                        .all(|pattern| self.pattern_is_irrefutable_for_type(pattern, item));
+                    if !irrefutable_prefix {
+                        continue;
+                    }
+
+                    let length = prefix.len();
+                    if rest_lengths.iter().any(|covered| *covered <= length) {
+                        return Err(InferError::RedundantCasePattern(pattern_name(
+                            &branch.pattern,
+                        )));
+                    }
+
+                    if rest.is_some() {
+                        rest_lengths.insert(length);
+                        if length == 0 {
+                            has_catch_all = true;
+                        }
+                    } else if !exact_lengths.insert(length) {
+                        return Err(InferError::RedundantCasePattern(pattern_name(
+                            &branch.pattern,
+                        )));
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        if has_catch_all || list_coverage_is_exhaustive(&exact_lengths, &rest_lengths) {
+            Ok(())
+        } else {
+            Err(InferError::NonExhaustiveCase {
+                type_name: "list".to_owned(),
+                missing: missing_list_patterns(&exact_lengths, &rest_lengths),
+            })
+        }
+    }
+
+    fn check_object_case_exhaustive(
+        &self,
+        subject_ty: &Type,
+        branches: &[CaseBranch],
+    ) -> Result<(), InferError> {
+        let mut has_catch_all = false;
+        for branch in branches {
+            if has_catch_all {
+                return Err(InferError::RedundantCasePattern(pattern_name(
+                    &branch.pattern,
+                )));
+            }
+            if self.pattern_is_irrefutable_for_type(&branch.pattern, subject_ty) {
+                has_catch_all = true;
+            }
+        }
+
+        if has_catch_all {
+            Ok(())
+        } else {
+            Err(InferError::NonExhaustiveCase {
+                type_name: "object".to_owned(),
+                missing: vec!["object pattern".to_owned()],
+            })
+        }
+    }
+
+    fn pattern_is_irrefutable_for_type(&self, pattern: &Pattern, ty: &Type) -> bool {
+        match pattern {
+            Pattern::Wildcard | Pattern::Bind(_) => true,
+            Pattern::Literal(Literal::Null) => matches!(self.apply(ty), Type::Null),
+            Pattern::List {
+                prefix,
+                rest: Some(_),
+            } => {
+                let Type::List(item) = self.apply(ty) else {
+                    return false;
+                };
+                prefix
+                    .iter()
+                    .all(|pattern| self.pattern_is_irrefutable_for_type(pattern, &item))
+            }
+            Pattern::Object(fields) => {
+                let Type::Object(row) = self.apply(ty) else {
+                    return false;
+                };
+                fields.iter().all(|(name, pattern)| {
+                    row.fields
+                        .get(name)
+                        .is_some_and(|ty| self.pattern_is_irrefutable_for_type(pattern, ty))
+                })
+            }
+            Pattern::Literal(_) | Pattern::Variant { .. } | Pattern::List { rest: None, .. } => {
+                false
+            }
         }
     }
 
@@ -743,6 +877,44 @@ fn pattern_name(pattern: &Pattern) -> String {
         Pattern::Variant { tag, .. } => tag.clone(),
         Pattern::List { .. } => "list pattern".to_owned(),
         Pattern::Object(_) => "object pattern".to_owned(),
+    }
+}
+
+fn list_coverage_is_exhaustive(
+    exact_lengths: &BTreeSet<usize>,
+    rest_lengths: &BTreeSet<usize>,
+) -> bool {
+    let Some(rest_start) = rest_lengths.first().copied() else {
+        return false;
+    };
+    (0..rest_start).all(|length| exact_lengths.contains(&length))
+}
+
+fn missing_list_patterns(
+    exact_lengths: &BTreeSet<usize>,
+    rest_lengths: &BTreeSet<usize>,
+) -> Vec<String> {
+    if let Some(rest_start) = rest_lengths.first().copied() {
+        return (0..rest_start)
+            .filter(|length| !exact_lengths.contains(length))
+            .map(list_length_pattern)
+            .collect();
+    }
+
+    let max_exact = exact_lengths.last().copied().unwrap_or(0);
+    let mut missing = (0..=max_exact)
+        .filter(|length| !exact_lengths.contains(length))
+        .map(list_length_pattern)
+        .collect::<Vec<_>>();
+    missing.push(format!("list length >= {}", max_exact + 1));
+    missing
+}
+
+fn list_length_pattern(length: usize) -> String {
+    if length == 0 {
+        "[]".to_owned()
+    } else {
+        format!("list length {length}")
     }
 }
 

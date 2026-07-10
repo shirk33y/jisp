@@ -4,8 +4,10 @@ This is the single authoritative list of intentionally unfinished work.
 
 ## P0 — make the MVP production-usable
 
-- Implement full type inference over `jisp-ir`, including structural objects,
-  list/object-aware exhaustive `case`, and variadic/object-row stdlib schemes.
+- Implement full type inference over `jisp-ir`, including structural object
+  refinements, nested/refined `case` exhaustiveness, and variadic/object-row
+  stdlib schemes. Basic structural objects and conservative list/object
+  exhaustiveness are implemented.
 - Implement a hygienic macro expander for quote/quasiquote/unquote/splicing.
 - Wire resolved module dependencies into proc-macro/native compilation so
   imported source files are tracked through the same resolver seam used by
