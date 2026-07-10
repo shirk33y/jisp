@@ -72,6 +72,15 @@ to reject native codegen for that program until the layout is designed.
 5. Add generated-code tests that assert no output mentions `jisp_eval::Value`
    or a backend catch-all `Value`.
 
+## Progress
+
+- Implemented the initial `jisp-codegen-rust` layout classifier. It accepts
+  scalar types, lists, functions, named ADTs, and closed structural object rows,
+  and rejects `never`, unresolved type variables, polymorphic top-level
+  definitions, and open object rows.
+- `jisp-codegen-rust::generate` now runs layout classification before returning
+  the current native-codegen scaffold error.
+
 ## Open design points
 
 - Object row variables currently record openness but not a full native map

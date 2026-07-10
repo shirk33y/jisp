@@ -9,3 +9,6 @@ jisp-types.workspace = true
 proc-macro2.workspace = true
 quote.workspace = true
 thiserror.workspace = true
+
+[dev-dependencies]
+jisp-ir.workspace = true
