@@ -1152,7 +1152,10 @@ fn prelude_rejects_mixed_numeric_overloads() {
 
     assert!(matches!(
         inferencer.infer_expr(&expression),
-        Err(InferError::Unify(_))
+        Err(InferError::NoMatchingOverload { name, expected })
+            if name == "+"
+                && expected.contains("(fn (int int) int)")
+                && expected.contains("(fn (float float) float)")
     ));
 }
 

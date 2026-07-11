@@ -57,9 +57,9 @@ fn main() -> Result<()> {
         }
         Command::Run { path } => {
             let text = read(&path)?;
-            let value = match jisp::run_main(&path, &text) {
+            let value = match jisp::run_main_detailed(&path, &text) {
                 Ok(value) => value,
-                Err(error) => report_jisp_error(&path, &text, &error),
+                Err(error) => report_jisp_module_error(&error),
             };
             println!("{}", value.display_string());
         }
@@ -87,15 +87,6 @@ fn read(path: &PathBuf) -> Result<String> {
     fs::read_to_string(path).with_context(|| format!("read {}", path.display()))
 }
 
-fn report_jisp_error(path: &PathBuf, text: &str, error: &jisp::Error) -> ! {
-    if let Some(rendered) = render_diagnostics(path, text, error) {
-        eprintln!("{rendered}");
-    } else {
-        eprintln!("{error}");
-    }
-    process::exit(1);
-}
-
 fn report_jisp_module_error(error: &jisp::ModuleError) -> ! {
     if let Some(rendered) = error.render_diagnostics() {
         eprintln!("{rendered}");
@@ -103,22 +94,4 @@ fn report_jisp_module_error(error: &jisp::ModuleError) -> ! {
         eprintln!("{}", error.error);
     }
     process::exit(1);
-}
-
-fn render_diagnostics(path: &PathBuf, text: &str, error: &jisp::Error) -> Option<String> {
-    let diagnostics = match error {
-        jisp::Error::Parse(error) => &error.diagnostics,
-        jisp::Error::Lower(error) => &error.diagnostics,
-        _ => return None,
-    };
-
-    let mut sources = jisp::jisp_core::SourceMap::default();
-    sources.add(path.display().to_string(), text.to_owned());
-    Some(
-        diagnostics
-            .iter()
-            .map(|diagnostic| diagnostic.render(&sources))
-            .collect::<Vec<_>>()
-            .join("\n"),
-    )
 }

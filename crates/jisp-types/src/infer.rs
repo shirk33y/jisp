@@ -1,5 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 
+use jisp_core::Span;
 use jisp_ir::{CaseBranch, Expr, ExprKind, Import, Literal, Module, Pattern, StringPart, TypeDecl};
 use thiserror::Error;
 
@@ -33,6 +34,9 @@ pub enum InferError {
 
     #[error("redundant case pattern `{0}`")]
     RedundantCasePattern(String),
+
+    #[error("no overload of `{name}` matches the arguments; expected {expected}")]
+    NoMatchingOverload { name: String, expected: String },
 }
 
 /// Reusable state for Hindley–Milner-style inference.
@@ -47,6 +51,7 @@ pub struct Inferencer {
     pub environment: BTreeMap<String, Scheme>,
     overloads: BTreeMap<String, Vec<Scheme>>,
     type_variants: BTreeMap<String, BTreeSet<String>>,
+    error_span: Option<Span>,
 }
 
 impl Inferencer {
@@ -78,6 +83,10 @@ impl Inferencer {
             .cloned()
             .ok_or_else(|| InferError::UnknownName(name.to_owned()))?;
         Ok(self.instantiate(&scheme))
+    }
+
+    pub fn error_span(&self) -> Option<Span> {
+        self.error_span
     }
 
     pub fn infer_module(
@@ -166,6 +175,14 @@ impl Inferencer {
     }
 
     pub fn infer_expr(&mut self, expr: &Expr) -> Result<Type, InferError> {
+        let result = self.infer_expr_inner(expr);
+        if result.is_err() && self.error_span.is_none() {
+            self.error_span = Some(expr.span);
+        }
+        result
+    }
+
+    fn infer_expr_inner(&mut self, expr: &Expr) -> Result<Type, InferError> {
         let ty = match &expr.kind {
             ExprKind::Literal(literal) => self.infer_literal(literal),
             ExprKind::Name(name) => self.lookup(name)?,
@@ -211,7 +228,7 @@ impl Inferencer {
             ExprKind::Call { callee, arguments } => {
                 if let ExprKind::Name(name) = &callee.kind {
                     if let Some(overloads) = self.overloads.get(name).cloned() {
-                        return self.infer_overloaded_call(&overloads, arguments);
+                        return self.infer_overloaded_call(name, &overloads, arguments);
                     }
                     if self.can_specialize_object_builtin(name) {
                         let mut candidate = self.clone();
@@ -1074,11 +1091,10 @@ impl Inferencer {
 
     fn infer_overloaded_call(
         &mut self,
+        name: &str,
         overloads: &[Scheme],
         arguments: &[Expr],
     ) -> Result<Type, InferError> {
-        let mut last_error = None;
-
         for overload in overloads {
             let mut candidate = self.clone();
             match candidate.infer_call_with_scheme(overload, arguments) {
@@ -1086,11 +1102,18 @@ impl Inferencer {
                     *self = candidate;
                     return Ok(self.apply(&result));
                 }
-                Err(error) => last_error = Some(error),
+                Err(_) => {}
             }
         }
 
-        Err(last_error.expect("overloaded call has at least one candidate"))
+        Err(InferError::NoMatchingOverload {
+            name: name.to_owned(),
+            expected: overloads
+                .iter()
+                .map(|overload| overload.body.to_string())
+                .collect::<Vec<_>>()
+                .join(", "),
+        })
     }
 
     fn infer_call_with_scheme(
