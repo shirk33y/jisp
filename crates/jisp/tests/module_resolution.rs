@@ -22,7 +22,10 @@ fn check_types_resolves_file_imports() {
 
     let text = fs::read_to_string(&main).unwrap();
 
-    jisp::check(&main, &text).unwrap();
+    let checked = jisp::check(&main, &text).unwrap();
+    assert!(checked
+        .resolved_modules
+        .contains_key(&canonical(&dir.join("math.lisp"))));
 }
 
 #[test]

@@ -55,6 +55,8 @@ pub enum Error {
     MainNotDefined,
     #[error("exported `main` must be a function with no parameters, got {0}")]
     InvalidMainType(Type),
+    #[error("checked module cache is missing import `{0}`")]
+    ResolvedImportMissing(String),
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -68,6 +70,7 @@ pub struct ParsedModule {
     pub expansion_map: ExpansionMap,
     pub types: Option<BTreeMap<String, Scheme>>,
     pub dependencies: Vec<PathBuf>,
+    pub resolved_modules: BTreeMap<PathBuf, Module>,
 }
 
 pub struct GeneratedRustModule {
@@ -223,10 +226,11 @@ pub fn parse_as_detailed(
         expansion_map,
     } = lower_as_detailed(name.clone(), syntax, text)?;
     let mut dependencies = vec![];
+    let mut resolved_modules = BTreeMap::new();
     let types = if options.infer_types {
         let path = Path::new(&name);
         let type_result = infer_module_types(&mut sources, path, &module);
-        let (inferred, resolved_dependencies) = match type_result {
+        let (inferred, resolved_dependencies, imported_modules) = match type_result {
             Ok(result) => result,
             Err(failure) => {
                 return Err(ModuleError::type_failure(
@@ -237,6 +241,7 @@ pub fn parse_as_detailed(
             }
         };
         dependencies = resolved_dependencies;
+        resolved_modules = imported_modules;
         Some(inferred)
     } else {
         None
@@ -247,6 +252,7 @@ pub fn parse_as_detailed(
         expansion_map,
         types,
         dependencies,
+        resolved_modules,
     })
 }
 
@@ -361,7 +367,14 @@ fn infer_module_types(
     sources: &mut SourceMap,
     path: &Path,
     module: &Module,
-) -> Result<(BTreeMap<String, Scheme>, Vec<PathBuf>), TypeFailure> {
+) -> Result<
+    (
+        BTreeMap<String, Scheme>,
+        Vec<PathBuf>,
+        BTreeMap<PathBuf, Module>,
+    ),
+    TypeFailure,
+> {
     let mut resolver = TypeResolver::new(sources);
     let imports = match resolver.import_environments(path, module) {
         Ok(imports) => imports,
@@ -372,7 +385,6 @@ fn infer_module_types(
             })
         }
     };
-    let dependencies = resolver.dependencies();
     let mut inferencer = Inferencer::with_prelude();
     let types = inferencer
         .infer_module_with_imports(module, &imports)
@@ -380,7 +392,8 @@ fn infer_module_types(
             error: error.into(),
             span: inferencer.error_span().or_else(|| module_span(module)),
         })?;
-    Ok((types, dependencies))
+    let (dependencies, resolved_modules) = resolver.into_parts();
+    Ok((types, dependencies, resolved_modules))
 }
 
 pub(crate) struct TypeFailure {
@@ -428,10 +441,10 @@ pub fn import_dependencies(path: impl AsRef<Path>, text: &str) -> Result<Vec<Pat
 
 pub fn evaluate(path: impl AsRef<Path>, text: &str) -> Result<LoadedModule, Error> {
     let path = path.as_ref();
-    let mut parsed = parse(path, text)?;
+    let parsed = check(path, text)?;
     let mut evaluator = Evaluator::new();
     let imports = {
-        let mut resolver = ValueResolver::new(&mut parsed.sources, &mut evaluator);
+        let mut resolver = ValueResolver::new(&mut evaluator, &parsed.resolved_modules);
         resolver.import_values(path, &parsed.module)?
     };
     Ok(evaluator.load_module_with_imports(&parsed.module, &imports)?)
@@ -443,7 +456,7 @@ pub fn run_main(path: impl AsRef<Path>, text: &str) -> Result<Value, Error> {
 
 pub fn run_main_detailed(path: impl AsRef<Path>, text: &str) -> Result<Value, ModuleError> {
     let path = path.as_ref();
-    let mut parsed = check_detailed(path, text)?;
+    let parsed = check_detailed(path, text)?;
     if let Err(error) = validate_main(&parsed) {
         return Err(ModuleError::new(
             parsed.sources,
@@ -453,7 +466,7 @@ pub fn run_main_detailed(path: impl AsRef<Path>, text: &str) -> Result<Value, Mo
     }
     let mut evaluator = Evaluator::new();
     let imports_result = {
-        let mut resolver = ValueResolver::new(&mut parsed.sources, &mut evaluator);
+        let mut resolver = ValueResolver::new(&mut evaluator, &parsed.resolved_modules);
         resolver.import_values(path, &parsed.module)
     };
     let imports = match imports_result {
@@ -512,6 +525,7 @@ fn validate_main(parsed: &ParsedModule) -> Result<(), Error> {
 struct TypeResolver<'a> {
     sources: &'a mut SourceMap,
     cache: BTreeMap<PathBuf, BTreeMap<String, Scheme>>,
+    modules: BTreeMap<PathBuf, Module>,
     stack: Vec<PathBuf>,
     dependencies: BTreeSet<PathBuf>,
     error_span: Option<Span>,
@@ -522,14 +536,15 @@ impl<'a> TypeResolver<'a> {
         Self {
             sources,
             cache: BTreeMap::new(),
+            modules: BTreeMap::new(),
             stack: vec![],
             dependencies: BTreeSet::new(),
             error_span: None,
         }
     }
 
-    fn dependencies(self) -> Vec<PathBuf> {
-        self.dependencies.into_iter().collect()
+    fn into_parts(self) -> (Vec<PathBuf>, BTreeMap<PathBuf, Module>) {
+        (self.dependencies.into_iter().collect(), self.modules)
     }
 
     fn import_environments(
@@ -559,7 +574,7 @@ impl<'a> TypeResolver<'a> {
         for file in module_source_files(&key)? {
             self.dependencies.insert(file);
         }
-        let module = load_module(self.sources, &key)?;
+        let module = self.cached_module(&key)?;
         let imports = self.import_environments(&key, &module)?;
         let mut inferencer = Inferencer::with_prelude();
         let schemes = match inferencer.infer_module_with_imports(&module, &imports) {
@@ -575,20 +590,29 @@ impl<'a> TypeResolver<'a> {
         self.cache.insert(key, exports.clone());
         Ok(exports)
     }
+
+    fn cached_module(&mut self, path: &Path) -> Result<Module, Error> {
+        if let Some(module) = self.modules.get(path) {
+            return Ok(module.clone());
+        }
+        let module = load_module(self.sources, path)?;
+        self.modules.insert(path.to_path_buf(), module.clone());
+        Ok(module)
+    }
 }
 
 struct ValueResolver<'a, 'b> {
-    sources: &'a mut SourceMap,
-    evaluator: &'b mut Evaluator,
+    evaluator: &'a mut Evaluator,
+    resolved_modules: &'b BTreeMap<PathBuf, Module>,
     cache: BTreeMap<PathBuf, HashMap<String, Value>>,
     stack: Vec<PathBuf>,
 }
 
 impl<'a, 'b> ValueResolver<'a, 'b> {
-    fn new(sources: &'a mut SourceMap, evaluator: &'b mut Evaluator) -> Self {
+    fn new(evaluator: &'a mut Evaluator, resolved_modules: &'b BTreeMap<PathBuf, Module>) -> Self {
         Self {
-            sources,
             evaluator,
+            resolved_modules,
             cache: BTreeMap::new(),
             stack: vec![],
         }
@@ -614,7 +638,11 @@ impl<'a, 'b> ValueResolver<'a, 'b> {
         }
 
         self.stack.push(key.clone());
-        let module = load_module(self.sources, &key)?;
+        let module = self
+            .resolved_modules
+            .get(&key)
+            .cloned()
+            .ok_or_else(|| Error::ResolvedImportMissing(key.display().to_string()))?;
         let imports = self.import_values(&key, &module)?;
         let loaded = self.evaluator.load_module_with_imports(&module, &imports)?;
         let exports = loaded.exports;

@@ -7,8 +7,7 @@ use jisp_ir::{
 use jisp_types::{Inferencer, ObjectRow, Scheme, Type, TypedModule};
 
 use crate::{
-    canonicalize, load_module, module_source_files, module_span, resolve_import, TypeFailure,
-    TypeResolver,
+    canonicalize, module_source_files, module_span, resolve_import, TypeFailure, TypeResolver,
 };
 use jisp_core::SourceMap;
 
@@ -36,7 +35,7 @@ pub(crate) fn infer_module_with_native_imports(
             error: error.into(),
             span: inferencer.error_span().or(fallback_span),
         })?;
-    let dependencies = resolver.dependencies();
+    let (dependencies, _) = resolver.into_parts();
 
     Ok((merge_modules(imported, main), dependencies))
 }
@@ -71,7 +70,7 @@ fn infer_imported_module(
     for file in module_source_files(&key)? {
         resolver.dependencies.insert(file);
     }
-    let module = load_module(resolver.sources, &key)?;
+    let module = resolver.cached_module(&key)?;
     let imports = match resolver.import_environments(&key, &module) {
         Ok(imports) => imports,
         Err(error) => {
