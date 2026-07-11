@@ -1,11 +1,14 @@
 # Testing strategy
 
 Existing tests cover sources, parsers, lowering/evaluation, cross-syntax
-normalisation, type instantiation, and unification foundations.
+normalisation, type instantiation, unification, module resolution, portable
+language fixtures, and the native Rust subset. Proc-macro integration fixtures
+compile and execute generated scalar, structural, and imported Rust programs.
 
-Add snapshot tests for diagnostics and schema. Add property tests ensuring
-parse/normalise equivalence across syntax fixtures. Native codegen later needs
-compile-pass/compile-fail fixtures and interpreter-vs-native differential tests.
+Add broader snapshot tests for diagnostics and schema. Add property tests
+ensuring parse/normalise equivalence across syntax fixtures. Native codegen
+still needs systematic compile-fail fixtures and interpreter-vs-native
+differential tests.
 
-This archive was written without installing or executing Rust. CI is provided
-as the intended validation environment.
+CI pins the Rust toolchain, checks formatting, runs the workspace suite, and
+runs `jisp-macros` separately so generated Rust is compiled by the test harness.
