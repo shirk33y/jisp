@@ -6,18 +6,36 @@ use jisp_ir::{
 };
 use jisp_types::{Inferencer, ObjectRow, Scheme, Type, TypedModule};
 
-use crate::{canonicalize, load_module, module_source_files, resolve_import, Error, TypeResolver};
+use crate::{
+    canonicalize, load_module, module_source_files, module_span, resolve_import, TypeFailure,
+    TypeResolver,
+};
 use jisp_core::SourceMap;
 
 pub(crate) fn infer_module_with_native_imports(
     sources: &mut SourceMap,
     path: &Path,
     module: Module,
-) -> Result<(TypedModule, Vec<std::path::PathBuf>), Error> {
+) -> Result<(TypedModule, Vec<std::path::PathBuf>), TypeFailure> {
     let mut resolver = TypeResolver::new(sources);
-    let imports = resolver.import_environments(path, &module)?;
+    let imports = match resolver.import_environments(path, &module) {
+        Ok(imports) => imports,
+        Err(error) => {
+            return Err(TypeFailure {
+                error,
+                span: resolver.error_span.or_else(|| module_span(&module)),
+            })
+        }
+    };
     let imported = collect_imports(&mut resolver, path, &module, "")?;
-    let main = Inferencer::with_prelude().infer_typed_module_with_imports(module, &imports)?;
+    let fallback_span = module_span(&module);
+    let mut inferencer = Inferencer::with_prelude();
+    let main = inferencer
+        .infer_typed_module_with_imports(module, &imports)
+        .map_err(|error| TypeFailure {
+            error: error.into(),
+            span: inferencer.error_span().or(fallback_span),
+        })?;
     let dependencies = resolver.dependencies();
 
     Ok((merge_modules(imported, main), dependencies))
@@ -28,7 +46,7 @@ fn collect_imports(
     importer: &Path,
     module: &Module,
     prefix: &str,
-) -> Result<Vec<TypedModule>, Error> {
+) -> Result<Vec<TypedModule>, TypeFailure> {
     let mut modules = Vec::new();
     for import in &module.imports {
         let path = resolve_import(importer, &import.path)?;
@@ -48,14 +66,29 @@ fn collect_imports(
 fn infer_imported_module(
     resolver: &mut TypeResolver<'_>,
     path: &Path,
-) -> Result<TypedModule, Error> {
+) -> Result<TypedModule, TypeFailure> {
     let key = canonicalize(path)?;
     for file in module_source_files(&key)? {
         resolver.dependencies.insert(file);
     }
     let module = load_module(resolver.sources, &key)?;
-    let imports = resolver.import_environments(&key, &module)?;
-    Ok(Inferencer::with_prelude().infer_typed_module_with_imports(module, &imports)?)
+    let imports = match resolver.import_environments(&key, &module) {
+        Ok(imports) => imports,
+        Err(error) => {
+            return Err(TypeFailure {
+                error,
+                span: resolver.error_span.or_else(|| module_span(&module)),
+            })
+        }
+    };
+    let fallback_span = module_span(&module);
+    let mut inferencer = Inferencer::with_prelude();
+    inferencer
+        .infer_typed_module_with_imports(module, &imports)
+        .map_err(|error| TypeFailure {
+            error: error.into(),
+            span: inferencer.error_span().or(fallback_span),
+        })
 }
 
 fn merge_modules(imported: Vec<TypedModule>, main: TypedModule) -> TypedModule {

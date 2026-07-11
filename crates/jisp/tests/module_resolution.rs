@@ -50,6 +50,35 @@ fn run_main_resolves_file_imports() {
 }
 
 #[test]
+fn type_errors_in_imports_render_the_imported_source() {
+    let dir = fixture_dir("imported-type-diagnostics");
+    let main = dir.join("main.lisp");
+    let broken = dir.join("broken.lisp");
+    fs::write(&broken, "(export value (+ 1 true))").unwrap();
+    fs::write(
+        &main,
+        r#"
+(import broken "broken.lisp")
+(export main (fn () broken.value))
+"#,
+    )
+    .unwrap();
+
+    let text = fs::read_to_string(&main).unwrap();
+    let error = match jisp::check_detailed(&main, &text) {
+        Ok(_) => panic!("expected an imported type error"),
+        Err(error) => error,
+    };
+
+    let rendered = error.render_diagnostics().unwrap();
+    assert!(
+        rendered.contains(&format!("--> {}:1:15", canonical(&broken).display())),
+        "{rendered}"
+    );
+    assert!(rendered.contains("no overload of `+`"), "{rendered}");
+}
+
+#[test]
 fn check_types_resolves_directory_imports_with_mixed_syntax() {
     let dir = fixture_dir("directory-imports");
     let module_dir = dir.join("math");

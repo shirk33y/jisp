@@ -8,7 +8,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use jisp_core::{detect_syntax, Diagnostic, Node, SourceMap, Syntax, SyntaxParser};
+use jisp_core::{detect_syntax, Diagnostic, Node, SourceMap, Span, Syntax, SyntaxParser};
 use jisp_eval::{Evaluator, ImportValues, LoadedModule, RuntimeError, Value};
 use jisp_expand::ExpansionMap;
 use jisp_ir::{LowerError, Lowerer, Module};
@@ -83,6 +83,7 @@ pub struct ModuleError {
     pub sources: SourceMap,
     pub expansion_map: ExpansionMap,
     pub error: Error,
+    extra_diagnostics: Vec<Diagnostic>,
 }
 
 impl ModuleError {
@@ -91,10 +92,46 @@ impl ModuleError {
             sources,
             expansion_map,
             error,
+            extra_diagnostics: vec![],
         }
     }
 
+    fn with_diagnostic(mut self, diagnostic: Diagnostic) -> Self {
+        self.extra_diagnostics.push(diagnostic);
+        self
+    }
+
+    fn runtime(sources: SourceMap, expansion_map: ExpansionMap, error: RuntimeError) -> Self {
+        let mut module_error = Self::new(sources, expansion_map, Error::Runtime(error.clone()));
+        if let Some(span) = error.span {
+            let mut diagnostic = Diagnostic::error(span, &error.message).with_code("JISP-RUNTIME");
+            let mut previous = Some(span);
+            for frame in error.stack.iter().copied().take(8) {
+                if previous == Some(frame) {
+                    continue;
+                }
+                diagnostic = diagnostic.with_secondary(frame, "while evaluating this expression");
+                previous = Some(frame);
+            }
+            module_error.extra_diagnostics.push(diagnostic);
+        }
+        module_error
+    }
+
+    fn type_failure(sources: SourceMap, expansion_map: ExpansionMap, failure: TypeFailure) -> Self {
+        let mut module_error = Self::new(sources, expansion_map, failure.error);
+        if let Some(span) = failure.span {
+            let message = module_error.error.to_string();
+            module_error = module_error
+                .with_diagnostic(Diagnostic::error(span, message).with_code("JISP-TYPE"));
+        }
+        module_error
+    }
+
     pub fn diagnostics(&self) -> Option<&[Diagnostic]> {
+        if !self.extra_diagnostics.is_empty() {
+            return Some(&self.extra_diagnostics);
+        }
         match &self.error {
             Error::Parse(error) => Some(&error.diagnostics),
             Error::Expand(error) => Some(&error.diagnostics),
@@ -191,8 +228,12 @@ pub fn parse_as_detailed(
         let type_result = infer_module_types(&mut sources, path, &module);
         let (inferred, resolved_dependencies) = match type_result {
             Ok(result) => result,
-            Err(error) => {
-                return Err(ModuleError::new(sources, expansion_map.clone(), error));
+            Err(failure) => {
+                return Err(ModuleError::type_failure(
+                    sources,
+                    expansion_map.clone(),
+                    failure,
+                ));
             }
         };
         dependencies = resolved_dependencies;
@@ -245,7 +286,13 @@ pub fn emit_rust_as_detailed(
     let codegen_result = generate_rust_module(&mut sources, path, module);
     let (generated, dependencies) = match codegen_result {
         Ok(result) => result,
-        Err(error) => return Err(ModuleError::new(sources, expansion_map.clone(), error)),
+        Err(failure) => {
+            return Err(ModuleError::type_failure(
+                sources,
+                expansion_map.clone(),
+                failure,
+            ))
+        }
     };
     Ok(GeneratedRustModule {
         sources,
@@ -314,22 +361,56 @@ fn infer_module_types(
     sources: &mut SourceMap,
     path: &Path,
     module: &Module,
-) -> Result<(BTreeMap<String, Scheme>, Vec<PathBuf>), Error> {
+) -> Result<(BTreeMap<String, Scheme>, Vec<PathBuf>), TypeFailure> {
     let mut resolver = TypeResolver::new(sources);
-    let imports = resolver.import_environments(path, module)?;
+    let imports = match resolver.import_environments(path, module) {
+        Ok(imports) => imports,
+        Err(error) => {
+            return Err(TypeFailure {
+                error,
+                span: resolver.error_span,
+            })
+        }
+    };
     let dependencies = resolver.dependencies();
-    let types = Inferencer::with_prelude().infer_module_with_imports(module, &imports)?;
+    let mut inferencer = Inferencer::with_prelude();
+    let types = inferencer
+        .infer_module_with_imports(module, &imports)
+        .map_err(|error| TypeFailure {
+            error: error.into(),
+            span: inferencer.error_span().or_else(|| module_span(module)),
+        })?;
     Ok((types, dependencies))
+}
+
+pub(crate) struct TypeFailure {
+    pub(crate) error: Error,
+    pub(crate) span: Option<Span>,
+}
+
+impl From<Error> for TypeFailure {
+    fn from(error: Error) -> Self {
+        Self { error, span: None }
+    }
+}
+
+pub(crate) fn module_span(module: &Module) -> Option<Span> {
+    module
+        .definitions
+        .first()
+        .map(|definition| definition.value.span)
+        .or_else(|| module.types.first().map(|declaration| declaration.span))
+        .or_else(|| module.imports.first().map(|import| import.span))
 }
 
 fn generate_rust_module(
     sources: &mut SourceMap,
     path: &Path,
     module: Module,
-) -> Result<(jisp_codegen_rust::GeneratedRust, Vec<PathBuf>), Error> {
+) -> Result<(jisp_codegen_rust::GeneratedRust, Vec<PathBuf>), TypeFailure> {
     let (typed, dependencies) =
         native_imports::infer_module_with_native_imports(sources, path, module)?;
-    let generated = jisp_codegen_rust::generate_detailed(&typed)?;
+    let generated = jisp_codegen_rust::generate_detailed(&typed).map_err(Error::from)?;
     Ok((generated, dependencies))
 }
 
@@ -357,15 +438,49 @@ pub fn evaluate(path: impl AsRef<Path>, text: &str) -> Result<LoadedModule, Erro
 }
 
 pub fn run_main(path: impl AsRef<Path>, text: &str) -> Result<Value, Error> {
+    run_main_detailed(path, text).map_err(|error| error.error)
+}
+
+pub fn run_main_detailed(path: impl AsRef<Path>, text: &str) -> Result<Value, ModuleError> {
     let path = path.as_ref();
-    let mut parsed = check(path, text)?;
-    validate_main(&parsed)?;
+    let mut parsed = check_detailed(path, text)?;
+    if let Err(error) = validate_main(&parsed) {
+        return Err(ModuleError::new(
+            parsed.sources,
+            parsed.expansion_map,
+            error,
+        ));
+    }
     let mut evaluator = Evaluator::new();
-    let imports = {
+    let imports_result = {
         let mut resolver = ValueResolver::new(&mut parsed.sources, &mut evaluator);
-        resolver.import_values(path, &parsed.module)?
+        resolver.import_values(path, &parsed.module)
     };
-    Ok(evaluator.run_main_with_imports(&parsed.module, &imports)?)
+    let imports = match imports_result {
+        Ok(imports) => imports,
+        Err(Error::Runtime(error)) => {
+            return Err(ModuleError::runtime(
+                parsed.sources,
+                parsed.expansion_map,
+                error,
+            ))
+        }
+        Err(error) => {
+            return Err(ModuleError::new(
+                parsed.sources,
+                parsed.expansion_map,
+                error,
+            ))
+        }
+    };
+    match evaluator.run_main_with_imports(&parsed.module, &imports) {
+        Ok(value) => Ok(value),
+        Err(error) => Err(ModuleError::runtime(
+            parsed.sources,
+            parsed.expansion_map,
+            error,
+        )),
+    }
 }
 
 fn validate_main(parsed: &ParsedModule) -> Result<(), Error> {
@@ -399,6 +514,7 @@ struct TypeResolver<'a> {
     cache: BTreeMap<PathBuf, BTreeMap<String, Scheme>>,
     stack: Vec<PathBuf>,
     dependencies: BTreeSet<PathBuf>,
+    error_span: Option<Span>,
 }
 
 impl<'a> TypeResolver<'a> {
@@ -408,6 +524,7 @@ impl<'a> TypeResolver<'a> {
             cache: BTreeMap::new(),
             stack: vec![],
             dependencies: BTreeSet::new(),
+            error_span: None,
         }
     }
 
@@ -444,7 +561,14 @@ impl<'a> TypeResolver<'a> {
         }
         let module = load_module(self.sources, &key)?;
         let imports = self.import_environments(&key, &module)?;
-        let schemes = Inferencer::with_prelude().infer_module_with_imports(&module, &imports)?;
+        let mut inferencer = Inferencer::with_prelude();
+        let schemes = match inferencer.infer_module_with_imports(&module, &imports) {
+            Ok(schemes) => schemes,
+            Err(error) => {
+                self.error_span = inferencer.error_span().or_else(|| module_span(&module));
+                return Err(error.into());
+            }
+        };
         let exports = exported_schemes(&module, &schemes);
         self.stack.pop();
 
