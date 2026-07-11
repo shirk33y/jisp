@@ -14,6 +14,13 @@ fn run_result(source: &str) -> Result<Value, RuntimeError> {
 }
 
 #[test]
+fn run_main_requires_main_to_be_exported() {
+    let error = run_result(r#"[["def","main",["fn",[],42]]]"#).unwrap_err();
+
+    assert_eq!(error.message, "module does not export `main`");
+}
+
+#[test]
 fn evaluates_recursive_functions() {
     let value = run(r#"[
           ["def","fact",

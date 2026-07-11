@@ -12,7 +12,7 @@ use jisp_core::{detect_syntax, Diagnostic, Node, SourceMap, Syntax, SyntaxParser
 use jisp_eval::{Evaluator, ImportValues, LoadedModule, RuntimeError, Value};
 use jisp_expand::ExpansionMap;
 use jisp_ir::{LowerError, Lowerer, Module};
-use jisp_types::{ImportTypeEnvironments, Inferencer, Scheme};
+use jisp_types::{ImportTypeEnvironments, Inferencer, Scheme, Type};
 use proc_macro2::TokenStream;
 use thiserror::Error;
 
@@ -49,6 +49,12 @@ pub enum Error {
     ImportNotFound { import: String, from: String },
     #[error("import cycle: {0}")]
     ImportCycle(String),
+    #[error("module does not export `main`")]
+    MainNotExported,
+    #[error("exported `main` does not name a top-level definition")]
+    MainNotDefined,
+    #[error("exported `main` must be a function with no parameters, got {0}")]
+    InvalidMainType(Type),
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -352,13 +358,40 @@ pub fn evaluate(path: impl AsRef<Path>, text: &str) -> Result<LoadedModule, Erro
 
 pub fn run_main(path: impl AsRef<Path>, text: &str) -> Result<Value, Error> {
     let path = path.as_ref();
-    let mut parsed = parse(path, text)?;
+    let mut parsed = check(path, text)?;
+    validate_main(&parsed)?;
     let mut evaluator = Evaluator::new();
     let imports = {
         let mut resolver = ValueResolver::new(&mut parsed.sources, &mut evaluator);
         resolver.import_values(path, &parsed.module)?
     };
     Ok(evaluator.run_main_with_imports(&parsed.module, &imports)?)
+}
+
+fn validate_main(parsed: &ParsedModule) -> Result<(), Error> {
+    if !parsed.module.exports.iter().any(|export| export == "main") {
+        return Err(Error::MainNotExported);
+    }
+    if !parsed
+        .module
+        .definitions
+        .iter()
+        .any(|definition| definition.name == "main")
+    {
+        return Err(Error::MainNotDefined);
+    }
+
+    let main = parsed
+        .types
+        .as_ref()
+        .and_then(|types| types.get("main"))
+        .expect("checked modules include schemes for exported definitions");
+    match &main.body {
+        Type::Function {
+            parameters, rest, ..
+        } if parameters.is_empty() && rest.is_none() => Ok(()),
+        other => Err(Error::InvalidMainType(other.clone())),
+    }
 }
 
 struct TypeResolver<'a> {
