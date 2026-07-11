@@ -21,6 +21,19 @@ fn run_main_rejects_type_errors_in_dead_code() {
 }
 
 #[test]
+fn evaluate_rejects_type_errors_before_loading_the_module() {
+    let error = match jisp::evaluate("main.lisp", "(def value (+ 1 true))") {
+        Ok(_) => panic!("expected a type error"),
+        Err(error) => error,
+    };
+
+    assert!(matches!(
+        error,
+        jisp::Error::Type(InferError::NoMatchingOverload { .. })
+    ));
+}
+
+#[test]
 fn run_main_requires_main_to_be_exported() {
     let error = jisp::run_main("main.lisp", "(def main (fn () 42))").unwrap_err();
 

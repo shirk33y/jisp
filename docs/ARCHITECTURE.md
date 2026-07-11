@@ -53,6 +53,12 @@ JSON / restricted YAML / Lisp
 5. Raw `{}` remains unsupported until its purpose is explicitly designed.
 6. FFI is not implemented opportunistically; start with a written ABI design.
 
+Checked facade operations retain the normalized Core IR for every resolved
+import. `check`, `evaluate`, and `run_main` therefore use one imported module
+graph for type inference and interpretation instead of reparsing imports during
+evaluation. The native-import path reuses the same resolver cache while it
+builds its prefixed typed module.
+
 ## Design reference
 
 Gleam is the external reference for ADTs, inference, exhaustiveness,
