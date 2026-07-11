@@ -201,14 +201,14 @@ fn imports_expose_only_exported_names() {
     );
 
     let err = match jisp::run_main(&main, &text) {
-        Ok(_) => panic!("expected private import runtime error"),
+        Ok(_) => panic!("expected private import type error"),
         Err(err) => err,
     };
     assert!(
         matches!(
             err,
-            jisp::Error::Runtime(jisp::jisp_eval::RuntimeError { ref message, .. })
-                if message == "unknown name `math.hidden`"
+            jisp::Error::Type(jisp::jisp_types::InferError::UnknownName(ref name))
+                if name == "math.hidden"
         ),
         "{err}"
     );

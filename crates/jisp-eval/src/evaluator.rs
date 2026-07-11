@@ -107,13 +107,18 @@ impl Evaluator {
         imports: &ImportValues,
     ) -> Result<Value, RuntimeError> {
         let loaded = self.load_module_with_imports(module, imports)?;
-        let main = loaded.env.lookup("main")?;
+        let main = loaded
+            .exports
+            .get("main")
+            .cloned()
+            .ok_or_else(|| RuntimeError::message("module does not export `main`"))?;
         self.apply(
             main,
             &[],
             module
                 .definitions
-                .first()
+                .iter()
+                .find(|definition| definition.name == "main")
                 .map(|d| d.span)
                 .unwrap_or_else(|| Span::empty(jisp_core::SourceId(0), 0)),
         )
