@@ -1,3 +1,5 @@
 (export entry
   (fn ()
-    ((fn () 42))))
+    (let (offset 1
+          callback (fn () offset))
+      (callback))))

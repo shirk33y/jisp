@@ -45,10 +45,7 @@ fn unsupported_native_calls_fail_during_downstream_macro_expansion() {
         diagnostics.contains("failed to generate native Rust for Jisp source"),
         "{diagnostics}"
     );
-    assert!(
-        diagnostics.contains("first-class function calls"),
-        "{diagnostics}"
-    );
+    assert!(diagnostics.contains("nested functions"), "{diagnostics}");
 }
 
 fn fixture_dir(name: &str) -> PathBuf {

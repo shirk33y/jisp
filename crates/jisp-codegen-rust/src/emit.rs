@@ -149,7 +149,13 @@ impl<'a> EmitContext<'a> {
                 if self.locals.contains_key(name) {
                     Ok(quote! { #ident })
                 } else if self.top_level_names.contains(name) {
-                    Ok(quote! { #ident() })
+                    match expected {
+                        Some(Type::Function { rest: None, .. }) => Ok(quote! { #ident }),
+                        Some(Type::Function { rest: Some(_), .. }) => {
+                            Err(CodegenError::Unsupported("native variadic function values"))
+                        }
+                        _ => Ok(quote! { #ident() }),
+                    }
                 } else if let Some(variant) = self.enum_types.prelude_constructor(name, expected)? {
                     if !variant.fields.is_empty() {
                         return Err(CodegenError::Unsupported(
@@ -526,6 +532,27 @@ impl<'a> EmitContext<'a> {
             _ => None,
         }
     }
+
+    pub(super) fn native_callback_type(&self, callback: &Expr) -> Result<Type, CodegenError> {
+        let ExprKind::Name(name) = &callback.kind else {
+            return Err(CodegenError::Unsupported("native callback expressions"));
+        };
+        let ty = self
+            .locals
+            .get(name)
+            .and_then(Option::as_ref)
+            .or_else(|| self.top_level_schemes.get(name).map(|scheme| &scheme.body))
+            .ok_or(CodegenError::Unsupported("native callback outside module"))?;
+        match ty {
+            Type::Function { rest: None, .. } => Ok(ty.clone()),
+            Type::Function { rest: Some(_), .. } => {
+                Err(CodegenError::Unsupported("native variadic function values"))
+            }
+            _ => Err(CodegenError::Unsupported(
+                "native callback is not a function",
+            )),
+        }
+    }
 }
 
 fn emit_enum_definitions(
@@ -794,7 +821,21 @@ fn emit_type(
             .map(|ident| quote! { #ident }),
         Type::Never => Err(CodegenError::Unsupported("never type emission")),
         Type::Var(_) => Err(CodegenError::Unsupported("unresolved type variables")),
-        Type::Function { .. } => Err(CodegenError::Unsupported("function value types")),
+        Type::Function {
+            parameters,
+            rest: None,
+            result,
+        } => {
+            let parameters = parameters
+                .iter()
+                .map(|parameter| emit_type(parameter, object_types, enum_types))
+                .collect::<Result<Vec<_>, _>>()?;
+            let result = emit_type(result, object_types, enum_types)?;
+            Ok(quote! { fn(#(#parameters),*) -> #result })
+        }
+        Type::Function { rest: Some(_), .. } => {
+            Err(CodegenError::Unsupported("native variadic function values"))
+        }
         Type::Named { name, arguments } => {
             if !arguments.is_empty() {
                 return enum_types.ident_for_type(ty).map(|ident| quote! { #ident });

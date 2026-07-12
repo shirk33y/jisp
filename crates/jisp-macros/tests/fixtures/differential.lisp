@@ -8,6 +8,22 @@
 (def words
   (list "ada" "lin" "grace"))
 
+(def increment
+  (fn (value)
+    (+ value 1)))
+
+(def above-one
+  (fn (value)
+    (> value 1)))
+
+(def sum
+  (fn (total value)
+    (+ total value)))
+
+(def apply-twice
+  (fn (callback value)
+    (+ 0 (callback (callback value)))))
+
 (export scalar-entry
   (fn ()
     (+ 20 22)))
@@ -27,6 +43,22 @@
 (export list-entry
   (fn ()
     (list.append (list.prepend 1 (list 2 3)) 4)))
+
+(export map-entry
+  (fn ()
+    (list.map increment (list 1 2 3))))
+
+(export filter-entry
+  (fn ()
+    (list.filter above-one (list 1 2 3))))
+
+(export fold-entry
+  (fn ()
+    (list.fold sum 0 (list 1 2 3))))
+
+(export higher-order-entry
+  (fn ()
+    (apply-twice increment 40)))
 
 (export enum-case-entry
   (fn ()

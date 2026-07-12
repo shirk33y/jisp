@@ -45,6 +45,9 @@ impl<'a> EmitContext<'a> {
             "list.cat" => self.emit_list_cat_intrinsic(arguments),
             "list.rest" => self.emit_list_rest_intrinsic(arguments),
             "list.slice" => self.emit_list_slice_intrinsic(arguments, expected),
+            "list.map" => self.emit_list_map_intrinsic(arguments),
+            "list.filter" => self.emit_list_filter_intrinsic(arguments),
+            "list.fold" => self.emit_list_fold_intrinsic(arguments),
             "list.has" => self.emit_list_has_intrinsic(arguments),
             "list.prepend" => self.emit_list_prepend_intrinsic(arguments),
             "list.append" => self.emit_list_append_intrinsic(arguments),
@@ -499,6 +502,102 @@ impl<'a> EmitContext<'a> {
                 }
             }
         }})
+    }
+
+    fn emit_list_map_intrinsic(&mut self, arguments: &[Expr]) -> Result<TokenStream, CodegenError> {
+        let [callback, list] = arguments else {
+            return Err(CodegenError::Unsupported("non-binary native list.map"));
+        };
+        let callback_type = self.native_callback_type(callback)?;
+        let Type::Function {
+            parameters,
+            rest: None,
+            result: _,
+        } = &callback_type
+        else {
+            unreachable!("native_callback_type only returns fixed-arity functions");
+        };
+        let [item_type] = parameters.as_slice() else {
+            return Err(CodegenError::Unsupported("native list.map callback arity"));
+        };
+        let callback = self.emit_expr(callback, Some(&callback_type))?;
+        let list_type = Type::List(Box::new(item_type.clone()));
+        let list = self.emit_expr(list, Some(&list_type))?;
+        Ok(quote! {{
+            let __jisp_list = #list.into_iter().map(#callback).collect::<Vec<_>>();
+            __jisp_list
+        }})
+    }
+
+    fn emit_list_filter_intrinsic(
+        &mut self,
+        arguments: &[Expr],
+    ) -> Result<TokenStream, CodegenError> {
+        let [callback, list] = arguments else {
+            return Err(CodegenError::Unsupported("non-binary native list.filter"));
+        };
+        let callback_type = self.native_callback_type(callback)?;
+        let Type::Function {
+            parameters,
+            rest: None,
+            result,
+        } = &callback_type
+        else {
+            unreachable!("native_callback_type only returns fixed-arity functions");
+        };
+        let [item_type] = parameters.as_slice() else {
+            return Err(CodegenError::Unsupported(
+                "native list.filter callback arity",
+            ));
+        };
+        if result.as_ref() != &Type::Bool {
+            return Err(CodegenError::Unsupported(
+                "native list.filter callback result",
+            ));
+        }
+        let callback = self.emit_expr(callback, Some(&callback_type))?;
+        let list_type = Type::List(Box::new(item_type.clone()));
+        let list = self.emit_expr(list, Some(&list_type))?;
+        Ok(quote! {{
+            let mut __jisp_result = Vec::new();
+            for __jisp_value in #list {
+                if #callback(__jisp_value.clone()) {
+                    __jisp_result.push(__jisp_value);
+                }
+            }
+            __jisp_result
+        }})
+    }
+
+    fn emit_list_fold_intrinsic(
+        &mut self,
+        arguments: &[Expr],
+    ) -> Result<TokenStream, CodegenError> {
+        let [callback, initial, list] = arguments else {
+            return Err(CodegenError::Unsupported("non-ternary native list.fold"));
+        };
+        let callback_type = self.native_callback_type(callback)?;
+        let Type::Function {
+            parameters,
+            rest: None,
+            result,
+        } = &callback_type
+        else {
+            unreachable!("native_callback_type only returns fixed-arity functions");
+        };
+        let [accumulator_type, item_type] = parameters.as_slice() else {
+            return Err(CodegenError::Unsupported("native list.fold callback arity"));
+        };
+        if result.as_ref() != accumulator_type {
+            return Err(CodegenError::Unsupported(
+                "native list.fold callback result",
+            ));
+        }
+        let callback = self.emit_expr(callback, Some(&callback_type))?;
+        let initial = self.emit_expr(initial, Some(accumulator_type))?;
+        let list_type = Type::List(Box::new(item_type.clone()));
+        let list = self.emit_expr(list, Some(&list_type))?;
+        Ok(quote! { #list.into_iter().fold(#initial, #callback) })
     }
 
     fn emit_list_prepend_intrinsic(

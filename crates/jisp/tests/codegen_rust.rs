@@ -373,10 +373,7 @@ fn emit_rust_detailed_rejects_unsupported_shapes_without_runtime_fallback() {
     };
 
     assert!(matches!(error, jisp::Error::Codegen(_)), "{error}");
-    assert!(
-        error.to_string().contains("function value types"),
-        "{error}"
-    );
+    assert!(error.to_string().contains("nested functions"), "{error}");
 }
 
 #[test]

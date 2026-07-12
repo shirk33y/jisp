@@ -45,8 +45,10 @@ This is the single authoritative list of intentionally unfinished work.
      rendered to escaped HTML strings through `ui.html`.
   5. Done: improve portable `.lisp` test runner UX with Cargo-visible listing,
      filtering, and fixture/test-aware failure reporting.
-- Add native backend support for first-class function values, nested functions,
-  variadic user functions, `bigint` emission, `obj.get`, dynamic object
+  6. Done: emit non-capturing top-level function values as typed native function
+     pointers, including `list.map`, `list.filter`, and `list.fold` callbacks.
+- Add native backend support for nested/capturing function values, variadic user
+  functions, `bigint` emission, `obj.get`, dynamic object
   helpers/open rows, and dynamic field access.
 - Add compile-time evaluation for user macros.
 - Add case guards, alternative patterns, aliases, and robust exhaustiveness.

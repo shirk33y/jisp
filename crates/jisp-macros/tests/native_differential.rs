@@ -26,6 +26,20 @@ fn native_strings_and_lists_match_the_interpreter() {
 }
 
 #[test]
+fn native_callbacks_and_list_higher_order_helpers_match_the_interpreter() {
+    assert_matches_interpreter(
+        "map-entry",
+        Value::List(map_entry().into_iter().map(Value::Int).collect()),
+    );
+    assert_matches_interpreter(
+        "filter-entry",
+        Value::List(filter_entry().into_iter().map(Value::Int).collect()),
+    );
+    assert_matches_interpreter("fold-entry", Value::Int(fold_entry()));
+    assert_matches_interpreter("higher-order-entry", Value::Int(higher_order_entry()));
+}
+
+#[test]
 fn native_enum_cases_match_the_interpreter() {
     assert_matches_interpreter("enum-case-entry", Value::Int(enum_case_entry()));
 }
