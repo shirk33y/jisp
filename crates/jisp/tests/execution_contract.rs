@@ -16,7 +16,8 @@ fn run_main_rejects_type_errors_in_dead_code() {
 
     assert!(matches!(
         error,
-        jisp::Error::Type(InferError::NoMatchingOverload { .. })
+        jisp::Error::Type(InferError::Located { error, .. })
+            if matches!(error.as_ref(), InferError::NoMatchingOverload { .. })
     ));
 }
 
@@ -29,7 +30,8 @@ fn evaluate_rejects_type_errors_before_loading_the_module() {
 
     assert!(matches!(
         error,
-        jisp::Error::Type(InferError::NoMatchingOverload { .. })
+        jisp::Error::Type(InferError::Located { error, .. })
+            if matches!(error.as_ref(), InferError::NoMatchingOverload { .. })
     ));
 }
 

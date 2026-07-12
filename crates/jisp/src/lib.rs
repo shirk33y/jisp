@@ -380,8 +380,8 @@ fn infer_module_types(
         Ok(imports) => imports,
         Err(error) => {
             return Err(TypeFailure {
+                span: type_error_span(&error),
                 error,
-                span: resolver.error_span,
             })
         }
     };
@@ -389,8 +389,8 @@ fn infer_module_types(
     let types = inferencer
         .infer_module_with_imports(module, &imports)
         .map_err(|error| TypeFailure {
+            span: error.span().or_else(|| module_span(module)),
             error: error.into(),
-            span: inferencer.error_span().or_else(|| module_span(module)),
         })?;
     let (dependencies, resolved_modules) = resolver.into_parts();
     Ok((types, dependencies, resolved_modules))
@@ -414,6 +414,13 @@ pub(crate) fn module_span(module: &Module) -> Option<Span> {
         .map(|definition| definition.value.span)
         .or_else(|| module.types.first().map(|declaration| declaration.span))
         .or_else(|| module.imports.first().map(|import| import.span))
+}
+
+pub(crate) fn type_error_span(error: &Error) -> Option<Span> {
+    match error {
+        Error::Type(error) => error.span(),
+        _ => None,
+    }
 }
 
 fn generate_rust_module(
@@ -528,7 +535,6 @@ struct TypeResolver<'a> {
     modules: BTreeMap<PathBuf, Module>,
     stack: Vec<PathBuf>,
     dependencies: BTreeSet<PathBuf>,
-    error_span: Option<Span>,
 }
 
 impl<'a> TypeResolver<'a> {
@@ -539,7 +545,6 @@ impl<'a> TypeResolver<'a> {
             modules: BTreeMap::new(),
             stack: vec![],
             dependencies: BTreeSet::new(),
-            error_span: None,
         }
     }
 
@@ -579,10 +584,7 @@ impl<'a> TypeResolver<'a> {
         let mut inferencer = Inferencer::with_prelude();
         let schemes = match inferencer.infer_module_with_imports(&module, &imports) {
             Ok(schemes) => schemes,
-            Err(error) => {
-                self.error_span = inferencer.error_span().or_else(|| module_span(&module));
-                return Err(error.into());
-            }
+            Err(error) => return Err(error.into()),
         };
         let exports = exported_schemes(&module, &schemes);
         self.stack.pop();

@@ -37,6 +37,39 @@ pub enum InferError {
 
     #[error("no overload of `{name}` matches the arguments; expected {expected}")]
     NoMatchingOverload { name: String, expected: String },
+
+    #[error("{error}")]
+    Located {
+        #[source]
+        error: Box<InferError>,
+        span: Span,
+    },
+}
+
+impl InferError {
+    pub fn span(&self) -> Option<Span> {
+        match self {
+            Self::Located { span, .. } => Some(*span),
+            _ => None,
+        }
+    }
+
+    fn locate(self, span: Span) -> Self {
+        match self {
+            Self::Located { .. } => self,
+            error => Self::Located {
+                error: Box::new(error),
+                span,
+            },
+        }
+    }
+
+    fn into_unlocated(self) -> Self {
+        match self {
+            Self::Located { error, .. } => error.into_unlocated(),
+            error => error,
+        }
+    }
 }
 
 /// Reusable state for Hindley–Milner-style inference.
@@ -51,7 +84,6 @@ pub struct Inferencer {
     pub environment: BTreeMap<String, Scheme>,
     overloads: BTreeMap<String, Vec<Scheme>>,
     type_variants: BTreeMap<String, BTreeSet<String>>,
-    error_span: Option<Span>,
 }
 
 impl Inferencer {
@@ -85,19 +117,17 @@ impl Inferencer {
         Ok(self.instantiate(&scheme))
     }
 
-    pub fn error_span(&self) -> Option<Span> {
-        self.error_span
-    }
-
     pub fn infer_module(
         &mut self,
         module: &Module,
     ) -> Result<BTreeMap<String, Scheme>, InferError> {
         self.infer_module_with_imports(module, &BTreeMap::new())
+            .map_err(InferError::into_unlocated)
     }
 
     pub fn infer_typed_module(&mut self, module: Module) -> Result<TypedModule, InferError> {
         self.infer_typed_module_with_imports(module, &BTreeMap::new())
+            .map_err(InferError::into_unlocated)
     }
 
     pub fn infer_module_with_imports(
@@ -121,7 +151,7 @@ impl Inferencer {
 
             for index in &group {
                 let definition = &module.definitions[*index];
-                let value = self.infer_expr(&definition.value)?;
+                let value = self.infer_expr_located(&definition.value)?;
                 let placeholder = placeholders
                     .get(index)
                     .expect("definition placeholders are installed first")
@@ -175,114 +205,122 @@ impl Inferencer {
     }
 
     pub fn infer_expr(&mut self, expr: &Expr) -> Result<Type, InferError> {
-        let result = self.infer_expr_inner(expr);
-        if result.is_err() && self.error_span.is_none() {
-            self.error_span = Some(expr.span);
-        }
-        result
+        self.infer_expr_located(expr)
+            .map_err(InferError::into_unlocated)
     }
 
-    fn infer_expr_inner(&mut self, expr: &Expr) -> Result<Type, InferError> {
-        let ty = match &expr.kind {
-            ExprKind::Literal(literal) => self.infer_literal(literal),
-            ExprKind::Name(name) => self.lookup(name)?,
-            ExprKind::Lambda { params, rest, body } => self.with_scope(|inferencer| {
-                let parameters = params
-                    .iter()
-                    .map(|name| {
+    fn infer_expr_located(&mut self, expr: &Expr) -> Result<Type, InferError> {
+        let result: Result<Type, InferError> = (|| {
+            let ty = match &expr.kind {
+                ExprKind::Literal(literal) => self.infer_literal(literal),
+                ExprKind::Name(name) => self.lookup(name)?,
+                ExprKind::Lambda { params, rest, body } => self.with_scope(|inferencer| {
+                    let parameters = params
+                        .iter()
+                        .map(|name| {
+                            let ty = inferencer.fresh_type();
+                            inferencer.define(name, Scheme::mono(ty.clone()));
+                            ty
+                        })
+                        .collect::<Vec<_>>();
+                    let rest_item = rest.as_ref().map(|name| {
                         let ty = inferencer.fresh_type();
-                        inferencer.define(name, Scheme::mono(ty.clone()));
+                        inferencer.define(name, Scheme::mono(Type::List(Box::new(ty.clone()))));
                         ty
+                    });
+                    let result = inferencer.infer_expr_located(body)?;
+                    Ok(Type::Function {
+                        parameters: parameters.iter().map(|ty| inferencer.apply(ty)).collect(),
+                        rest: rest_item.map(|ty| Box::new(inferencer.apply(&ty))),
+                        result: Box::new(inferencer.apply(&result)),
                     })
-                    .collect::<Vec<_>>();
-                let rest_item = rest.as_ref().map(|name| {
-                    let ty = inferencer.fresh_type();
-                    inferencer.define(name, Scheme::mono(Type::List(Box::new(ty.clone()))));
-                    ty
-                });
-                let result = inferencer.infer_expr(body)?;
-                Ok(Type::Function {
-                    parameters: parameters.iter().map(|ty| inferencer.apply(ty)).collect(),
-                    rest: rest_item.map(|ty| Box::new(inferencer.apply(&ty))),
-                    result: Box::new(inferencer.apply(&result)),
-                })
-            })?,
-            ExprKind::Let { bindings, body } => self.infer_let(bindings, body)?,
-            ExprKind::Do(expressions) => self.infer_do(expressions)?,
-            ExprKind::If {
-                condition,
-                then_branch,
-                else_branch,
-            } => {
-                self.infer_expr(condition)?;
-                let then_ty = self.infer_expr(then_branch)?;
-                let else_ty = self.infer_expr(else_branch)?;
-                self.unify(then_ty, else_ty)?
-            }
-            ExprKind::And(expressions) => self.infer_short_circuit(expressions, Type::Bool)?,
-            ExprKind::Or(expressions) => self.infer_short_circuit(expressions, Type::Null)?,
-            ExprKind::Not(expression) => {
-                self.infer_expr(expression)?;
-                Type::Bool
-            }
-            ExprKind::Call { callee, arguments } => {
-                if let ExprKind::Name(name) = &callee.kind {
-                    if let Some(overloads) = self.overloads.get(name).cloned() {
-                        return self.infer_overloaded_call(name, &overloads, arguments);
-                    }
-                    if self.can_specialize_object_builtin(name) {
-                        let mut candidate = self.clone();
-                        if let Some(result) = candidate.infer_object_builtin(name, arguments)? {
-                            *self = candidate;
-                            return Ok(self.apply(&result));
+                })?,
+                ExprKind::Let { bindings, body } => self.infer_let(bindings, body)?,
+                ExprKind::Do(expressions) => self.infer_do(expressions)?,
+                ExprKind::If {
+                    condition,
+                    then_branch,
+                    else_branch,
+                } => {
+                    self.infer_expr_located(condition)?;
+                    let then_ty = self.infer_expr_located(then_branch)?;
+                    let else_ty = self.infer_expr_located(else_branch)?;
+                    self.unify(then_ty, else_ty)?
+                }
+                ExprKind::And(expressions) => self.infer_short_circuit(expressions, Type::Bool)?,
+                ExprKind::Or(expressions) => self.infer_short_circuit(expressions, Type::Null)?,
+                ExprKind::Not(expression) => {
+                    self.infer_expr_located(expression)?;
+                    Type::Bool
+                }
+                ExprKind::Call { callee, arguments } => {
+                    if let ExprKind::Name(name) = &callee.kind {
+                        if let Some(overloads) = self.overloads.get(name).cloned() {
+                            self.infer_overloaded_call(name, &overloads, arguments)?
+                        } else if self.can_specialize_object_builtin(name) {
+                            let mut candidate = self.clone();
+                            if let Some(result) = candidate.infer_object_builtin(name, arguments)? {
+                                *self = candidate;
+                                self.apply(&result)
+                            } else {
+                                self.infer_call(callee, arguments)?
+                            }
+                        } else {
+                            self.infer_call(callee, arguments)?
                         }
+                    } else {
+                        self.infer_call(callee, arguments)?
                     }
                 }
-                let callee_ty = self.infer_expr(callee)?;
-                let parameters = arguments
-                    .iter()
-                    .map(|argument| self.infer_expr(argument))
-                    .collect::<Result<Vec<_>, _>>()?;
-                let result = self.fresh_type();
-                self.unify(
-                    callee_ty,
-                    Type::Function {
-                        parameters,
-                        rest: None,
-                        result: Box::new(result.clone()),
-                    },
-                )?;
-                result
-            }
-            ExprKind::List(expressions) => {
-                let item = self.fresh_type();
-                for expression in expressions {
-                    let value = self.infer_expr(expression)?;
-                    self.unify(item.clone(), value)?;
+                ExprKind::List(expressions) => {
+                    let item = self.fresh_type();
+                    for expression in expressions {
+                        let value = self.infer_expr_located(expression)?;
+                        self.unify(item.clone(), value)?;
+                    }
+                    Type::List(Box::new(self.apply(&item)))
                 }
-                Type::List(Box::new(self.apply(&item)))
-            }
-            ExprKind::Object(fields) => self.infer_object(fields)?,
-            ExprKind::Field { object, key } => self.infer_field(object, key)?,
-            ExprKind::StringTemplate { parts, .. } => {
-                for part in parts {
-                    match part {
-                        StringPart::Literal(_) => {}
-                        StringPart::Expr(expression) => {
-                            let ty = self.infer_expr(expression)?;
-                            self.unify(ty, Type::Str)?;
-                        }
-                        StringPart::Splice(expression) => {
-                            let ty = self.infer_expr(expression)?;
-                            self.unify(ty, Type::List(Box::new(Type::Str)))?;
+                ExprKind::Object(fields) => self.infer_object(fields)?,
+                ExprKind::Field { object, key } => self.infer_field(object, key)?,
+                ExprKind::StringTemplate { parts, .. } => {
+                    for part in parts {
+                        match part {
+                            StringPart::Literal(_) => {}
+                            StringPart::Expr(expression) => {
+                                let ty = self.infer_expr_located(expression)?;
+                                self.unify(ty, Type::Str)?;
+                            }
+                            StringPart::Splice(expression) => {
+                                let ty = self.infer_expr_located(expression)?;
+                                self.unify(ty, Type::List(Box::new(Type::Str)))?;
+                            }
                         }
                     }
+                    Type::Str
                 }
-                Type::Str
-            }
-            ExprKind::Case { subject, branches } => self.infer_case(subject, branches)?,
-        };
-        Ok(self.apply(&ty))
+                ExprKind::Case { subject, branches } => self.infer_case(subject, branches)?,
+            };
+            Ok(self.apply(&ty))
+        })();
+        result.map_err(|error| error.locate(expr.span))
+    }
+
+    fn infer_call(&mut self, callee: &Expr, arguments: &[Expr]) -> Result<Type, InferError> {
+        let callee_ty = self.infer_expr_located(callee)?;
+        let parameters = arguments
+            .iter()
+            .map(|argument| self.infer_expr_located(argument))
+            .collect::<Result<Vec<_>, _>>()?;
+        let result = self.fresh_type();
+        self.unify(
+            callee_ty,
+            Type::Function {
+                parameters,
+                rest: None,
+                result: Box::new(result.clone()),
+            },
+        )?;
+        Ok(result)
     }
 
     pub fn instantiate(&mut self, scheme: &Scheme) -> Type {
@@ -407,18 +445,18 @@ impl Inferencer {
     fn infer_let(&mut self, bindings: &[(String, Expr)], body: &Expr) -> Result<Type, InferError> {
         self.with_scope(|inferencer| {
             for (name, value) in bindings {
-                let ty = inferencer.infer_expr(value)?;
+                let ty = inferencer.infer_expr_located(value)?;
                 let scheme = inferencer.generalize(&ty);
                 inferencer.define(name, scheme);
             }
-            inferencer.infer_expr(body)
+            inferencer.infer_expr_located(body)
         })
     }
 
     fn infer_do(&mut self, expressions: &[Expr]) -> Result<Type, InferError> {
         let mut ty = Type::Null;
         for expression in expressions {
-            ty = self.infer_expr(expression)?;
+            ty = self.infer_expr_located(expression)?;
         }
         Ok(ty)
     }
@@ -431,9 +469,9 @@ impl Inferencer {
         let Some((first, rest)) = expressions.split_first() else {
             return Ok(empty);
         };
-        let ty = self.infer_expr(first)?;
+        let ty = self.infer_expr_located(first)?;
         for expression in rest {
-            let next = self.infer_expr(expression)?;
+            let next = self.infer_expr_located(expression)?;
             self.unify(ty.clone(), next)?;
         }
         Ok(ty)
@@ -443,9 +481,9 @@ impl Inferencer {
         let mut typed_fields = BTreeMap::new();
         let mut dynamic = false;
         for (key, value) in fields {
-            let key_ty = self.infer_expr(key)?;
+            let key_ty = self.infer_expr_located(key)?;
             self.unify(key_ty, Type::Str)?;
-            let value_ty = self.infer_expr(value)?;
+            let value_ty = self.infer_expr_located(value)?;
             if let Some(name) = static_string_key(key) {
                 typed_fields.insert(name, value_ty);
             } else {
@@ -459,9 +497,9 @@ impl Inferencer {
     }
 
     fn infer_field(&mut self, object: &Expr, key: &Expr) -> Result<Type, InferError> {
-        let key_ty = self.infer_expr(key)?;
+        let key_ty = self.infer_expr_located(key)?;
         self.unify(key_ty, Type::Str)?;
-        let object_ty = self.infer_expr(object)?;
+        let object_ty = self.infer_expr_located(object)?;
         let field_ty = self.fresh_type();
         let rest = self.fresh_var();
         let fields = static_string_key(key)
@@ -497,7 +535,7 @@ impl Inferencer {
         let Some(key) = static_string_key(&arguments[1]) else {
             return Ok(None);
         };
-        let key_ty = self.infer_expr(&arguments[1])?;
+        let key_ty = self.infer_expr_located(&arguments[1])?;
         self.unify(key_ty, Type::Str)?;
         let Some(row) = self.infer_static_object_row(&arguments[0])? else {
             return Ok(None);
@@ -513,12 +551,12 @@ impl Inferencer {
         let Some(key) = static_string_key(&arguments[1]) else {
             return Ok(None);
         };
-        let key_ty = self.infer_expr(&arguments[1])?;
+        let key_ty = self.infer_expr_located(&arguments[1])?;
         self.unify(key_ty, Type::Str)?;
         let Some(mut row) = self.infer_static_object_row(&arguments[0])? else {
             return Ok(None);
         };
-        let value = self.infer_expr(&arguments[2])?;
+        let value = self.infer_expr_located(&arguments[2])?;
         row.fields.insert(key, self.apply(&value));
         Ok(Some(Type::Object(row)))
     }
@@ -528,7 +566,7 @@ impl Inferencer {
         let Some(key) = static_string_key(&arguments[1]) else {
             return Ok(None);
         };
-        let key_ty = self.infer_expr(&arguments[1])?;
+        let key_ty = self.infer_expr_located(&arguments[1])?;
         self.unify(key_ty, Type::Str)?;
         let Some(mut row) = self.infer_static_object_row(&arguments[0])? else {
             return Ok(None);
@@ -569,7 +607,7 @@ impl Inferencer {
     }
 
     fn infer_static_object_row(&mut self, object: &Expr) -> Result<Option<ObjectRow>, InferError> {
-        let ty = self.infer_expr(object)?;
+        let ty = self.infer_expr_located(object)?;
         match self.apply(&ty) {
             Type::Object(row) => Ok(Some(row)),
             _ => Ok(None),
@@ -586,14 +624,14 @@ impl Inferencer {
     }
 
     fn infer_case(&mut self, subject: &Expr, branches: &[CaseBranch]) -> Result<Type, InferError> {
-        let subject_ty = self.infer_expr(subject)?;
+        let subject_ty = self.infer_expr_located(subject)?;
         let result_ty = self.fresh_type();
 
         for branch in branches {
             let body_ty = self.with_scope(|inferencer| {
                 let mut bindings = BTreeSet::new();
                 inferencer.infer_pattern(&branch.pattern, subject_ty.clone(), &mut bindings)?;
-                inferencer.infer_expr(&branch.body)
+                inferencer.infer_expr_located(&branch.body)
             })?;
             self.unify(result_ty.clone(), body_ty)?;
         }
@@ -1124,7 +1162,7 @@ impl Inferencer {
         let callee_ty = self.instantiate(scheme);
         let parameters = arguments
             .iter()
-            .map(|argument| self.infer_expr(argument))
+            .map(|argument| self.infer_expr_located(argument))
             .collect::<Result<Vec<_>, _>>()?;
         let result = self.fresh_type();
         self.unify(
