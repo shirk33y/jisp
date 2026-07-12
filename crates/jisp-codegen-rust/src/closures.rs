@@ -41,19 +41,25 @@ impl<'a> EmitContext<'a> {
         }
         let mut free_names = BTreeSet::new();
         collect_free_names(body, &bound, &mut free_names);
-        let captures = free_names
+        let capture_names = free_names
             .into_iter()
             .filter(|name| self.locals.contains_key(name))
+            .collect::<Vec<_>>();
+        let captures = capture_names
+            .iter()
             .map(|name| {
-                let ident = rust_ident(&name);
+                let ident = rust_ident(name);
                 quote! { let #ident = #ident.clone(); }
             })
             .collect::<Vec<_>>();
+        let previous_captures = self.closure_captures.clone();
+        self.closure_captures.extend(capture_names.iter().cloned());
         let mut previous_locals = Vec::new();
         let parameters = params
             .iter()
             .zip(parameters)
             .map(|(name, ty)| {
+                self.closure_captures.remove(name);
                 previous_locals.push((
                     name.clone(),
                     self.locals.insert(name.clone(), Some(ty.clone())),
@@ -72,6 +78,7 @@ impl<'a> EmitContext<'a> {
                 self.locals.remove(&name);
             }
         }
+        self.closure_captures = previous_captures;
         Ok(quote! {{
             #(#captures)*
             ::std::rc::Rc::new(move |#(#parameters),*| -> #result_type { #body })

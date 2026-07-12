@@ -146,6 +146,7 @@ struct EmitContext<'a> {
     object_types: &'a ObjectTypes,
     enum_types: &'a EnumTypes,
     locals: BTreeMap<String, Option<Type>>,
+    closure_captures: BTreeSet<String>,
 }
 
 impl<'a> EmitContext<'a> {
@@ -163,6 +164,7 @@ impl<'a> EmitContext<'a> {
             object_types,
             enum_types,
             locals: BTreeMap::new(),
+            closure_captures: BTreeSet::new(),
         }
     }
 
@@ -178,7 +180,11 @@ impl<'a> EmitContext<'a> {
             ExprKind::Name(name) => {
                 let ident = rust_ident(name);
                 if self.locals.contains_key(name) {
-                    Ok(quote! { #ident.clone() })
+                    if self.closure_captures.contains(name) {
+                        Ok(quote! { #ident.clone() })
+                    } else {
+                        Ok(quote! { #ident })
+                    }
                 } else if self.top_level_names.contains(name) {
                     match expected {
                         Some(Type::Function {
@@ -260,11 +266,13 @@ impl<'a> EmitContext<'a> {
         )?;
         let mut emitted = Vec::new();
         let mut previous_locals = Vec::new();
+        let previous_captures = self.closure_captures.clone();
         for (name, value) in bindings {
             let ident = rust_ident(name);
             let value_type = self.expression_type(value).cloned();
             let value = self.emit_expr(value, value_type.as_ref())?;
             previous_locals.push((name.clone(), self.locals.insert(name.clone(), value_type)));
+            self.closure_captures.remove(name);
             emitted.push(quote! { let #ident = #value; });
         }
         let body = self.emit_expr(body, expected)?;
@@ -275,6 +283,7 @@ impl<'a> EmitContext<'a> {
                 self.locals.remove(&name);
             }
         }
+        self.closure_captures = previous_captures;
         Ok(quote! {{ #(#emitted)* #body }})
     }
 
@@ -416,11 +425,13 @@ impl<'a> EmitContext<'a> {
                 "case binding",
             )?;
             let mut previous_locals = Vec::new();
+            let previous_captures = self.closure_captures.clone();
             for binding in &bindings {
                 previous_locals.push((
                     binding.name.clone(),
                     self.locals.insert(binding.name.clone(), None),
                 ));
+                self.closure_captures.remove(&binding.name);
             }
             let body = self.emit_expr(&branch.body, expected)?;
             for (name, previous) in previous_locals.into_iter().rev() {
@@ -430,6 +441,7 @@ impl<'a> EmitContext<'a> {
                     self.locals.remove(&name);
                 }
             }
+            self.closure_captures = previous_captures;
             let bindings = bindings.iter().map(|binding| &binding.tokens);
             let branch = quote! {{ #(#bindings)* #body }};
             output = quote! {
@@ -485,8 +497,10 @@ impl<'a> EmitContext<'a> {
             emit_variant_match_pattern(pattern, self.enum_types, subject_type)?;
         ensure_unique_rust_idents(bindings.iter().map(String::as_str), "case binding")?;
         let mut previous_locals = Vec::new();
+        let previous_captures = self.closure_captures.clone();
         for binding in &bindings {
             previous_locals.push((binding.clone(), self.locals.insert(binding.clone(), None)));
+            self.closure_captures.remove(binding);
         }
         let body = self.emit_expr(body, expected)?;
         for (name, previous) in previous_locals.into_iter().rev() {
@@ -496,6 +510,7 @@ impl<'a> EmitContext<'a> {
                 self.locals.remove(&name);
             }
         }
+        self.closure_captures = previous_captures;
         Ok(quote! { #tokens => { #body } })
     }
 
@@ -574,12 +589,11 @@ impl<'a> EmitContext<'a> {
                     )
                 })
                 .collect::<Result<Vec<_>, _>>()?;
-            let callee = if is_local {
-                quote! { (&*#name) }
+            return if is_local {
+                Ok(quote! { (&*#name)(#(#arguments),*) })
             } else {
-                quote! { #name }
+                Ok(quote! { #name(#(#arguments),*) })
             };
-            return Ok(quote! { (#callee)(#(#arguments),*) });
         }
         let callee_type = self
             .expression_type(callee)
