@@ -1,5 +1,10 @@
 //! Public facade for parsing, lowering, and interpreting Jisp modules.
 
+#![allow(
+    clippy::result_large_err,
+    reason = "detailed errors deliberately retain their source map and expansion provenance"
+)]
+
 mod native_imports;
 
 use std::{
@@ -72,6 +77,12 @@ pub struct ParsedModule {
     pub dependencies: Vec<PathBuf>,
     pub resolved_modules: BTreeMap<PathBuf, Module>,
 }
+
+type InferredModule = (
+    BTreeMap<String, Scheme>,
+    Vec<PathBuf>,
+    BTreeMap<PathBuf, Module>,
+);
 
 pub struct GeneratedRustModule {
     pub sources: SourceMap,
@@ -367,14 +378,7 @@ fn infer_module_types(
     sources: &mut SourceMap,
     path: &Path,
     module: &Module,
-) -> Result<
-    (
-        BTreeMap<String, Scheme>,
-        Vec<PathBuf>,
-        BTreeMap<PathBuf, Module>,
-    ),
-    TypeFailure,
-> {
+) -> Result<InferredModule, TypeFailure> {
     let mut resolver = TypeResolver::new(sources);
     let imports = match resolver.import_environments(path, module) {
         Ok(imports) => imports,
@@ -582,10 +586,7 @@ impl<'a> TypeResolver<'a> {
         let module = self.cached_module(&key)?;
         let imports = self.import_environments(&key, &module)?;
         let mut inferencer = Inferencer::with_prelude();
-        let schemes = match inferencer.infer_module_with_imports(&module, &imports) {
-            Ok(schemes) => schemes,
-            Err(error) => return Err(error.into()),
-        };
+        let schemes = inferencer.infer_module_with_imports(&module, &imports)?;
         let exports = exported_schemes(&module, &schemes);
         self.stack.pop();
 

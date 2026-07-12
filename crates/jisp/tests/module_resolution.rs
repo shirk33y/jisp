@@ -1,6 +1,6 @@
 use std::collections::BTreeSet;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 #[test]
 fn check_types_resolves_file_imports() {
@@ -349,7 +349,7 @@ fn dependency_set(paths: Vec<PathBuf>) -> BTreeSet<PathBuf> {
     paths.into_iter().collect()
 }
 
-fn canonical(path: &PathBuf) -> PathBuf {
+fn canonical(path: &Path) -> PathBuf {
     path.canonicalize().unwrap()
 }
 

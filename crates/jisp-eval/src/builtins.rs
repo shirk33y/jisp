@@ -122,7 +122,7 @@ fn expect_int(value: &Value, span: Span) -> Result<i64, RuntimeError> {
     }
 }
 
-fn expect_bigint<'a>(value: &'a Value, span: Span) -> Result<&'a BigInt, RuntimeError> {
+fn expect_bigint(value: &Value, span: Span) -> Result<&BigInt, RuntimeError> {
     match value {
         Value::BigInt(value) => Ok(value),
         other => Err(RuntimeError::at(
@@ -142,7 +142,7 @@ fn expect_float(value: &Value, span: Span) -> Result<f64, RuntimeError> {
     }
 }
 
-fn expect_str<'a>(value: &'a Value, span: Span) -> Result<&'a str, RuntimeError> {
+fn expect_str(value: &Value, span: Span) -> Result<&str, RuntimeError> {
     match value {
         Value::Str(value) => Ok(value),
         other => Err(RuntimeError::at(
@@ -152,7 +152,7 @@ fn expect_str<'a>(value: &'a Value, span: Span) -> Result<&'a str, RuntimeError>
     }
 }
 
-fn expect_list<'a>(value: &'a Value, span: Span) -> Result<&'a [Value], RuntimeError> {
+fn expect_list(value: &Value, span: Span) -> Result<&[Value], RuntimeError> {
     match value {
         Value::List(value) => Ok(value),
         other => Err(RuntimeError::at(
@@ -162,10 +162,7 @@ fn expect_list<'a>(value: &'a Value, span: Span) -> Result<&'a [Value], RuntimeE
     }
 }
 
-fn expect_obj<'a>(
-    value: &'a Value,
-    span: Span,
-) -> Result<&'a IndexMap<String, Value>, RuntimeError> {
+fn expect_obj(value: &Value, span: Span) -> Result<&IndexMap<String, Value>, RuntimeError> {
     match value {
         Value::Obj(value) => Ok(value),
         other => Err(RuntimeError::at(

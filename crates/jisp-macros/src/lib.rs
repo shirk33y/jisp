@@ -4,7 +4,10 @@
 //! emit native Rust tokens for the subset supported by `jisp-codegen-rust`.
 
 use proc_macro::TokenStream;
-use std::{env, fs, path::PathBuf};
+use std::{
+    env, fs,
+    path::{Path, PathBuf},
+};
 
 use quote::quote;
 use syn::{parse_macro_input, LitStr};
@@ -91,7 +94,7 @@ fn read_source(path: &PathBuf, purpose: &str) -> Result<String, String> {
     })
 }
 
-fn format_module_error(path: &PathBuf, error: &jisp::ModuleError) -> String {
+fn format_module_error(path: &Path, error: &jisp::ModuleError) -> String {
     let rendered = error
         .render_diagnostics()
         .unwrap_or_else(|| error.error.to_string());

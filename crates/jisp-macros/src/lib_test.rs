@@ -1,4 +1,8 @@
-use std::{collections::BTreeSet, fs, path::PathBuf};
+use std::{
+    collections::BTreeSet,
+    fs,
+    path::{Path, PathBuf},
+};
 
 use crate::{generate_file, import_dependencies};
 
@@ -61,7 +65,7 @@ fn dependency_set(paths: Vec<PathBuf>) -> BTreeSet<PathBuf> {
     paths.into_iter().collect()
 }
 
-fn canonical(path: &PathBuf) -> PathBuf {
+fn canonical(path: &Path) -> PathBuf {
     path.canonicalize().unwrap()
 }
 
