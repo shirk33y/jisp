@@ -13,6 +13,9 @@ Reference checkout:
 
 No Gleam source code is vendored in this repository.
 
+For the separate question of JSON source, multi-host runners, and native host
+extensions, see [MAL and multi-host execution](MAL.md).
+
 ## Ported or inspired features
 
 | Feature | Jisp status | Gleam reference | Rationale |

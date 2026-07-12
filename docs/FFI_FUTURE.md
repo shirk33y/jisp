@@ -6,6 +6,11 @@ It is deferred behind the language and native-codegen milestones in
 [ROADMAP.md](../ROADMAP.md), so no prelude API should accidentally become an
 unstable host ABI.
 
+For the complementary multi-host process-runner and portable-value strategy,
+see [MAL and multi-host execution](research/MAL.md). That document is not an
+FFI design: it deliberately keeps broad process interoperability separate from
+the narrow, native ABI proposed here.
+
 Before implementation, specify:
 
 - direction A: Jisp calls external Rust/host functions;

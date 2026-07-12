@@ -67,6 +67,8 @@ builds its prefixed typed module.
 ## Design reference
 
 Gleam is the external reference for ADTs, inference, exhaustiveness,
-diagnostics, and module loading. Repository-root `GLEAM.md` tracks the feature
-mapping and rationale. It is a reference for architecture and behavior, not a
-source of vendored code or a reason to redesign Jisp surface syntax.
+diagnostics, and module loading. [The Gleam mapping](research/GLEAM.md) tracks
+the feature mapping and rationale. [The MAL report](research/MAL.md) covers the
+separate portability and host-integration strategy. Both are references for
+architecture and behavior, not sources of vendored code or a reason to redesign
+Jisp surface syntax.

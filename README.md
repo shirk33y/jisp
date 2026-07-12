@@ -138,17 +138,18 @@ compilation of generated Rust in downstream fixtures.
 
 ## Documentation
 
+- [Documentation index](docs/README.md)
 - [Language specification](docs/SPEC.md)
 - [Standard library surface](docs/STDLIB.md)
-- [Roadmap](ROADMAP.md)
+- [Roadmap](ROADMAP.md) and [implementation queue](TODO.md)
 - [Architecture and invariants](docs/ARCHITECTURE.md)
-- [Diagnostics](docs/DIAGNOSTICS.md)
-- [Testing strategy](docs/TESTING.md)
-- [Remaining work](TODO.md)
-- [Gleam reference mapping](GLEAM.md)
+- [Research: Gleam mapping](docs/research/GLEAM.md)
+- [Research: MAL and multi-host execution](docs/research/MAL.md)
 
 ## Reference
 
 Gleam is the main external reference for ADTs, inference, exhaustiveness,
-diagnostics, and module loading. Jisp does not vendor Gleam code; [GLEAM.md](GLEAM.md)
-records the pinned reference and rationale.
+diagnostics, and module loading. Jisp does not vendor Gleam code; the
+[Gleam mapping](docs/research/GLEAM.md) records the pinned reference and
+rationale. The [MAL research report](docs/research/MAL.md) records the separate
+decision to use JSON as canonical source while keeping one semantic reference.

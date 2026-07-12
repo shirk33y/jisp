@@ -45,6 +45,8 @@ not dates. The detailed engineering queue remains [TODO.md](TODO.md).
   after their shared module and diagnostic contracts are stable.
 - Keep runnable documentation examples in the normal test suite and preserve
   equivalence across all three source syntaxes.
+- Treat cross-host execution as a protocol and conformance problem before
+  adding bindings; see [the MAL research report](docs/research/MAL.md).
 
 ## Intentionally deferred
 
