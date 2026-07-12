@@ -26,6 +26,9 @@
 
 ## Workflow
 
+- Use Conventional Commits for every commit: `type(scope): concise summary`.
+  Prefer `feat`, `fix`, `refactor`, `test`, `docs`, `build`, or `ci`; omit the
+  scope only when no meaningful scope applies.
 - Batch related edits across files before verification. Prefer one coherent patch
   over many tiny edit/check loops.
 - Prefer long, forward-moving implementation sessions over cautious
