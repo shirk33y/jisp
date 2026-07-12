@@ -226,8 +226,8 @@ fn imports_expose_only_exported_names() {
     assert!(
         matches!(
             err,
-            jisp::Error::Type(jisp::jisp_types::InferError::UnknownName(ref name))
-                if name == "math.hidden"
+            jisp::Error::Type(jisp::jisp_types::InferError::Located { ref error, .. })
+                if matches!(error.as_ref(), jisp::jisp_types::InferError::UnknownName(name) if name == "math.hidden")
         ),
         "{err}"
     );
@@ -239,8 +239,8 @@ fn imports_expose_only_exported_names() {
     assert!(
         matches!(
             err,
-            jisp::Error::Type(jisp::jisp_types::InferError::UnknownName(ref name))
-                if name == "math.hidden"
+            jisp::Error::Type(jisp::jisp_types::InferError::Located { ref error, .. })
+                if matches!(error.as_ref(), jisp::jisp_types::InferError::UnknownName(name) if name == "math.hidden")
         ),
         "{err}"
     );

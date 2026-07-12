@@ -7,7 +7,8 @@ use jisp_ir::{
 use jisp_types::{Inferencer, ObjectRow, Scheme, Type, TypedModule};
 
 use crate::{
-    canonicalize, module_source_files, module_span, resolve_import, TypeFailure, TypeResolver,
+    canonicalize, module_source_files, module_span, resolve_import, type_error_span, TypeFailure,
+    TypeResolver,
 };
 use jisp_core::SourceMap;
 
@@ -21,8 +22,8 @@ pub(crate) fn infer_module_with_native_imports(
         Ok(imports) => imports,
         Err(error) => {
             return Err(TypeFailure {
+                span: type_error_span(&error).or_else(|| module_span(&module)),
                 error,
-                span: resolver.error_span.or_else(|| module_span(&module)),
             })
         }
     };
@@ -32,8 +33,8 @@ pub(crate) fn infer_module_with_native_imports(
     let main = inferencer
         .infer_typed_module_with_imports(module, &imports)
         .map_err(|error| TypeFailure {
+            span: error.span().or(fallback_span),
             error: error.into(),
-            span: inferencer.error_span().or(fallback_span),
         })?;
     let (dependencies, _) = resolver.into_parts();
 
@@ -75,8 +76,8 @@ fn infer_imported_module(
         Ok(imports) => imports,
         Err(error) => {
             return Err(TypeFailure {
+                span: type_error_span(&error).or_else(|| module_span(&module)),
                 error,
-                span: resolver.error_span.or_else(|| module_span(&module)),
             })
         }
     };
@@ -85,8 +86,8 @@ fn infer_imported_module(
     inferencer
         .infer_typed_module_with_imports(module, &imports)
         .map_err(|error| TypeFailure {
+            span: error.span().or(fallback_span),
             error: error.into(),
-            span: inferencer.error_span().or(fallback_span),
         })
 }
 
