@@ -21,9 +21,10 @@ Jisp module through `jisp_macros::lisp_file!` and compares its native exports
 with the interpreter. The fixture covers scalars, strings, lists,
 closed-object field access, enum `case` expressions, and non-capturing
 function callbacks in `list.map`, `list.filter`, `list.fold`, `list.some`, and
-`list.every`. It also covers `result` patterns for statically typed `obj.get`
-and `result.try`, `result.map`, `result.map-err`, and `result.recover`, including
-callbacks that change the concrete success or error layout.
+`list.every`. It also covers `result` patterns for statically typed `obj.get`,
+including an inline closed object, `option` cases, and `result.try`,
+`result.map`, `result.map-err`, and `result.recover` callbacks that change the
+concrete success or error layout.
 Add an export and a matching structural comparison here whenever native codegen
 gains a supported value shape or intrinsic.
 

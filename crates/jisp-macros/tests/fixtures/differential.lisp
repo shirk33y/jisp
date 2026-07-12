@@ -72,6 +72,18 @@
       ((ok value) (+ value 2))
       ((err _) 0))))
 
+(export inline-object-get-entry
+  (fn ()
+    (case (obj.get (obj "score" 40) "score")
+      ((ok value) (+ value 2))
+      ((err _) 0))))
+
+(export option-case-entry
+  (fn ()
+    (case (some 41)
+      ((some value) (+ value 1))
+      ((none) 0))))
+
 (export result-map-entry
   (fn ()
     (case (result.map (obj.get stats "score") wrap)

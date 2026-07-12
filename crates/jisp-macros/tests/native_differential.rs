@@ -23,6 +23,10 @@ fn native_static_object_get_matches_the_interpreter() {
         Value::Int(object_get_discarded_entry()),
     );
     assert_matches_interpreter("object-get-case-entry", Value::Int(object_get_case_entry()));
+    assert_matches_interpreter(
+        "inline-object-get-entry",
+        Value::Int(inline_object_get_entry()),
+    );
 }
 
 #[test]
@@ -31,6 +35,11 @@ fn native_result_helpers_match_the_interpreter() {
     assert_matches_interpreter("result-map-err-entry", Value::Int(result_map_err_entry()));
     assert_matches_interpreter("result-try-entry", Value::Int(result_try_entry()));
     assert_matches_interpreter("result-recover-entry", Value::Int(result_recover_entry()));
+}
+
+#[test]
+fn native_option_cases_match_the_interpreter() {
+    assert_matches_interpreter("option-case-entry", Value::Int(option_case_entry()));
 }
 
 #[test]

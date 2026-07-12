@@ -37,8 +37,8 @@ JSON / restricted YAML / Lisp
   typed string/list/math helper subset, and static closed-row object helpers
   including known-field `obj.get`, plus concrete `result` callback helpers. It
   receives resolved expression types from `TypedModule`, so each native `result`
-  layout is registered before Rust emission. It rejects unsupported shapes
-  without introducing a dynamic `Value` ABI.
+  and inline closed-object layout is registered before Rust emission. It rejects
+  unsupported shapes without introducing a dynamic `Value` ABI.
 - `jisp-macros`: Cargo dependency-tracking proc macros that call the facade
   native-emission seam.
 - `jisp`: facade API, including detailed native emission with source files,

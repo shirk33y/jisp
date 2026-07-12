@@ -651,7 +651,7 @@ impl ObjectTypes {
         let mut shapes = BTreeMap::new();
         for definition in &module.module.definitions {
             if let Some(scheme) = module.schemes.get(&definition.name) {
-                collect_object_shapes(&scheme.body, definition.span, &mut shapes)?;
+                collect_object_shapes(&scheme.body, definition.span, &mut shapes, true)?;
             }
         }
         for scheme in module.schemes.values() {
@@ -659,7 +659,13 @@ impl ObjectTypes {
                 &scheme.body,
                 jisp_core::Span::empty(jisp_core::SourceId(0), 0),
                 &mut shapes,
+                true,
             )?;
+        }
+        let mut expression_types = module.expression_types.iter().collect::<Vec<_>>();
+        expression_types.sort_by_key(|(span, _)| (span.source.0, span.start, span.end));
+        for (span, ty) in expression_types {
+            collect_object_shapes(ty, *span, &mut shapes, false)?;
         }
         let names = shapes
             .keys()
@@ -682,14 +688,19 @@ fn collect_object_shapes(
     ty: &Type,
     source_span: jisp_core::Span,
     shapes: &mut BTreeMap<String, ObjectShape>,
+    reject_open_rows: bool,
 ) -> Result<(), CodegenError> {
     match ty {
         Type::Object(row) => {
             if row.rest.is_some() {
-                return Err(CodegenError::Unsupported("open object row type emission"));
+                return if reject_open_rows {
+                    Err(CodegenError::Unsupported("open object row type emission"))
+                } else {
+                    Ok(())
+                };
             }
             for ty in row.fields.values() {
-                collect_object_shapes(ty, source_span, shapes)?;
+                collect_object_shapes(ty, source_span, shapes, reject_open_rows)?;
             }
             shapes
                 .entry(object_signature(row)?)
@@ -698,23 +709,23 @@ fn collect_object_shapes(
                     source_span,
                 });
         }
-        Type::List(item) => collect_object_shapes(item, source_span, shapes)?,
+        Type::List(item) => collect_object_shapes(item, source_span, shapes, reject_open_rows)?,
         Type::Function {
             parameters,
             rest,
             result,
         } => {
             for ty in parameters {
-                collect_object_shapes(ty, source_span, shapes)?;
+                collect_object_shapes(ty, source_span, shapes, reject_open_rows)?;
             }
             if let Some(rest) = rest {
-                collect_object_shapes(rest, source_span, shapes)?;
+                collect_object_shapes(rest, source_span, shapes, reject_open_rows)?;
             }
-            collect_object_shapes(result, source_span, shapes)?;
+            collect_object_shapes(result, source_span, shapes, reject_open_rows)?;
         }
         Type::Named { arguments, .. } => {
             for ty in arguments {
-                collect_object_shapes(ty, source_span, shapes)?;
+                collect_object_shapes(ty, source_span, shapes, reject_open_rows)?;
             }
         }
         Type::Var(_)
