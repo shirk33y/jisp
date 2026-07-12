@@ -125,6 +125,7 @@ pub enum StringPart {
 #[derive(Clone, Debug)]
 pub struct CaseBranch {
     pub pattern: Pattern,
+    pub guard: Option<Expr>,
     pub body: Expr,
     pub span: Span,
 }

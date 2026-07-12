@@ -442,6 +442,9 @@ impl<'a> EmitContext<'a> {
         branches: &[CaseBranch],
         expected: Option<&Type>,
     ) -> Result<TokenStream, CodegenError> {
+        if branches.iter().any(|branch| branch.guard.is_some()) {
+            return Err(CodegenError::Unsupported("guarded case patterns"));
+        }
         if branches
             .iter()
             .any(|branch| pattern_contains_variant(&branch.pattern))

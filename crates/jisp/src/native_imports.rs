@@ -332,6 +332,7 @@ impl PrefixRewriter<'_> {
         collect_pattern_bindings(&pattern, &mut scoped);
         CaseBranch {
             pattern,
+            guard: branch.guard.as_ref().map(|guard| self.expr(guard, &scoped)),
             body: self.expr(&branch.body, &scoped),
             span: branch.span,
         }

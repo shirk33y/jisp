@@ -177,4 +177,21 @@ fn or_patterns_require_consistent_bindings() {
             if matches!(error.as_ref(), InferError::InconsistentAlternativeBindings)
     ));
 }
+
+#[test]
+fn run_main_evaluates_case_guards_after_pattern_bindings() {
+    let value = jisp::run_main(
+        "case-guard.lisp",
+        r#"
+(export main
+  (fn ()
+    (case 7
+      ((when value (> value 10)) 1)
+      (_ 2))))
+"#,
+    )
+    .unwrap();
+
+    assert_eq!(value.display_string(), "2");
+}
 use jisp::jisp_types::InferError;

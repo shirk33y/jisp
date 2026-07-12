@@ -397,8 +397,18 @@ impl Lowerer {
             if pair.len() < 2 {
                 return Err(error(branch.span, "case branch expects a pattern and body"));
             }
+            let when = pair[0]
+                .as_form()
+                .filter(|when| when.first().and_then(Node::as_symbol) == Some("when"));
+            let (pattern, guard) = if let Some(when) = when {
+                expect_arity(when, 3, 3, pair[0].span, "when")?;
+                (lower_pattern(&when[1])?, Some(self.lower_expr(&when[2])?))
+            } else {
+                (lower_pattern(&pair[0])?, None)
+            };
             branches.push(CaseBranch {
-                pattern: lower_pattern(&pair[0])?,
+                pattern,
+                guard,
                 body: self.lower_body(&pair[1..], branch.span)?,
                 span: branch.span,
             });

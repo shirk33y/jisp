@@ -350,6 +350,11 @@ impl Evaluator {
                 for (name, value) in bindings {
                     scope.define(name, value);
                 }
+                if let Some(guard) = &branch.guard {
+                    if !self.eval_in(guard, &scope)?.truthy() {
+                        continue;
+                    }
+                }
                 return self.eval_in(&branch.body, &scope);
             }
         }

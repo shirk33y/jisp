@@ -89,6 +89,20 @@ make a case less complete.
       ((err _) 0))))
 ```
 
+## Case guards
+
+Wrap a pattern in `(when pattern condition)` to evaluate a boolean condition
+after its bindings are available. A guarded branch does not by itself establish
+exhaustiveness: retain an unguarded branch for the remaining values.
+
+```lisp test=spec.case-guard mode=run
+(export main
+  (fn ()
+    (case 7
+      ((when value (> value 10)) 1)
+      (_ 2))))
+```
+
 ## Definitions and modules
 
 ```yaml

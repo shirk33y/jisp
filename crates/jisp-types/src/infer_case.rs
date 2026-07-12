@@ -20,6 +20,10 @@ impl Inferencer {
                 for (name, ty) in bindings {
                     inferencer.define(name, Scheme::mono(inferencer.apply(&ty)));
                 }
+                if let Some(guard) = &branch.guard {
+                    let guard_ty = inferencer.infer_expr_located(guard)?;
+                    inferencer.unify(guard_ty, Type::Bool)?;
+                }
                 inferencer.infer_expr_located(&branch.body)
             })?;
             self.unify(result_ty.clone(), body_ty)?;
@@ -71,6 +75,9 @@ impl Inferencer {
         let mut covered = BTreeSet::new();
         let mut has_catch_all = false;
         for branch in branches {
+            if branch.guard.is_some() {
+                continue;
+            }
             if has_catch_all {
                 return Err(InferError::RedundantCasePattern(pattern_name(
                     &branch.pattern,
@@ -130,6 +137,9 @@ impl Inferencer {
         let mut has_catch_all = false;
 
         for branch in branches {
+            if branch.guard.is_some() {
+                continue;
+            }
             if has_catch_all {
                 return Err(InferError::RedundantCasePattern(pattern_name(
                     &branch.pattern,
@@ -230,6 +240,9 @@ impl Inferencer {
             BTreeMap::new();
 
         for branch in branches {
+            if branch.guard.is_some() {
+                continue;
+            }
             if has_catch_all || object_refinements_are_exhaustive(&refined_fields) {
                 return Err(InferError::RedundantCasePattern(pattern_name(
                     &branch.pattern,
@@ -571,7 +584,7 @@ fn strip_alias(mut pattern: &Pattern) -> &Pattern {
     pattern
 }
 
-fn coverage_patterns<'a>(pattern: &'a Pattern) -> Vec<&'a Pattern> {
+fn coverage_patterns(pattern: &Pattern) -> Vec<&Pattern> {
     match strip_alias(pattern) {
         Pattern::Or(alternatives) => alternatives.iter().flat_map(coverage_patterns).collect(),
         pattern => vec![pattern],

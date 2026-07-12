@@ -82,6 +82,7 @@ fn type_decl(name: &str, variants: Vec<(&str, Vec<&str>)>) -> TypeDecl {
 fn branch(pattern: Pattern, body: Expr) -> CaseBranch {
     CaseBranch {
         pattern,
+        guard: None,
         body,
         span: span(),
     }

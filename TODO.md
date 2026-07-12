@@ -70,11 +70,14 @@ product-level direction and ordering rationale, see [ROADMAP.md](ROADMAP.md).
   14. Done: add transparent `(as pattern name)` case aliases through lowering,
       type inference, interpreter execution, native enum emission, and
       exhaustiveness/redundancy analysis.
+  15. Done: add `(when pattern guard)` case guards through lowering, typed
+      boolean guards, interpreter execution, and conservative exhaustiveness.
 - Add native backend support for dynamic object mutation, heterogeneous dynamic
   reads, and open rows with an explicitly designed concrete ABI.
 - Extend the intentionally bounded macro system only after designing hygiene,
   cross-module visibility, and a general compile-time evaluator.
-- Add case guards, alternative patterns, and stronger exhaustiveness analysis.
+- Add stronger exhaustiveness analysis and native emission for guarded and
+  alternative patterns.
 - Expand `jisp-macros` beyond item-position native file emission.
 - Broaden the current item-level generated-to-source mapping for `emit-rust`
   output into the granularity needed for diagnostics. The facade already maps

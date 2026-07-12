@@ -55,6 +55,7 @@ fn module(definitions: Vec<Definition>) -> Module {
 fn branch(pattern: Pattern, body: Expr) -> CaseBranch {
     CaseBranch {
         pattern,
+        guard: None,
         body,
         span: span(),
     }
