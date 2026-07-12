@@ -82,18 +82,29 @@ fn emit_definition(
         (
             ExprKind::Lambda { params, rest, body },
             Type::Function {
-                parameters, result, ..
+                parameters,
+                rest: inferred_rest,
+                result,
             },
         ) => {
-            ensure_unique_rust_idents(params.iter().map(String::as_str), "function parameter")?;
-            if rest.is_some() {
-                return Err(CodegenError::Unsupported("native variadic functions"));
-            }
             if params.len() != parameters.len() {
                 return Err(CodegenError::Unsupported(
                     "function definitions with mismatched inferred arity",
                 ));
             }
+            if rest.is_some() != inferred_rest.is_some() {
+                return Err(CodegenError::Unsupported(
+                    "function definitions with mismatched inferred rest parameter",
+                ));
+            }
+            let mut parameter_names = params.clone();
+            if let Some(rest) = rest {
+                parameter_names.push(rest.clone());
+            }
+            ensure_unique_rust_idents(
+                parameter_names.iter().map(String::as_str),
+                "function parameter",
+            )?;
             let mut context = EmitContext::new(
                 top_level_names,
                 &module.schemes,
@@ -101,7 +112,7 @@ fn emit_definition(
                 object_types,
                 enum_types,
             );
-            let params = params
+            let mut emitted_params = params
                 .iter()
                 .zip(parameters)
                 .map(|(name, ty)| {
@@ -111,11 +122,20 @@ fn emit_definition(
                     Ok(quote! { #name: #ty })
                 })
                 .collect::<Result<Vec<_>, _>>()?;
+            if let (Some(rest_name), Some(rest_item)) = (rest, inferred_rest) {
+                let rest_type = Type::List(rest_item.clone());
+                context
+                    .locals
+                    .insert(rest_name.clone(), Some(rest_type.clone()));
+                let rest_name = rust_ident(rest_name);
+                let rest_type = emit_type(&rest_type, object_types, enum_types)?;
+                emitted_params.push(quote! { #rest_name: #rest_type });
+            }
             let result_ty = result.as_ref();
             let result = emit_type(result_ty, object_types, enum_types)?;
             let body = context.emit_expr(body, Some(result_ty))?;
             Ok(quote! {
-                #visibility fn #name(#(#params),*) -> #result {
+                #visibility fn #name(#(#emitted_params),*) -> #result {
                     #body
                 }
             })
@@ -189,21 +209,25 @@ impl<'a> EmitContext<'a> {
                     match expected {
                         Some(Type::Function {
                             parameters,
-                            rest: None,
+                            rest,
                             result,
                         }) => {
-                            let parameters = parameters
+                            let mut parameters = parameters
                                 .iter()
                                 .map(|ty| emit_type(ty, self.object_types, self.enum_types))
                                 .collect::<Result<Vec<_>, _>>()?;
+                            if let Some(rest) = rest {
+                                parameters.push(emit_type(
+                                    &Type::List(rest.clone()),
+                                    self.object_types,
+                                    self.enum_types,
+                                )?);
+                            }
                             let result = emit_type(result, self.object_types, self.enum_types)?;
                             Ok(quote! {{
                                 let __jisp_function: fn(#(#parameters),*) -> #result = #ident;
                                 ::std::rc::Rc::new(__jisp_function)
                             }})
-                        }
-                        Some(Type::Function { rest: Some(_), .. }) => {
-                            Err(CodegenError::Unsupported("native variadic function values"))
                         }
                         _ => Ok(quote! { #ident() }),
                     }
@@ -796,18 +820,22 @@ fn emit_type(
         Type::Var(_) => Err(CodegenError::Unsupported("unresolved type variables")),
         Type::Function {
             parameters,
-            rest: None,
+            rest,
             result,
         } => {
-            let parameters = parameters
+            let mut parameters = parameters
                 .iter()
                 .map(|parameter| emit_type(parameter, object_types, enum_types))
                 .collect::<Result<Vec<_>, _>>()?;
+            if let Some(rest) = rest {
+                parameters.push(emit_type(
+                    &Type::List(rest.clone()),
+                    object_types,
+                    enum_types,
+                )?);
+            }
             let result = emit_type(result, object_types, enum_types)?;
             Ok(quote! { ::std::rc::Rc<dyn Fn(#(#parameters),*) -> #result> })
-        }
-        Type::Function { rest: Some(_), .. } => {
-            Err(CodegenError::Unsupported("native variadic function values"))
         }
         Type::Named { name, arguments } => {
             if !arguments.is_empty() {

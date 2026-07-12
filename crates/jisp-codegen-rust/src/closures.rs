@@ -27,9 +27,6 @@ impl<'a> EmitContext<'a> {
                 "lambda expressions without native function type",
             ));
         };
-        if rest.is_some() || inferred_rest.is_some() {
-            return Err(CodegenError::Unsupported("native variadic functions"));
-        }
         if params.len() != parameters.len() {
             return Err(CodegenError::Unsupported(
                 "lambda expressions with mismatched inferred arity",
@@ -55,7 +52,7 @@ impl<'a> EmitContext<'a> {
         let previous_captures = self.closure_captures.clone();
         self.closure_captures.extend(capture_names.iter().cloned());
         let mut previous_locals = Vec::new();
-        let parameters = params
+        let mut emitted_parameters = params
             .iter()
             .zip(parameters)
             .map(|(name, ty)| {
@@ -69,6 +66,26 @@ impl<'a> EmitContext<'a> {
                 Ok(quote! { #name: #ty })
             })
             .collect::<Result<Vec<_>, CodegenError>>()?;
+        match (rest, inferred_rest) {
+            (Some(rest_name), Some(rest_item)) => {
+                let rest_type = Type::List(rest_item.clone());
+                self.closure_captures.remove(rest_name);
+                previous_locals.push((
+                    rest_name.to_owned(),
+                    self.locals
+                        .insert(rest_name.to_owned(), Some(rest_type.clone())),
+                ));
+                let rest_name = rust_ident(rest_name);
+                let rest_type = emit_type(&rest_type, self.object_types, self.enum_types)?;
+                emitted_parameters.push(quote! { #rest_name: #rest_type });
+            }
+            (None, None) => {}
+            _ => {
+                return Err(CodegenError::Unsupported(
+                    "lambda expressions with mismatched inferred rest parameter",
+                ));
+            }
+        }
         let result_type = emit_type(result, self.object_types, self.enum_types)?;
         let body = self.emit_expr(body, Some(result))?;
         for (name, previous) in previous_locals.into_iter().rev() {
@@ -81,7 +98,7 @@ impl<'a> EmitContext<'a> {
         self.closure_captures = previous_captures;
         Ok(quote! {{
             #(#captures)*
-            ::std::rc::Rc::new(move |#(#parameters),*| -> #result_type { #body })
+            ::std::rc::Rc::new(move |#(#emitted_parameters),*| -> #result_type { #body })
         }})
     }
 }
