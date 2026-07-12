@@ -23,6 +23,7 @@ fn use_lowers_multiple_bindings_to_callback_params() {
     let ExprKind::Lambda { params, rest, body } = &arguments[0].kind else {
         panic!("use should append a callback lambda");
     };
+    assert_ne!(arguments[0].span, module.definitions[0].value.span);
     assert_eq!(params, &["left", "right"]);
     assert!(rest.is_none());
     assert!(matches!(body.kind, ExprKind::Call { .. }));

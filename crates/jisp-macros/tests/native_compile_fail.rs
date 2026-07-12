@@ -1,8 +1,8 @@
 use std::{env, fs, path::PathBuf, process::Command};
 
 #[test]
-fn unsupported_native_calls_fail_during_downstream_macro_expansion() {
-    let crate_dir = fixture_dir("first-class-call");
+fn variadic_native_functions_fail_during_downstream_macro_expansion() {
+    let crate_dir = fixture_dir("variadic-function");
     let fixture = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/unsupported_first_class_call.lisp")
         .canonicalize()
@@ -45,7 +45,10 @@ fn unsupported_native_calls_fail_during_downstream_macro_expansion() {
         diagnostics.contains("failed to generate native Rust for Jisp source"),
         "{diagnostics}"
     );
-    assert!(diagnostics.contains("nested functions"), "{diagnostics}");
+    assert!(
+        diagnostics.contains("native variadic functions"),
+        "{diagnostics}"
+    );
 }
 
 fn fixture_dir(name: &str) -> PathBuf {

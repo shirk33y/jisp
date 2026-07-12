@@ -531,7 +531,11 @@ impl<'a> EmitContext<'a> {
         let list_type = Type::List(Box::new(item_type.clone()));
         let list = self.emit_expr(list, Some(&list_type))?;
         Ok(quote! {{
-            let __jisp_list = #list.into_iter().map(#callback).collect::<Vec<_>>();
+            let __jisp_callback = #callback;
+            let __jisp_list = #list
+                .into_iter()
+                .map(|__jisp_value| __jisp_callback(__jisp_value))
+                .collect::<Vec<_>>();
             __jisp_list
         }})
     }
@@ -568,7 +572,7 @@ impl<'a> EmitContext<'a> {
         Ok(quote! {{
             let mut __jisp_result = Vec::new();
             for __jisp_value in #list {
-                if #callback(__jisp_value.clone()) {
+                if (#callback)(__jisp_value.clone()) {
                     __jisp_result.push(__jisp_value);
                 }
             }
@@ -604,7 +608,14 @@ impl<'a> EmitContext<'a> {
         let initial = self.emit_expr(initial, Some(accumulator_type))?;
         let list_type = Type::List(Box::new(item_type.clone()));
         let list = self.emit_expr(list, Some(&list_type))?;
-        Ok(quote! { #list.into_iter().fold(#initial, #callback) })
+        Ok(quote! {{
+            let __jisp_callback = #callback;
+            #list
+                .into_iter()
+                .fold(#initial, |__jisp_accumulator, __jisp_value| {
+                    __jisp_callback(__jisp_accumulator, __jisp_value)
+                })
+        }})
     }
 
     fn emit_list_predicate_intrinsic(
@@ -650,9 +661,9 @@ impl<'a> EmitContext<'a> {
             quote! { true }
         };
         let break_on_match = if matches_any {
-            quote! { #callback(__jisp_value) }
+            quote! { (#callback)(__jisp_value) }
         } else {
-            quote! { !#callback(__jisp_value) }
+            quote! { !(#callback)(__jisp_value) }
         };
         Ok(quote! {{
             let mut __jisp_result = #default_value;

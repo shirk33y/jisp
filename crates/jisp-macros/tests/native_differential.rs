@@ -72,6 +72,33 @@ fn native_callbacks_and_list_higher_order_helpers_match_the_interpreter() {
 }
 
 #[test]
+fn native_local_closures_match_the_interpreter() {
+    assert_matches_interpreter("local-function-entry", Value::Int(local_function_entry()));
+    assert_matches_interpreter(
+        "immediate-lambda-entry",
+        Value::Int(immediate_lambda_entry()),
+    );
+    assert_matches_interpreter(
+        "captured-map-entry",
+        Value::List(captured_map_entry().into_iter().map(Value::Int).collect()),
+    );
+    assert_matches_interpreter("captured-use-entry", Value::Int(captured_use_entry()));
+    assert_matches_interpreter(
+        "returned-closure-entry",
+        Value::Int(returned_closure_entry()),
+    );
+    assert_matches_interpreter(
+        "returned-closure-map-entry",
+        Value::List(
+            returned_closure_map_entry()
+                .into_iter()
+                .map(Value::Int)
+                .collect(),
+        ),
+    );
+}
+
+#[test]
 fn native_enum_cases_match_the_interpreter() {
     assert_matches_interpreter("enum-case-entry", Value::Int(enum_case_entry()));
 }

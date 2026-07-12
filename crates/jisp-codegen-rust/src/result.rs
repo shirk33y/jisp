@@ -188,16 +188,16 @@ impl<'a> EmitContext<'a> {
         let output_err_enum = &output_err.enum_ident;
         let output_err_variant = &output_err.ident;
         let ok_arm = if transform_ok && callback_returns_result {
-            quote! { #input_ok_enum::#input_ok_variant(value) => #callback(value) }
+            quote! { #input_ok_enum::#input_ok_variant(value) => (#callback)(value) }
         } else if transform_ok {
-            quote! { #input_ok_enum::#input_ok_variant(value) => #output_ok_enum::#output_ok_variant(#callback(value)) }
+            quote! { #input_ok_enum::#input_ok_variant(value) => #output_ok_enum::#output_ok_variant((#callback)(value)) }
         } else {
             quote! { #input_ok_enum::#input_ok_variant(value) => #output_ok_enum::#output_ok_variant(value) }
         };
         let err_arm = if !transform_ok && callback_returns_result {
-            quote! { #input_err_enum::#input_err_variant(error) => #callback(error) }
+            quote! { #input_err_enum::#input_err_variant(error) => (#callback)(error) }
         } else if !transform_ok {
-            quote! { #input_err_enum::#input_err_variant(error) => #output_err_enum::#output_err_variant(#callback(error)) }
+            quote! { #input_err_enum::#input_err_variant(error) => #output_err_enum::#output_err_variant((#callback)(error)) }
         } else {
             quote! { #input_err_enum::#input_err_variant(error) => #output_err_enum::#output_err_variant(error) }
         };

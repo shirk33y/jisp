@@ -1,5 +1,5 @@
 (export entry
-  (fn ()
-    (let (offset 1
-          callback (fn () offset))
-      (callback))))
+  (fn (head ... tail)
+    (if (list.has tail head)
+      (+ head 0)
+      (+ head 0))))

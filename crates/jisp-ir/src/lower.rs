@@ -426,7 +426,7 @@ impl Lowerer {
                 rest: None,
                 body: Box::new(self.lower_body(&items[3..], span)?),
             },
-            span,
+            items[1].span,
         );
         let callee = Box::new(self.lower_expr(&call_items[0])?);
         let mut arguments = call_items[1..]

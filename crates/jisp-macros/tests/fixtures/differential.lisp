@@ -28,6 +28,11 @@
   (fn (callback value)
     (+ 0 (callback (callback value)))))
 
+(def make-adder
+  (fn (offset)
+    (fn (value)
+      (+ value offset))))
+
 (def wrap
   (fn (value)
     (list (+ value 0))))
@@ -151,6 +156,37 @@
 (export first-class-call-entry
   (fn ()
     ((if true increment decrement) 41)))
+
+(export local-function-entry
+  (fn ()
+    (let (add-one (fn (value) (+ value 1)))
+      (add-one 41))))
+
+(export immediate-lambda-entry
+  (fn ()
+    ((fn (value) (+ value 1)) 41)))
+
+(export captured-map-entry
+  (fn ()
+    (let (offset 40)
+      (list.map (fn (value) (+ value offset)) (list 1 2)))))
+
+(export captured-use-entry
+  (fn ()
+    (let (offset 2)
+      (case
+        (use value (result.try (obj.get stats "score"))
+          (ok (+ value offset)))
+        ((ok value) value)
+        ((err _) 0)))))
+
+(export returned-closure-entry
+  (fn ()
+    ((make-adder 1) 41)))
+
+(export returned-closure-map-entry
+  (fn ()
+    (list.map (make-adder 40) (list 1 2))))
 
 (export enum-case-entry
   (fn ()
