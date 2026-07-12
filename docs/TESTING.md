@@ -14,6 +14,19 @@ CI pins the Rust toolchain, checks formatting and Clippy with warnings denied,
 runs the workspace suite, and runs `jisp-macros` separately so generated Rust
 is compiled by the test harness.
 
+## Native conformance
+
+`crates/jisp-macros/tests/native_differential.rs` compiles one representative
+Jisp module through `jisp_macros::lisp_file!` and compares its native exports
+with the interpreter. The initial fixture covers scalars, strings, lists,
+closed-object field access, and enum `case` expressions. Add an export and a
+matching structural comparison here whenever native codegen gains a supported
+value shape or intrinsic.
+
+Unsupported native shapes remain covered by explicit `CodegenError` regression
+tests. Compile-fail fixtures for generated Rust are the next extension of this
+suite when a feature can produce invalid downstream Rust.
+
 ## Documentation examples
 
 Runnable examples in `README.md`, `docs/SPEC.md`, and `docs/STDLIB.md` use a
