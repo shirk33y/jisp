@@ -220,7 +220,9 @@ impl<'a> EmitContext<'a> {
                 Ok(quote! { !#expression })
             }
             ExprKind::Call { callee, arguments } => self.emit_call(callee, arguments, expected),
-            ExprKind::Lambda { .. } => Err(CodegenError::Unsupported("nested functions")),
+            ExprKind::Lambda { params, rest, body } => {
+                self.emit_lambda(params, rest.as_deref(), body, expected)
+            }
             ExprKind::List(items) => self.emit_list(items, expected),
             ExprKind::Object(fields) => self.emit_object(fields, expected),
             ExprKind::Field { object, key } => self.emit_field(object, key),
@@ -240,19 +242,75 @@ impl<'a> EmitContext<'a> {
             "let binding",
         )?;
         let mut emitted = Vec::new();
-        let mut added: Vec<String> = Vec::new();
+        let mut previous_locals = Vec::new();
         for (name, value) in bindings {
             let ident = rust_ident(name);
-            let value = self.emit_expr(value, None)?;
-            self.locals.insert(name.clone(), None);
-            added.push(name.clone());
+            let value_type = self.expression_type(value).cloned();
+            let value = self.emit_expr(value, value_type.as_ref())?;
+            previous_locals.push((name.clone(), self.locals.insert(name.clone(), value_type)));
             emitted.push(quote! { let #ident = #value; });
         }
         let body = self.emit_expr(body, expected)?;
-        for name in added {
-            self.locals.remove(name.as_str());
+        for (name, previous) in previous_locals.into_iter().rev() {
+            if let Some(previous) = previous {
+                self.locals.insert(name, previous);
+            } else {
+                self.locals.remove(&name);
+            }
         }
         Ok(quote! {{ #(#emitted)* #body }})
+    }
+
+    fn emit_lambda(
+        &mut self,
+        params: &[String],
+        rest: Option<&str>,
+        body: &Expr,
+        expected: Option<&Type>,
+    ) -> Result<TokenStream, CodegenError> {
+        ensure_unique_rust_idents(params.iter().map(String::as_str), "lambda parameter")?;
+        let Some(Type::Function {
+            parameters,
+            rest: inferred_rest,
+            result,
+        }) = expected
+        else {
+            return Err(CodegenError::Unsupported(
+                "lambda expressions without native function type",
+            ));
+        };
+        if rest.is_some() || inferred_rest.is_some() {
+            return Err(CodegenError::Unsupported("native variadic functions"));
+        }
+        if params.len() != parameters.len() {
+            return Err(CodegenError::Unsupported(
+                "lambda expressions with mismatched inferred arity",
+            ));
+        }
+        let mut previous_locals = Vec::new();
+        let parameters = params
+            .iter()
+            .zip(parameters)
+            .map(|(name, ty)| {
+                previous_locals.push((
+                    name.clone(),
+                    self.locals.insert(name.clone(), Some(ty.clone())),
+                ));
+                let name = rust_ident(name);
+                let ty = emit_type(ty, self.object_types, self.enum_types)?;
+                Ok(quote! { #name: #ty })
+            })
+            .collect::<Result<Vec<_>, CodegenError>>()?;
+        let result_type = emit_type(result, self.object_types, self.enum_types)?;
+        let body = self.emit_expr(body, Some(result))?;
+        for (name, previous) in previous_locals.into_iter().rev() {
+            if let Some(previous) = previous {
+                self.locals.insert(name, previous);
+            } else {
+                self.locals.remove(&name);
+            }
+        }
+        Ok(quote! { |#(#parameters),*| -> #result_type { #body } })
     }
 
     fn emit_do(
@@ -592,9 +650,6 @@ impl<'a> EmitContext<'a> {
     }
 
     pub(super) fn native_callback_type(&self, callback: &Expr) -> Result<Type, CodegenError> {
-        let ExprKind::Name(_) = &callback.kind else {
-            return Err(CodegenError::Unsupported("native callback expressions"));
-        };
         let ty = self
             .expression_type(callback)
             .ok_or(CodegenError::Unsupported("native callback outside module"))?;
