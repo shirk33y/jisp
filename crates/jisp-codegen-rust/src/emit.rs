@@ -58,11 +58,10 @@ pub(crate) fn emit_module(module: &TypedModule) -> Result<GeneratedRust, Codegen
         .iter()
         .map(|definition| emit_definition(module, definition, &names, &object_types, &enum_types))
         .collect::<Result<Vec<_>, _>>()?;
-    let source_map = rust_source_map(module, &object_types, &enum_types);
-    Ok(GeneratedRust {
-        tokens: quote! { #(#object_structs)* #(#enum_definitions)* #(#definitions)* },
-        source_map,
-    })
+    let tokens = quote! { #(#object_structs)* #(#enum_definitions)* #(#definitions)* };
+    let mut source_map = rust_source_map(module, &object_types, &enum_types);
+    source_map.locate_generated_ranges(&tokens.to_string());
+    Ok(GeneratedRust { tokens, source_map })
 }
 
 fn emit_definition(
@@ -785,6 +784,7 @@ fn rust_source_map(
                 kind: RustItemKind::Struct,
                 rust_name: ident.to_string(),
                 source_span: shape.source_span,
+                generated_range: None,
             });
         }
     }
@@ -794,6 +794,7 @@ fn rust_source_map(
                 kind: RustItemKind::Enum,
                 rust_name: ident.to_string(),
                 source_span: declaration.span,
+                generated_range: None,
             });
         }
     }
@@ -802,6 +803,7 @@ fn rust_source_map(
             kind: RustItemKind::Function,
             rust_name: rust_ident(&definition.name).to_string(),
             source_span: definition.span,
+            generated_range: None,
         });
     }
     RustSourceMap { items }

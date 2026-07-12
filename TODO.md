@@ -84,9 +84,9 @@ product-level direction and ordering rationale, see [ROADMAP.md](ROADMAP.md).
   now emit Rust `|` patterns.
 - Expand `jisp-macros` beyond item-position native file emission.
 - Broaden the current item-level generated-to-source mapping for `emit-rust`
-  output into the granularity needed for diagnostics. The facade already maps
-  generated Rust functions, structs, and enums back to Jisp definition/type
-  spans.
+  output into expression-level granularity needed for diagnostics. The facade
+  now maps generated Rust function/struct/enum byte ranges back to Jisp
+  definition/type spans; Cargo JSON ingestion remains separate.
 - Wrap Cargo/rustc JSON diagnostics and remap them to Jisp source ranges.
 - Finalise immutable/COW semantics for `list` and `obj` updates.
 - Add project-aware JSON Schema generated from resolved modules.

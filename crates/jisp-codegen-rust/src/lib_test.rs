@@ -65,4 +65,15 @@ fn generate_detailed_maps_rust_functions_to_jisp_definitions() {
         .item(RustItemKind::Function, "main")
         .unwrap();
     assert_eq!(item.source_span, definition_span);
+    let range = item.generated_range.as_ref().unwrap();
+    let rendered = generated.tokens.to_string();
+    assert_eq!(&rendered[range.clone()][..7], "fn main");
+    assert_eq!(
+        generated
+            .source_map
+            .item_at(range.start)
+            .unwrap()
+            .source_span,
+        definition_span
+    );
 }
