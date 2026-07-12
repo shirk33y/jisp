@@ -2,16 +2,23 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use jisp_core::Span;
 use jisp_ir::{CaseBranch, Definition, Expr, ExprKind, Literal, Pattern, StringPart};
-use jisp_types::{ObjectRow, Scheme, Type, TypedModule};
+use jisp_types::{Scheme, Type, TypedModule};
 use proc_macro2::{Ident, TokenStream};
 use quote::{format_ident, quote};
 
+use self::object_types::ObjectTypes;
 use crate::enum_types::EnumTypes;
 use crate::patterns::{emit_pattern, emit_variant_match_pattern, PatternEmission, PatternMatch};
 use crate::{CodegenError, GeneratedRust, RustItemKind, RustSourceItem, RustSourceMap};
 
 #[path = "intrinsics.rs"]
 mod intrinsics;
+
+#[path = "object_types.rs"]
+mod object_types;
+
+#[path = "result.rs"]
+mod result;
 
 pub(crate) fn emit_module(module: &TypedModule) -> Result<GeneratedRust, CodegenError> {
     ensure_unique_rust_idents(
@@ -634,112 +641,6 @@ fn emit_enum_definitions(
         .collect()
 }
 
-#[derive(Clone, Debug)]
-struct ObjectShape {
-    fields: BTreeMap<String, Type>,
-    source_span: jisp_core::Span,
-}
-
-#[derive(Clone, Debug, Default)]
-struct ObjectTypes {
-    names: BTreeMap<String, Ident>,
-    shapes: BTreeMap<String, ObjectShape>,
-}
-
-impl ObjectTypes {
-    fn from_module(module: &TypedModule) -> Result<Self, CodegenError> {
-        let mut shapes = BTreeMap::new();
-        for definition in &module.module.definitions {
-            if let Some(scheme) = module.schemes.get(&definition.name) {
-                collect_object_shapes(&scheme.body, definition.span, &mut shapes, true)?;
-            }
-        }
-        for scheme in module.schemes.values() {
-            collect_object_shapes(
-                &scheme.body,
-                jisp_core::Span::empty(jisp_core::SourceId(0), 0),
-                &mut shapes,
-                true,
-            )?;
-        }
-        let mut expression_types = module.expression_types.iter().collect::<Vec<_>>();
-        expression_types.sort_by_key(|(span, _)| (span.source.0, span.start, span.end));
-        for (span, ty) in expression_types {
-            collect_object_shapes(ty, *span, &mut shapes, false)?;
-        }
-        let names = shapes
-            .keys()
-            .enumerate()
-            .map(|(index, signature)| (signature.clone(), format_ident!("JispObject{index}")))
-            .collect();
-        Ok(Self { names, shapes })
-    }
-
-    fn ident_for_row(&self, row: &ObjectRow) -> Result<Ident, CodegenError> {
-        let signature = object_signature(row)?;
-        self.names
-            .get(&signature)
-            .cloned()
-            .ok_or(CodegenError::Unsupported("unregistered native object type"))
-    }
-}
-
-fn collect_object_shapes(
-    ty: &Type,
-    source_span: jisp_core::Span,
-    shapes: &mut BTreeMap<String, ObjectShape>,
-    reject_open_rows: bool,
-) -> Result<(), CodegenError> {
-    match ty {
-        Type::Object(row) => {
-            if row.rest.is_some() {
-                return if reject_open_rows {
-                    Err(CodegenError::Unsupported("open object row type emission"))
-                } else {
-                    Ok(())
-                };
-            }
-            for ty in row.fields.values() {
-                collect_object_shapes(ty, source_span, shapes, reject_open_rows)?;
-            }
-            shapes
-                .entry(object_signature(row)?)
-                .or_insert_with(|| ObjectShape {
-                    fields: row.fields.clone(),
-                    source_span,
-                });
-        }
-        Type::List(item) => collect_object_shapes(item, source_span, shapes, reject_open_rows)?,
-        Type::Function {
-            parameters,
-            rest,
-            result,
-        } => {
-            for ty in parameters {
-                collect_object_shapes(ty, source_span, shapes, reject_open_rows)?;
-            }
-            if let Some(rest) = rest {
-                collect_object_shapes(rest, source_span, shapes, reject_open_rows)?;
-            }
-            collect_object_shapes(result, source_span, shapes, reject_open_rows)?;
-        }
-        Type::Named { arguments, .. } => {
-            for ty in arguments {
-                collect_object_shapes(ty, source_span, shapes, reject_open_rows)?;
-            }
-        }
-        Type::Var(_)
-        | Type::Never
-        | Type::Null
-        | Type::Bool
-        | Type::Int
-        | Type::BigInt
-        | Type::Float
-        | Type::Str => {}
-    }
-    Ok(())
-}
-
 fn rust_source_map(
     module: &TypedModule,
     object_types: &ObjectTypes,
@@ -809,50 +710,6 @@ fn emit_object_structs(
             })
         })
         .collect()
-}
-
-fn object_signature(row: &ObjectRow) -> Result<String, CodegenError> {
-    if row.rest.is_some() {
-        return Err(CodegenError::Unsupported("open object row type emission"));
-    }
-    let fields = row
-        .fields
-        .iter()
-        .map(|(name, ty)| Ok(format!("{name}:{}", type_signature(ty)?)))
-        .collect::<Result<Vec<_>, _>>()?
-        .join(",");
-    Ok(format!("{{{fields}}}"))
-}
-
-fn type_signature(ty: &Type) -> Result<String, CodegenError> {
-    Ok(match ty {
-        Type::Null => "null".to_owned(),
-        Type::Bool => "bool".to_owned(),
-        Type::Int => "int".to_owned(),
-        Type::BigInt => "bigint".to_owned(),
-        Type::Float => "float".to_owned(),
-        Type::Str => "str".to_owned(),
-        Type::List(item) => format!("list<{}>", type_signature(item)?),
-        Type::Object(row) => object_signature(row)?,
-        Type::Function { .. } => return Err(CodegenError::Unsupported("function value types")),
-        Type::Never => return Err(CodegenError::Unsupported("never type emission")),
-        Type::Var(_) => return Err(CodegenError::Unsupported("unresolved type variables")),
-        Type::Named { name, arguments } => {
-            if arguments.is_empty() {
-                name.clone()
-            } else {
-                format!(
-                    "{}<{}>",
-                    name,
-                    arguments
-                        .iter()
-                        .map(type_signature)
-                        .collect::<Result<Vec<_>, _>>()?
-                        .join(",")
-                )
-            }
-        }
-    })
 }
 
 fn emit_type(
@@ -930,6 +787,17 @@ pub(crate) fn static_string_key(expr: &Expr) -> Option<String> {
             }
         }
         _ => None,
+    }
+}
+
+pub(super) fn result_arguments(expected: Option<&Type>) -> Option<(&Type, &Type)> {
+    let Type::Named { name, arguments } = expected? else {
+        return None;
+    };
+    if name == "result" && arguments.len() == 2 {
+        Some((&arguments[0], &arguments[1]))
+    } else {
+        None
     }
 }
 
