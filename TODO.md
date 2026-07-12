@@ -53,11 +53,10 @@ This is the single authoritative list of intentionally unfinished work.
   8. Done: retain resolved expression types for native layout registration and
      emit concrete `result.try`, `result.map`, `result.map-err`, and
      `result.recover` callbacks.
-  9. Done: emit calls through non-capturing typed function expressions while
-     continuing to reject nested functions and closures.
-- Add native backend support for nested/capturing function values, variadic user
-  functions, `bigint` emission, dynamic object helpers/open rows, and dynamic
-  field access.
+  9. Done: emit typed function expressions, local closures, and closures that
+     snapshot captured native values for direct calls and callback helpers.
+- Add native backend support for variadic user functions, `bigint` emission,
+  dynamic object helpers/open rows, and dynamic field access.
 - Add compile-time evaluation for user macros.
 - Add case guards, alternative patterns, aliases, and robust exhaustiveness.
 - Expand `jisp-macros` beyond item-position native file emission.

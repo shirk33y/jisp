@@ -63,17 +63,17 @@ literal. In Lisp and YAML-like source, quoted values are strings.
   null, list, and structural-object cases.
 - Interpreter execution of an exported, typed, zero-argument `main`.
 - A deliberately narrower native Rust subset: monomorphic definitions, closed
-  objects, lists, non-capturing top-level function pointers and calls, supported
-  `case` patterns, imports, and selected helpers including `list.map`, `list.filter`, and
-  `list.fold`, `list.some`, `list.every`, static known-field `obj.get` on
-  closed objects (including inline literals), and concrete `result.try`,
-  `result.map`, `result.map-err`, and `result.recover`.
+  objects, lists, typed function values and capturing closures, supported `case`
+  patterns, imports, and selected helpers including `list.map`, `list.filter`,
+  `list.fold`, `list.some`, `list.every`, static known-field `obj.get` on closed
+  objects (including inline literals), and concrete `result.try`, `result.map`,
+  `result.map-err`, and `result.recover`.
 - Proc-macro integration that compiles supported Jisp files into native Rust
   items while tracking imported source dependencies.
 
-The interpreter is the broadest execution path. Native emission intentionally
-does not yet support nested or capturing functions, variadic user functions,
-bigints, open object rows, or dynamic field access.
+The interpreter is the broadest execution path. Native closures snapshot their
+captured values, and native emission intentionally does not yet support
+variadic user functions, bigints, open object rows, or dynamic field access.
 
 ## CLI
 

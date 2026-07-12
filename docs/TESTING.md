@@ -19,9 +19,10 @@ is compiled by the test harness.
 `crates/jisp-macros/tests/native_differential.rs` compiles one representative
 Jisp module through `jisp_macros::lisp_file!` and compares its native exports
 with the interpreter. The fixture covers scalars, strings, lists,
-closed-object field access, enum `case` expressions, and non-capturing
-function callbacks in `list.map`, `list.filter`, `list.fold`, `list.some`, and
-`list.every`, plus calls through a conditional typed function expression. It also covers `result` patterns for statically typed `obj.get`,
+closed-object field access, enum `case` expressions, local and returned
+capturing closures, callbacks in `list.map`, `list.filter`, `list.fold`,
+`list.some`, and `list.every`, plus calls through a conditional typed function
+expression. It also covers `result` patterns for statically typed `obj.get`,
 including an inline closed object, `option` cases, and `result.try`,
 `result.map`, `result.map-err`, and `result.recover` callbacks that change the
 concrete success or error layout.

@@ -362,18 +362,18 @@ fn emit_rust_detailed_emits_ui_data_shape_as_static_structs() {
 }
 
 #[test]
-fn emit_rust_detailed_rejects_unsupported_shapes_without_runtime_fallback() {
-    let error = match jisp::emit_rust_as_detailed(
+fn emit_rust_detailed_emits_captured_closures_without_runtime_fallback() {
+    let generated = jisp::emit_rust_as_detailed(
         "main.lisp",
         Syntax::Lisp,
-        "(export main (fn () (fn () 1)))",
-    ) {
-        Ok(_) => panic!("expected unsupported native codegen shape"),
-        Err(error) => error.error,
-    };
+        "(export main (fn () (let (offset 1) ((fn (value) (+ value offset)) 41))))",
+    )
+    .unwrap();
+    let tokens = generated.tokens.to_string();
 
-    assert!(matches!(error, jisp::Error::Codegen(_)), "{error}");
-    assert!(error.to_string().contains("nested functions"), "{error}");
+    assert!(tokens.contains("Rc :: new (move | value : i64 | -> i64"));
+    assert!(!tokens.contains("Value"));
+    assert!(!tokens.contains("jisp_eval"));
 }
 
 #[test]
