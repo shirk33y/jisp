@@ -600,19 +600,11 @@ impl<'a> EmitContext<'a> {
                 return self.emit_native_intrinsic(name, arguments, expected);
             }
             let name = rust_ident(name);
-            let parameter_types = self.callee_parameter_types(callee).map(Vec::from);
-            let arguments = arguments
-                .iter()
-                .enumerate()
-                .map(|(index, argument)| {
-                    self.emit_expr(
-                        argument,
-                        parameter_types
-                            .as_ref()
-                            .and_then(|parameters| parameters.get(index)),
-                    )
-                })
-                .collect::<Result<Vec<_>, _>>()?;
+            let callee_type = self
+                .expression_type(callee)
+                .cloned()
+                .ok_or(CodegenError::Unsupported("native callee type"))?;
+            let arguments = self.emit_function_call_arguments(arguments, &callee_type)?;
             return if is_local {
                 Ok(quote! { (&*#name)(#(#arguments),*) })
             } else {
@@ -623,39 +615,41 @@ impl<'a> EmitContext<'a> {
             .expression_type(callee)
             .cloned()
             .ok_or(CodegenError::Unsupported("native callee type"))?;
+        let callee = self.emit_expr(callee, Some(&callee_type))?;
+        let arguments = self.emit_function_call_arguments(arguments, &callee_type)?;
+        Ok(quote! { (#callee)(#(#arguments),*) })
+    }
+
+    fn emit_function_call_arguments(
+        &mut self,
+        arguments: &[Expr],
+        callee_type: &Type,
+    ) -> Result<Vec<TokenStream>, CodegenError> {
         let Type::Function {
-            parameters,
-            rest: None,
-            ..
-        } = &callee_type
+            parameters, rest, ..
+        } = callee_type
         else {
             return Err(CodegenError::Unsupported("native first-class callee"));
         };
-        if parameters.len() != arguments.len() {
+        if arguments.len() < parameters.len() {
             return Err(CodegenError::Unsupported("native function call arity"));
         }
-        let callee = self.emit_expr(callee, Some(&callee_type))?;
-        let arguments = arguments
+        if rest.is_none() && arguments.len() != parameters.len() {
+            return Err(CodegenError::Unsupported("native function call arity"));
+        }
+        let mut emitted = arguments[..parameters.len()]
             .iter()
             .zip(parameters)
             .map(|(argument, ty)| self.emit_expr(argument, Some(ty)))
             .collect::<Result<Vec<_>, _>>()?;
-        Ok(quote! { (#callee)(#(#arguments),*) })
-    }
-
-    fn callee_parameter_types(&self, callee: &Expr) -> Option<&[Type]> {
-        let ExprKind::Name(name) = &callee.kind else {
-            return None;
-        };
-        let ty = self
-            .locals
-            .get(name)
-            .and_then(Option::as_ref)
-            .or_else(|| self.top_level_schemes.get(name).map(|scheme| &scheme.body))?;
-        match ty {
-            Type::Function { parameters, .. } => Some(parameters),
-            _ => None,
+        if let Some(rest) = rest {
+            let rest = arguments[parameters.len()..]
+                .iter()
+                .map(|argument| self.emit_expr(argument, Some(rest.as_ref())))
+                .collect::<Result<Vec<_>, _>>()?;
+            emitted.push(quote! { vec![#(#rest),*] });
         }
+        Ok(emitted)
     }
 
     pub(super) fn native_callback_type(&self, callback: &Expr) -> Result<Type, CodegenError> {
