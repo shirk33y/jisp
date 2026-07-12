@@ -163,6 +163,10 @@ fn native_dynamic_reads_on_homogeneous_closed_objects_match_the_interpreter() {
         "dynamic-object-has-entry",
         Value::Int(dynamic_object_has_entry()),
     );
+    assert_matches_interpreter(
+        "dynamic-object-set-entry",
+        Value::Int(dynamic_object_set_entry()),
+    );
 }
 
 fn assert_matches_interpreter(export: &str, native: Value) {

@@ -580,16 +580,20 @@ impl Inferencer {
 
     fn infer_obj_set(&mut self, arguments: &[Expr]) -> Result<Option<Type>, InferError> {
         require_arity(arguments, 3)?;
-        let Some(key) = static_string_key(&arguments[1]) else {
-            return Ok(None);
-        };
         let key_ty = self.infer_expr_located(&arguments[1])?;
         self.unify(key_ty, Type::Str)?;
         let Some(mut row) = self.infer_static_object_row(&arguments[0])? else {
             return Ok(None);
         };
         let value = self.infer_expr_located(&arguments[2])?;
-        row.fields.insert(key, self.apply(&value));
+        if let Some(key) = static_string_key(&arguments[1]) {
+            row.fields.insert(key, self.apply(&value));
+        } else {
+            let Some(field) = homogeneous_closed_field_type(&row) else {
+                return Ok(None);
+            };
+            self.unify(value, field)?;
+        }
         Ok(Some(Type::Object(row)))
     }
 

@@ -298,3 +298,9 @@
   (fn ()
     (let (key (str.cat "sec" "ondary"))
       (if (obj.has scores key) 42 0))))
+
+(export dynamic-object-set-entry
+  (fn ()
+    (let (key (str.cat "sec" "ondary")
+          updated (obj.set scores key 42))
+      (. updated "secondary"))))

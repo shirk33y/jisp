@@ -74,7 +74,9 @@ product-level direction and ordering rationale, see [ROADMAP.md](ROADMAP.md).
       boolean guards, interpreter execution, conservative exhaustiveness, and
       native Rust case emission.
 - Add native backend support for dynamic object mutation, heterogeneous dynamic
-  reads, and open rows with an explicitly designed concrete ABI.
+  reads, and open rows with an explicitly designed concrete ABI. Dynamic
+  `obj.set` on closed homogeneous rows is now supported without a dynamic
+  runtime representation; dynamic deletion still changes the concrete shape.
 - Extend the intentionally bounded macro system only after designing hygiene,
   cross-module visibility, and a general compile-time evaluator.
 - Add stronger list/object exhaustiveness analysis and native emission for

@@ -100,6 +100,45 @@ impl<'a> EmitContext<'a> {
             false #(|| __jisp_key == #keys)*
         }})
     }
+
+    pub(super) fn emit_dynamic_obj_set(
+        &mut self,
+        object: &Expr,
+        key: &Expr,
+        value: &Expr,
+        expected: Option<&Type>,
+    ) -> Result<TokenStream, CodegenError> {
+        let row = self.native_closed_object_row(object)?;
+        let field_type = homogeneous_field_type(&row)?;
+        if expected != Some(&Type::Object(row.clone())) {
+            return Err(CodegenError::Unsupported(
+                "dynamic native obj.set result type mismatch",
+            ));
+        }
+        let object = self.emit_expr(object, None)?;
+        let key = self.emit_expr(key, Some(&Type::Str))?;
+        let value = self.emit_expr(value, Some(field_type))?;
+        let dispatch = row.fields.keys().rev().fold(
+            quote! { panic!("jisp object has no key `{}`", __jisp_key) },
+            |otherwise, key| {
+                let field = super::rust_ident(key);
+                quote! {
+                    if __jisp_key == #key {
+                        __jisp_object.#field = __jisp_value;
+                        __jisp_object
+                    } else {
+                        #otherwise
+                    }
+                }
+            },
+        );
+        Ok(quote! {{
+            let mut __jisp_object = #object;
+            let __jisp_key = #key;
+            let __jisp_value = #value;
+            #dispatch
+        }})
+    }
 }
 
 fn homogeneous_field_type(row: &ObjectRow) -> Result<&Type, CodegenError> {

@@ -839,7 +839,7 @@ impl<'a> EmitContext<'a> {
             return Err(CodegenError::Unsupported("non-ternary native intrinsics"));
         };
         let Some(key) = super::static_string_key(key) else {
-            return Err(CodegenError::Unsupported("dynamic native object keys"));
+            return self.emit_dynamic_obj_set(object, key, value, expected);
         };
         let Some(Type::Object(row)) = expected else {
             return Err(CodegenError::Unsupported(
