@@ -308,6 +308,27 @@ fn emit_rust_detailed_emits_native_enum_alias_case() {
 }
 
 #[test]
+fn emit_rust_detailed_emits_native_case_guards() {
+    let generated = jisp::emit_rust_as_detailed(
+        "main.lisp",
+        Syntax::Lisp,
+        r#"
+(export main
+  (fn ()
+    (case 7
+      ((when value (> value 10)) 1)
+      (_ 2))))
+"#,
+    )
+    .unwrap();
+
+    let tokens = generated.tokens.to_string();
+
+    assert!(tokens.contains("let value = __jisp_case_subject . clone ()"));
+    assert!(tokens.contains("if (value > 10i64)"));
+}
+
+#[test]
 fn emit_rust_detailed_emits_native_list_case_patterns() {
     let generated = jisp::emit_rust_as_detailed(
         "main.lisp",

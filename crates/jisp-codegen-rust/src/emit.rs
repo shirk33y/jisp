@@ -442,9 +442,6 @@ impl<'a> EmitContext<'a> {
         branches: &[CaseBranch],
         expected: Option<&Type>,
     ) -> Result<TokenStream, CodegenError> {
-        if branches.iter().any(|branch| branch.guard.is_some()) {
-            return Err(CodegenError::Unsupported("guarded case patterns"));
-        }
         if branches
             .iter()
             .any(|branch| pattern_contains_variant(&branch.pattern))
@@ -472,6 +469,11 @@ impl<'a> EmitContext<'a> {
                 ));
                 self.closure_captures.remove(&binding.name);
             }
+            let guard = branch
+                .guard
+                .as_ref()
+                .map(|guard| self.emit_expr(guard, Some(&Type::Bool)))
+                .transpose()?;
             let body = self.emit_expr(&branch.body, expected)?;
             for (name, previous) in previous_locals.into_iter().rev() {
                 if let Some(previous) = previous {
@@ -482,7 +484,10 @@ impl<'a> EmitContext<'a> {
             }
             self.closure_captures = previous_captures;
             let bindings = bindings.iter().map(|binding| &binding.tokens);
-            let branch = quote! {{ #(#bindings)* #body }};
+            let branch = match guard {
+                Some(guard) => quote! {{ #(#bindings)* if #guard { #body } else { #output } }},
+                None => quote! {{ #(#bindings)* #body }},
+            };
             output = quote! {
                 if #condition {
                     #branch
@@ -511,6 +516,7 @@ impl<'a> EmitContext<'a> {
             .map(|branch| {
                 self.emit_variant_case_arm(
                     &branch.pattern,
+                    branch.guard.as_ref(),
                     &branch.body,
                     expected,
                     subject_type.as_ref(),
@@ -528,6 +534,7 @@ impl<'a> EmitContext<'a> {
     fn emit_variant_case_arm(
         &mut self,
         pattern: &Pattern,
+        guard: Option<&Expr>,
         body: &Expr,
         expected: Option<&Type>,
         subject_type: Option<&Type>,
@@ -541,6 +548,9 @@ impl<'a> EmitContext<'a> {
             previous_locals.push((binding.clone(), self.locals.insert(binding.clone(), None)));
             self.closure_captures.remove(binding);
         }
+        let guard = guard
+            .map(|guard| self.emit_expr(guard, Some(&Type::Bool)))
+            .transpose()?;
         let body = self.emit_expr(body, expected)?;
         for (name, previous) in previous_locals.into_iter().rev() {
             if let Some(previous) = previous {
@@ -550,7 +560,10 @@ impl<'a> EmitContext<'a> {
             }
         }
         self.closure_captures = previous_captures;
-        Ok(quote! { #tokens => { #body } })
+        Ok(match guard {
+            Some(guard) => quote! { #tokens if #guard => { #body } },
+            None => quote! { #tokens => { #body } },
+        })
     }
 
     fn emit_bool_chain(
