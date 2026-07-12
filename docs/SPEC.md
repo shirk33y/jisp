@@ -56,6 +56,10 @@ A directory is intended to be one module. Files in that directory share a
 namespace and may use any supported syntax. Imported modules are accessed with
 qualified symbols such as `list.map`.
 
+Definition names, type names, constructors, and import aliases must each be
+unique within a module. Constructors share the value namespace with
+definitions. Reusing one is a lowering error rather than a shadowing rule.
+
 ## Types
 
 Types are inferred. User-visible Rust types, traits, borrows, and lifetimes are
@@ -80,7 +84,8 @@ for `result.try`, resource scopes, transactions, and parsers.
 
 `list` corresponds to a JSON array and is expected to compile to a contiguous
 collection where practical. `obj` is created with alternating key/value
-arguments. Raw `{}` syntax is reserved and currently rejected.
+arguments. Repeated statically known object keys, including keys in object case
+patterns, are rejected. Raw `{}` syntax is reserved and currently rejected.
 
 The current UI proof uses ordinary objects rather than new syntax. A node has a
 string `tag`, optional scalar attributes, optional `classes` object whose keys

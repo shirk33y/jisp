@@ -10,5 +10,6 @@ ensuring parse/normalise equivalence across syntax fixtures. Native codegen
 still needs systematic compile-fail fixtures and interpreter-vs-native
 differential tests.
 
-CI pins the Rust toolchain, checks formatting, runs the workspace suite, and
-runs `jisp-macros` separately so generated Rust is compiled by the test harness.
+CI pins the Rust toolchain, checks formatting and Clippy with warnings denied,
+runs the workspace suite, and runs `jisp-macros` separately so generated Rust
+is compiled by the test harness.
