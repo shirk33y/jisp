@@ -46,6 +46,9 @@
   validation once near the end. When running broad checks, combine them with the
   other final validation commands instead of launching each one as a separate
   pass.
+- Do not wait for remote CI after ordinary code or documentation changes. Run
+  the required local validation before committing; inspect or wait for CI only
+  when changing the CI workflow itself or when diagnosing a remote failure.
 - Trust the configured pre-commit hook as the final local gate. Do not over-sample
   the same code path with repeated tiny Cargo runs before that gate unless a
   specific failure needs isolation.
