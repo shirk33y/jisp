@@ -171,6 +171,12 @@
     (let (offset 40)
       (list.map (fn (value) (+ value offset)) (list 1 2)))))
 
+(export captured-string-entry
+  (fn ()
+    (let (prefix "a"
+          append-prefix (fn (value) (str.cat prefix value)))
+      (str.cat prefix (append-prefix "b")))))
+
 (export captured-use-entry
   (fn ()
     (let (offset 2)

@@ -178,7 +178,7 @@ impl<'a> EmitContext<'a> {
             ExprKind::Name(name) => {
                 let ident = rust_ident(name);
                 if self.locals.contains_key(name) {
-                    Ok(quote! { #ident })
+                    Ok(quote! { #ident.clone() })
                 } else if self.top_level_names.contains(name) {
                     match expected {
                         Some(Type::Function {
@@ -556,7 +556,8 @@ impl<'a> EmitContext<'a> {
                     .collect::<Result<Vec<_>, _>>()?;
                 return Ok(quote! { #enum_ident::#variant_ident(#(#arguments),*) });
             }
-            if !self.locals.contains_key(name) && !self.top_level_names.contains(name) {
+            let is_local = self.locals.contains_key(name);
+            if !is_local && !self.top_level_names.contains(name) {
                 return self.emit_native_intrinsic(name, arguments, expected);
             }
             let name = rust_ident(name);
@@ -573,7 +574,12 @@ impl<'a> EmitContext<'a> {
                     )
                 })
                 .collect::<Result<Vec<_>, _>>()?;
-            return Ok(quote! { #name(#(#arguments),*) });
+            let callee = if is_local {
+                quote! { (&*#name) }
+            } else {
+                quote! { #name }
+            };
+            return Ok(quote! { (#callee)(#(#arguments),*) });
         }
         let callee_type = self
             .expression_type(callee)

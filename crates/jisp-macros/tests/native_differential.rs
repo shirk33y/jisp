@@ -82,6 +82,10 @@ fn native_local_closures_match_the_interpreter() {
         "captured-map-entry",
         Value::List(captured_map_entry().into_iter().map(Value::Int).collect()),
     );
+    assert_matches_interpreter(
+        "captured-string-entry",
+        Value::string(captured_string_entry()),
+    );
     assert_matches_interpreter("captured-use-entry", Value::Int(captured_use_entry()));
     assert_matches_interpreter(
         "returned-closure-entry",
