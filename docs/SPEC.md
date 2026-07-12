@@ -74,6 +74,18 @@ closed algebraic data types, structural object rows, and monomorphisation.
 
 Constructors and patterns use the same shape.
 
+```lisp test=spec.case mode=run
+(type response
+  (ok int)
+  (err str))
+
+(export main
+  (fn ()
+    (case (ok 42)
+      ((ok value) (str "ok: " ,(str.from value)))
+      ((err message) (str "failed: " ,message)))))
+```
+
 ## Errors as values
 
 Ordinary failure is represented as `result` values, not exceptions. `case`
@@ -123,6 +135,22 @@ arguments are type errors in checked code and runtime errors in the interpreter.
 
 NaN follows `f64` equality: it is not equal to itself. Structural equality does
 not normalise or canonicalise NaN payloads.
+
+```lisp test=spec.bigint mode=run
+(export main
+  (fn ()
+    (+ (bigint "9223372036854775808") (bigint "4"))))
+```
+
+## Object lookup
+
+Field lookup is explicit and works on structural objects.
+
+```lisp test=spec.object-lookup mode=run
+(export main
+  (fn ()
+    (. (obj "name" "Ada") "name")))
+```
 
 ## Equality and mutability
 
