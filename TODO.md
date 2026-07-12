@@ -64,9 +64,13 @@ product-level direction and ordering rationale, see [ROADMAP.md](ROADMAP.md).
   12. Done: emit dynamic `.`/`obj.get`/`obj.has` reads for closed homogeneous
       objects using concrete string-key dispatch, while rejecting heterogenous
       and open rows without a dynamic value fallback.
+  13. Done: expand module-local ordered user macros defined as `(~ (fn ...))`
+      with quote/quasiquote templates, raw syntax parameters, rest splicing,
+      nested expansion, expansion-step protection, and origin diagnostics.
 - Add native backend support for dynamic object mutation, heterogeneous dynamic
   reads, and open rows with an explicitly designed concrete ABI.
-- Add compile-time evaluation for user macros.
+- Extend the intentionally bounded macro system only after designing hygiene,
+  cross-module visibility, and a general compile-time evaluator.
 - Add case guards, alternative patterns, aliases, and robust exhaustiveness.
 - Expand `jisp-macros` beyond item-position native file emission.
 - Broaden the current item-level generated-to-source mapping for `emit-rust`

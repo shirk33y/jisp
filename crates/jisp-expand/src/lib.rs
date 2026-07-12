@@ -1,9 +1,29 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use jisp_core::{Diagnostic, Node, NodeKind, Span};
 use thiserror::Error;
 
 const MAX_ORIGIN_DEPTH: usize = 256;
+const MAX_MACRO_EXPANSIONS: usize = 1_024;
+
+#[derive(Clone, Debug)]
+struct UserMacro {
+    params: Vec<String>,
+    rest: Option<String>,
+    template: MacroTemplate,
+}
+
+#[derive(Clone, Debug)]
+enum MacroTemplate {
+    Quote(Node),
+    Quasiquote(Node),
+}
+
+#[derive(Clone, Debug)]
+enum SyntaxValue {
+    Node(Node),
+    Nodes(Vec<Node>),
+}
 
 #[derive(Clone, Debug, Default)]
 pub struct ExpansionMap {
@@ -65,17 +85,22 @@ impl ExpandError {
 #[derive(Clone, Debug, Default)]
 pub struct Expander {
     expansion_map: ExpansionMap,
+    macros: HashMap<String, UserMacro>,
+    macro_expansions: usize,
 }
 
 impl Expander {
     pub fn expand_module(mut self, nodes: &[Node]) -> Result<ExpandedModule, ExpandError> {
-        let nodes = nodes
-            .iter()
-            .cloned()
-            .map(|node| self.expand_node(node))
-            .collect::<Result<Vec<_>, _>>()?;
+        let mut expanded = vec![];
+        for node in nodes.iter().cloned() {
+            if let Some((name, user_macro)) = parse_macro_definition(&node)? {
+                self.macros.insert(name, user_macro);
+            } else {
+                expanded.push(self.expand_node(node)?);
+            }
+        }
         Ok(ExpandedModule {
-            nodes,
+            nodes: expanded,
             expansion_map: self.expansion_map,
         })
     }
@@ -87,6 +112,10 @@ impl Expander {
         let Some(head) = items.first().and_then(Node::as_symbol) else {
             return self.expand_children(node);
         };
+
+        if let Some(user_macro) = self.macros.get(head).cloned() {
+            return self.expand_macro_call(node.span, user_macro, &items[1..]);
+        }
 
         match head {
             "quote" => {
@@ -108,6 +137,72 @@ impl Expander {
                 "user macro evaluation is not implemented yet",
             )),
             _ => self.expand_children(node),
+        }
+    }
+
+    fn expand_macro_call(
+        &mut self,
+        call_span: Span,
+        user_macro: UserMacro,
+        arguments: &[Node],
+    ) -> Result<Node, ExpandError> {
+        self.macro_expansions += 1;
+        if self.macro_expansions > MAX_MACRO_EXPANSIONS {
+            return Err(ExpandError::single(
+                call_span,
+                "macro expansion exceeded 1024 steps (possible recursive macro)",
+            ));
+        }
+
+        let bindings = bind_macro_arguments(&user_macro, arguments, call_span)?;
+        let expanded = match &user_macro.template {
+            MacroTemplate::Quote(node) => node.clone(),
+            MacroTemplate::Quasiquote(node) => self.expand_macro_quasiquote(node, &bindings)?,
+        };
+        let originated = self.originated(expanded, call_span);
+        self.expand_node(originated)
+    }
+
+    fn expand_macro_quasiquote(
+        &self,
+        node: &Node,
+        bindings: &HashMap<String, SyntaxValue>,
+    ) -> Result<Node, ExpandError> {
+        let Some(items) = node.as_form() else {
+            return Ok(node.clone());
+        };
+
+        match items.first().and_then(Node::as_symbol) {
+            Some("unquote" | ",") => {
+                expect_arity(items, 2, node.span, "unquote")?;
+                let name = expect_macro_parameter(&items[1], "unquote")?;
+                match bindings.get(name) {
+                    Some(SyntaxValue::Node(value)) => Ok(value.clone()),
+                    Some(SyntaxValue::Nodes(_)) => Err(ExpandError::single(
+                        items[1].span,
+                        format!("macro rest parameter `{name}` must be spliced with ,@"),
+                    )),
+                    None => Err(ExpandError::single(
+                        items[1].span,
+                        format!("unknown macro parameter `{name}`"),
+                    )),
+                }
+            }
+            Some("unquote-splicing" | ",@") => Err(ExpandError::single(
+                node.span,
+                "unquote-splicing is only valid as an item in a quasiquoted form",
+            )),
+            _ => {
+                let mut expanded = vec![];
+                for item in items {
+                    if let Some(values) = macro_splice_arg(item, bindings)? {
+                        expanded.extend(values);
+                    } else {
+                        expanded.push(self.expand_macro_quasiquote(item, bindings)?);
+                    }
+                }
+                Ok(Node::form(expanded, node.span))
+            }
         }
     }
 
@@ -190,6 +285,210 @@ impl Expander {
 
 pub fn expand_module(nodes: &[Node]) -> Result<ExpandedModule, ExpandError> {
     Expander::default().expand_module(nodes)
+}
+
+fn parse_macro_definition(node: &Node) -> Result<Option<(String, UserMacro)>, ExpandError> {
+    let Some(items) = node.as_form() else {
+        return Ok(None);
+    };
+    if items.first().and_then(Node::as_symbol) != Some("def") {
+        return Ok(None);
+    }
+    let Some(value) = items.get(2) else {
+        return Ok(None);
+    };
+    let Some(marker) = value
+        .as_form()
+        .and_then(|items| items.first())
+        .and_then(Node::as_symbol)
+    else {
+        return Ok(None);
+    };
+    if !matches!(marker, "macro" | "~") {
+        return Ok(None);
+    }
+
+    expect_arity(items, 3, node.span, "def")?;
+    let name = items[1].as_symbol().ok_or_else(|| {
+        ExpandError::single(items[1].span, "macro definition name must be a symbol")
+    })?;
+    let marker_items = value.as_form().expect("macro marker was checked above");
+    expect_arity(marker_items, 2, value.span, "macro")?;
+    let function = marker_items[1].as_form().ok_or_else(|| {
+        ExpandError::single(marker_items[1].span, "macro expects an fn expression")
+    })?;
+    if function.first().and_then(Node::as_symbol) != Some("fn") {
+        return Err(ExpandError::single(
+            marker_items[1].span,
+            "macro expects an fn expression",
+        ));
+    }
+    if function.len() != 3 {
+        return Err(ExpandError::single(
+            marker_items[1].span,
+            "macro fn expects one parameter list and one quote or quasiquote body",
+        ));
+    }
+
+    let (params, rest) = parse_macro_parameters(&function[1])?;
+    let body = function[2].as_form().ok_or_else(|| {
+        ExpandError::single(
+            function[2].span,
+            "macro body must be a quote or quasiquote expression",
+        )
+    })?;
+    let template = match body.first().and_then(Node::as_symbol) {
+        Some("quote") => {
+            expect_arity(body, 2, function[2].span, "quote")?;
+            MacroTemplate::Quote(body[1].clone())
+        }
+        Some("quasiquote" | "`") => {
+            expect_arity(body, 2, function[2].span, "quasiquote")?;
+            MacroTemplate::Quasiquote(body[1].clone())
+        }
+        _ => {
+            return Err(ExpandError::single(
+                function[2].span,
+                "macro body must be a quote or quasiquote expression",
+            ))
+        }
+    };
+
+    Ok(Some((
+        name.to_owned(),
+        UserMacro {
+            params,
+            rest,
+            template,
+        },
+    )))
+}
+
+fn parse_macro_parameters(node: &Node) -> Result<(Vec<String>, Option<String>), ExpandError> {
+    let params = node
+        .as_form()
+        .ok_or_else(|| ExpandError::single(node.span, "macro fn parameter list must be a form"))?;
+    let mut names = HashSet::new();
+    let mut fixed = vec![];
+    let mut rest = None;
+    let mut index = 0;
+
+    while index < params.len() {
+        if params[index].as_symbol() == Some("...") {
+            let Some(rest_node) = params.get(index + 1) else {
+                return Err(ExpandError::single(
+                    params[index].span,
+                    "`...` must be followed by a macro rest parameter",
+                ));
+            };
+            if index + 2 != params.len() {
+                return Err(ExpandError::single(
+                    rest_node.span,
+                    "macro rest parameter must be the final parameter",
+                ));
+            }
+            let name = rest_node.as_symbol().ok_or_else(|| {
+                ExpandError::single(rest_node.span, "macro rest parameter must be a symbol")
+            })?;
+            if !names.insert(name.to_owned()) {
+                return Err(ExpandError::single(
+                    rest_node.span,
+                    format!("duplicate macro parameter `{name}`"),
+                ));
+            }
+            rest = Some(name.to_owned());
+            break;
+        }
+
+        let name = params[index].as_symbol().ok_or_else(|| {
+            ExpandError::single(params[index].span, "macro parameter must be a symbol")
+        })?;
+        if !names.insert(name.to_owned()) {
+            return Err(ExpandError::single(
+                params[index].span,
+                format!("duplicate macro parameter `{name}`"),
+            ));
+        }
+        fixed.push(name.to_owned());
+        index += 1;
+    }
+
+    Ok((fixed, rest))
+}
+
+fn bind_macro_arguments(
+    user_macro: &UserMacro,
+    arguments: &[Node],
+    call_span: Span,
+) -> Result<HashMap<String, SyntaxValue>, ExpandError> {
+    let fixed_count = user_macro.params.len();
+    let valid = if user_macro.rest.is_some() {
+        arguments.len() >= fixed_count
+    } else {
+        arguments.len() == fixed_count
+    };
+    if !valid {
+        let expectation = match user_macro.rest {
+            Some(_) => format!("at least {fixed_count}"),
+            None => fixed_count.to_string(),
+        };
+        return Err(ExpandError::single(
+            call_span,
+            format!(
+                "macro expects {expectation} argument(s), got {}",
+                arguments.len()
+            ),
+        ));
+    }
+
+    let mut bindings = HashMap::new();
+    for (name, argument) in user_macro.params.iter().zip(arguments) {
+        bindings.insert(name.clone(), SyntaxValue::Node(argument.clone()));
+    }
+    if let Some(rest) = &user_macro.rest {
+        bindings.insert(
+            rest.clone(),
+            SyntaxValue::Nodes(arguments[fixed_count..].to_vec()),
+        );
+    }
+    Ok(bindings)
+}
+
+fn expect_macro_parameter<'a>(node: &'a Node, form: &'static str) -> Result<&'a str, ExpandError> {
+    node.as_symbol().ok_or_else(|| {
+        ExpandError::single(
+            node.span,
+            format!("{form} in a macro template expects a macro parameter"),
+        )
+    })
+}
+
+fn macro_splice_arg(
+    node: &Node,
+    bindings: &HashMap<String, SyntaxValue>,
+) -> Result<Option<Vec<Node>>, ExpandError> {
+    let Some(items) = node.as_form() else {
+        return Ok(None);
+    };
+    if !matches!(
+        items.first().and_then(Node::as_symbol),
+        Some("unquote-splicing" | ",@")
+    ) {
+        return Ok(None);
+    }
+    expect_arity(items, 2, node.span, "unquote-splicing")?;
+    let name = expect_macro_parameter(&items[1], "unquote-splicing")?;
+    match bindings.get(name) {
+        Some(SyntaxValue::Nodes(values)) => Ok(Some(values.clone())),
+        Some(SyntaxValue::Node(_)) => Err(ExpandError::single(
+            items[1].span,
+            format!("macro parameter `{name}` is not variadic and cannot be spliced"),
+        )),
+        None => Err(ExpandError::single(
+            items[1].span,
+            format!("unknown macro parameter `{name}`"),
+        )),
+    }
 }
 
 fn unquote_splice_arg(node: &Node) -> Result<Option<&Node>, ExpandError> {

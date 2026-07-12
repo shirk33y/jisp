@@ -115,3 +115,115 @@ fn follows_origin_chains_with_a_depth_limit() {
     assert_eq!(map.origin(generated), original);
     assert_eq!(map.origin_chain(generated), vec![first, original]);
 }
+
+#[test]
+fn expands_ordered_user_macro_quasiquote_and_removes_its_definition() {
+    let definition = form(vec![
+        sym("def"),
+        sym("unless"),
+        form(vec![
+            sym("~"),
+            form(vec![
+                sym("fn"),
+                form(vec![sym("condition"), sym("then"), sym("otherwise")]),
+                form(vec![
+                    sym("`"),
+                    form(vec![
+                        sym("if"),
+                        form(vec![sym(","), sym("condition")]),
+                        form(vec![sym(","), sym("otherwise")]),
+                        form(vec![sym(","), sym("then")]),
+                    ]),
+                ]),
+            ]),
+        ]),
+    ]);
+    let call = Node::form(
+        vec![sym("unless"), sym("ready"), int(1), int(2)],
+        span(30, 50),
+    );
+
+    let expanded = expand_module(&[definition, call]).unwrap();
+
+    assert_eq!(
+        expanded.nodes,
+        vec![Node::form(
+            vec![sym("if"), sym("ready"), int(2), int(1)],
+            span(0, 1),
+        )]
+    );
+    assert_eq!(
+        expanded.expansion_map.origin(expanded.nodes[0].span),
+        span(30, 50)
+    );
+}
+
+#[test]
+fn expands_nested_user_macro_calls_and_variadic_splices() {
+    let wrap = form(vec![
+        sym("def"),
+        sym("wrap"),
+        form(vec![
+            sym("macro"),
+            form(vec![
+                sym("fn"),
+                form(vec![sym("..."), sym("body")]),
+                form(vec![
+                    sym("`"),
+                    form(vec![sym("do"), form(vec![sym(",@"), sym("body")])]),
+                ]),
+            ]),
+        ]),
+    ]);
+    let twice = form(vec![
+        sym("def"),
+        sym("twice"),
+        form(vec![
+            sym("~"),
+            form(vec![
+                sym("fn"),
+                form(vec![sym("value")]),
+                form(vec![
+                    sym("`"),
+                    form(vec![
+                        sym("wrap"),
+                        form(vec![sym(","), sym("value")]),
+                        form(vec![sym(","), sym("value")]),
+                    ]),
+                ]),
+            ]),
+        ]),
+    ]);
+
+    let expanded = expand_module(&[wrap, twice, form(vec![sym("twice"), int(7)])]).unwrap();
+
+    assert_eq!(expanded.nodes, vec![form(vec![sym("do"), int(7), int(7)])]);
+}
+
+#[test]
+fn user_macro_reports_arity_and_template_errors() {
+    let definition = form(vec![
+        sym("def"),
+        sym("identity"),
+        form(vec![
+            sym("~"),
+            form(vec![
+                sym("fn"),
+                form(vec![sym("value")]),
+                form(vec![sym("`"), form(vec![sym(","), sym("value")])]),
+            ]),
+        ]),
+    ]);
+    let error = expand_module(&[definition, form(vec![sym("identity")])]).unwrap_err();
+    assert!(error.diagnostics[0].message.contains("expects 1 argument"));
+
+    let invalid = form(vec![
+        sym("def"),
+        sym("bad"),
+        form(vec![sym("~"), form(vec![sym("fn"), form(vec![]), int(1)])]),
+    ]);
+    let error = expand_module(&[invalid]).unwrap_err();
+    assert!(error.diagnostics[0]
+        .message
+        .contains("macro body must be a quote or quasiquote"));
+}

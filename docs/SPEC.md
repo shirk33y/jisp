@@ -36,12 +36,37 @@ expression that must produce a string.
 
 - `def`, `export`, `import`, `type`
 - `fn`, `let`, `do`, `if`, `case`, `use`
-- `quote`, `quasiquote`, `unquote`, `unquote-splicing`; `macro` is reserved
-  until compile-time user macro evaluation is implemented
+- `quote`, `quasiquote`, `unquote`, `unquote-splicing`, `macro` (alias `~`)
 - `.`, `and`, `or`, `not`
 
 Arguments evaluate left-to-right. Only `false` and `null` are falsey.
 Top-level executable expressions are forbidden; execution begins at `main`.
+
+## Compile-time macros
+
+A module can define an ordered, compile-time macro with `~` (or `macro`) around
+one `fn`. Macro definitions are consumed before lowering: they do not create a
+runtime value and must appear before their first use. Parameters receive raw
+syntax nodes. The function body is exactly a `quote` or `quasiquote` template;
+in a quasiquote, `,parameter` inserts one argument node and `,@rest` splices a
+final `... rest` parameter.
+
+```lisp test=spec.user-macro mode=run
+(def unless
+  (~ (fn (condition then otherwise)
+       `(if ,condition ,otherwise ,then))))
+
+(export main
+  (fn ()
+    (unless false 1 2)))
+```
+
+Macros are currently module-local and unhygienic. They cannot be imported or
+exported, and their templates use ordinary lexical name resolution after
+lowering. The macro body is not a general compile-time Jisp evaluator; this
+keeps expansion deterministic and avoids a second prelude, IO, and module
+loading contract. The full design and future boundaries are recorded in
+[`.agents/plans/0010-user-macros.md`](../.agents/plans/0010-user-macros.md).
 
 ## Definitions and modules
 

@@ -56,8 +56,8 @@ literal. In Lisp and YAML-like source, quoted values are strings.
 
 ## What works today
 
-- Source-aware parsing, expansion, lowering, type inference, imports, and
-  diagnostics across all three source formats.
+- Source-aware parsing, quote/template-macro expansion, lowering, type
+  inference, imports, and diagnostics across all three source formats.
 - Immutable values: integers, bigints, floats, booleans, null, strings, lists,
   structural objects, closures, and algebraic-data constructors.
 - Pattern matching with current exhaustiveness checks for finite enum, boolean,
@@ -117,9 +117,8 @@ the same frontend pipeline.
 ## Status and roadmap
 
 Jisp is a compiler foundation, not a production language. The current focus is
-P2 language completeness: broader native codegen, compile-time user macros,
-richer patterns, diagnostics for generated Rust, formatter and tooling work,
-and a designed FFI boundary.
+P2 language completeness: broader native codegen, richer patterns, diagnostics
+for generated Rust, formatter and tooling work, and a designed FFI boundary.
 
 The product-level direction is in [ROADMAP.md](ROADMAP.md); the authoritative
 implementation queue is [TODO.md](TODO.md). The language contract is in

@@ -30,8 +30,9 @@ not dates. The detailed engineering queue remains [TODO.md](TODO.md).
 
 ## Then: complete the language seams
 
-1. **User macros.** Design and implement compile-time evaluation while
-   preserving expansion origins and hygienic, source-ranged diagnostics.
+1. **User macros.** Module-local quote/template macros now preserve expansion
+   origins. Design hygiene, cross-module visibility, and any general
+   compile-time evaluator before extending that deliberately bounded model.
 2. **Pattern matching.** Add guards, alternatives, aliases, and stronger
    exhaustiveness/redundancy analysis only with matching parser, type, runtime,
    diagnostics, and native tests.
