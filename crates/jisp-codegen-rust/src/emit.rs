@@ -28,7 +28,11 @@ pub(crate) fn emit_module(module: &TypedModule) -> Result<GeneratedRust, Codegen
         .map(|definition| definition.name.clone())
         .collect::<BTreeSet<_>>();
     let object_types = ObjectTypes::from_module(module)?;
-    let enum_types = EnumTypes::from_module(&module.module.types, &module.schemes)?;
+    let enum_types = EnumTypes::from_module(
+        &module.module.types,
+        &module.module.definitions,
+        &module.schemes,
+    )?;
     let object_structs = emit_object_structs(&object_types, &enum_types)?;
     let enum_definitions = emit_enum_definitions(&enum_types, &object_types)?;
     let definitions = module
@@ -857,7 +861,7 @@ pub(crate) fn emit_literal(literal: &Literal) -> Result<TokenStream, CodegenErro
     })
 }
 
-fn static_string_key(expr: &Expr) -> Option<String> {
+pub(crate) fn static_string_key(expr: &Expr) -> Option<String> {
     match &expr.kind {
         ExprKind::Literal(Literal::String(value)) => Some(value.clone()),
         ExprKind::StringTemplate { lines, parts } => {

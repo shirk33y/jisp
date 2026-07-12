@@ -1,6 +1,6 @@
 (type response
-  (ok int)
-  (err str))
+  (success int)
+  (failure str))
 
 (def stats
   (obj "active" true "score" 40))
@@ -31,6 +31,16 @@
 (export object-field-entry
   (fn ()
     (+ (. stats "score") 2)))
+
+(export object-get-entry
+  (fn ()
+    (obj.get stats "score")))
+
+(export object-get-discarded-entry
+  (fn ()
+    (do
+      (obj.get stats "score")
+      42)))
 
 (export boolean-entry
   (fn ()
@@ -70,6 +80,6 @@
 
 (export enum-case-entry
   (fn ()
-    (case (ok 41)
-      ((ok value) (+ value 1))
-      ((err _) 0))))
+    (case (success 41)
+      ((success value) (+ value 1))
+      ((failure _) 0))))

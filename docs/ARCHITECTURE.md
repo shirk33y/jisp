@@ -34,8 +34,9 @@ JSON / restricted YAML / Lisp
   access, string template, simple literal/bind/wildcard `case`, concrete native
   enum constructors, variant `case`, list/object `case` patterns, simple binary
   intrinsic subset, non-capturing function pointers and callback list helpers,
-  typed string/list/math helper subset, and static closed-row object helpers.
-  It rejects unsupported shapes without introducing a dynamic `Value` ABI.
+  typed string/list/math helper subset, and static closed-row object helpers
+  including known-field `obj.get`. It rejects unsupported shapes without
+  introducing a dynamic `Value` ABI.
 - `jisp-macros`: Cargo dependency-tracking proc macros that call the facade
   native-emission seam.
 - `jisp`: facade API, including detailed native emission with source files,

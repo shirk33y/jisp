@@ -48,9 +48,11 @@ This is the single authoritative list of intentionally unfinished work.
   6. Done: emit non-capturing top-level function values as typed native function
      pointers, including `list.map`, `list.filter`, `list.fold`, `list.some`,
      and `list.every` callbacks.
+  7. Done: emit known static closed-row `obj.get` fields as concrete
+     `result<T, str>` values.
 - Add native backend support for nested/capturing function values, variadic user
-  functions, `bigint` emission, `obj.get`, dynamic object
-  helpers/open rows, and dynamic field access.
+  functions, `bigint` emission, dynamic object helpers/open rows, and dynamic
+  field access.
 - Add compile-time evaluation for user macros.
 - Add case guards, alternative patterns, aliases, and robust exhaustiveness.
 - Expand `jisp-macros` beyond item-position native file emission.

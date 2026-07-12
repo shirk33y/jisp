@@ -17,6 +17,25 @@ fn native_scalars_match_the_interpreter() {
 }
 
 #[test]
+fn native_static_object_get_matches_the_interpreter() {
+    let native = match object_get_entry() {
+        JispEnum1::Ok(value) => Value::Variant {
+            tag: "ok".to_owned(),
+            fields: vec![Value::Int(value)],
+        },
+        JispEnum1::Err(message) => Value::Variant {
+            tag: "err".to_owned(),
+            fields: vec![Value::string(message)],
+        },
+    };
+    assert_matches_interpreter("object-get-entry", native);
+    assert_matches_interpreter(
+        "object-get-discarded-entry",
+        Value::Int(object_get_discarded_entry()),
+    );
+}
+
+#[test]
 fn native_strings_and_lists_match_the_interpreter() {
     assert_matches_interpreter("string-entry", Value::string(string_entry()));
     assert_matches_interpreter(

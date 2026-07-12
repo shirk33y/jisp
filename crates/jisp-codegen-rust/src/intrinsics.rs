@@ -55,6 +55,7 @@ impl<'a> EmitContext<'a> {
             "list.append" => self.emit_list_append_intrinsic(arguments),
             "obj.len" => self.emit_obj_len_intrinsic(arguments),
             "obj.has" => self.emit_obj_has_intrinsic(arguments),
+            "obj.get" => self.emit_obj_get_intrinsic(arguments, expected),
             "obj.keys" => self.emit_obj_keys_intrinsic(arguments),
             "obj.set" => self.emit_obj_set_intrinsic(arguments, expected),
             "obj.del" => self.emit_obj_del_intrinsic(arguments, expected),
@@ -712,6 +713,43 @@ impl<'a> EmitContext<'a> {
         let row = self.native_object_row(object)?;
         let has = row.fields.contains_key(&key);
         Ok(quote! { #has })
+    }
+
+    fn emit_obj_get_intrinsic(
+        &mut self,
+        arguments: &[Expr],
+        expected: Option<&Type>,
+    ) -> Result<TokenStream, CodegenError> {
+        let [object, key] = arguments else {
+            return Err(CodegenError::Unsupported("non-binary native obj.get"));
+        };
+        let Some(key) = super::static_string_key(key) else {
+            return Err(CodegenError::Unsupported("dynamic native object keys"));
+        };
+        let row = self.native_object_row(object)?;
+        let Some(field_type) = row.fields.get(&key) else {
+            return Err(CodegenError::Unsupported("obj.get missing static field"));
+        };
+        let result_type = result_type(field_type.clone(), Type::Str);
+        if let Some(expected) = expected {
+            if expected != &result_type {
+                return Err(CodegenError::Unsupported(
+                    "obj.get native value type mismatch",
+                ));
+            }
+        }
+        let ok = self
+            .enum_types
+            .prelude_constructor("ok", Some(&result_type))?
+            .ok_or(CodegenError::Unsupported("obj.get native result type"))?;
+        let object = self.emit_expr(object, None)?;
+        let enum_ident = &ok.enum_ident;
+        let ok_variant = &ok.ident;
+        let field = super::rust_ident(&key);
+        Ok(quote! {{
+            let __jisp_object = #object;
+            #enum_ident::#ok_variant(__jisp_object.#field.clone())
+        }})
     }
 
     fn emit_obj_keys_intrinsic(&mut self, arguments: &[Expr]) -> Result<TokenStream, CodegenError> {
