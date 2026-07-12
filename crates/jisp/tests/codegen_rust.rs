@@ -26,6 +26,28 @@ fn emit_rust_detailed_emits_native_tokens_for_typed_functions() {
 }
 
 #[test]
+fn emit_rust_detailed_emits_native_variadic_function_abi() {
+    let generated = jisp::emit_rust_as_detailed(
+        "main.lisp",
+        Syntax::Lisp,
+        r#"
+(def sum-rest
+  (fn (head ... tail)
+    (+ head (list.fold (fn (total value) (+ total value)) 0 tail))))
+(export main (fn () (sum-rest 40 1 1)))
+"#,
+    )
+    .unwrap();
+
+    let tokens = generated.tokens.to_string();
+
+    assert!(tokens.contains("fn sum_rest (head : i64 , tail : Vec < i64 >) -> i64"));
+    assert!(tokens.contains("sum_rest (40i64 , vec ! [1i64 , 1i64])"));
+    assert!(!tokens.contains("Value"));
+    assert!(!tokens.contains("jisp_eval"));
+}
+
+#[test]
 fn emit_rust_detailed_maps_generated_functions_to_source_spans() {
     let generated = jisp::emit_rust_as_detailed(
         "main.lisp",

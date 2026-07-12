@@ -55,11 +55,10 @@ This is the single authoritative list of intentionally unfinished work.
      `result.recover` callbacks.
   9. Done: emit typed function expressions, local closures, and closures that
      snapshot captured native values for direct calls and callback helpers.
-- Next scope: implement monomorphic native variadic functions using the concrete
-  final-`Vec<T>` ABI described in
-  `.agents/plans/0007-native-variadic-functions.md`.
-- Add native backend support for variadic user functions, `bigint` emission,
-  dynamic object helpers/open rows, and dynamic field access.
+  10. Done: emit monomorphic native variadic definitions, local/returned
+      closures, and typed calls using a final `Vec<T>` rest ABI.
+- Add native backend support for `bigint` emission, dynamic object helpers/open
+  rows, and dynamic field access.
 - Add compile-time evaluation for user macros.
 - Add case guards, alternative patterns, aliases, and robust exhaustiveness.
 - Expand `jisp-macros` beyond item-position native file emission.

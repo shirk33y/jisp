@@ -8,12 +8,14 @@ definitions, local lambdas, captured closures, direct calls, and typed function
 values. It must not introduce a dynamic callable or `jisp_eval::Value` into the
 native ABI.
 
-## Current boundary
+## Implemented boundary
 
 `jisp-types::Type::Function` already records fixed `parameters`, an optional
 `rest` item type, and a `result`. The interpreter binds the rest parameter to a
-list. Native codegen currently rejects `rest` in top-level definitions, lambda
-emission, function values, and callback types.
+list. Native codegen lowers this rest parameter in top-level definitions, local
+lambdas, closure values, and typed call expressions. Fixed-arity callback
+helpers retain their explicit contracts and continue to reject variadic
+callbacks.
 
 ## Native ABI
 
@@ -84,3 +86,9 @@ semantically and a `Vec<R>` natively.
   fallback.
 - `cargo fmt --all -- --check`, workspace Clippy with denied warnings, workspace
   tests, and `jisp-macros` tests pass locally.
+
+## Status
+
+Implemented on `master`: definitions, closures, function values, and typed calls
+use the final-`Vec<T>` ABI; conformance tests cover top-level, local capturing,
+returned, conditional, empty-rest, and non-empty-rest calls.

@@ -34,7 +34,8 @@ JSON / restricted YAML / Lisp
   access, string template, simple literal/bind/wildcard `case`, concrete native
   enum constructors, variant `case`, list/object `case` patterns, simple binary
   intrinsic subset, typed function values, local closures that snapshot captured
-  values, calls through function expressions, and callback list helpers,
+  values, concrete final-`Vec<T>` variadic functions, calls through function
+  expressions, and callback list helpers,
   typed string/list/math helper subset, and static closed-row object helpers
   including known-field `obj.get`, plus concrete `result` callback helpers. It
   receives resolved expression types from `TypedModule`, so each native `result`

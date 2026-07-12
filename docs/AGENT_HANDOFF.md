@@ -29,7 +29,9 @@ object-field coverage over finite fields, including nested object paths such as
 coverage for whole variant payloads.
 Variadic function types are represented in `jisp-types`; lambda rest parameters
 are typed as lists of extra arguments, and runtime-variadic `str.cat` and
-`list.cat` have matching prelude schemes. Runtime object helpers including
+`list.cat` have matching prelude schemes. Native codegen lowers monomorphic user
+variadics to a final `Vec<T>` parameter and packs trailing Jisp call arguments.
+Runtime object helpers including
 `obj.get`, `obj.set`, `obj.del`, `obj.values`, and variadic `obj.cat` have broad
 object-row prelude schemes, plus static-key refinements for `obj.get`,
 `obj.set`, and `obj.del`, homogeneous closed-row `obj.values`, and closed-row

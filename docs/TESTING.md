@@ -22,7 +22,8 @@ with the interpreter. The fixture covers scalars, strings, lists,
 closed-object field access, enum `case` expressions, local and returned
 capturing closures, callbacks in `list.map`, `list.filter`, `list.fold`,
 `list.some`, and `list.every`, plus calls through a conditional typed function
-expression. It also covers `result` patterns for statically typed `obj.get`,
+expression and variadic functions with empty/non-empty rest arguments. It also
+covers `result` patterns for statically typed `obj.get`,
 including an inline closed object, `option` cases, and `result.try`,
 `result.map`, `result.map-err`, and `result.recover` callbacks that change the
 concrete success or error layout.
