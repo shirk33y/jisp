@@ -36,12 +36,12 @@ JSON / restricted YAML / Lisp
   intrinsic subset, concrete `num_bigint::BigInt` values and numeric helpers,
   typed function values, local closures that snapshot captured values, concrete
   final-`Vec<T>` variadic functions, calls through function expressions and
-  callback list helpers, a typed string/list/math helper subset, and static
-  closed-row object helpers
-  including known-field `obj.get`, plus concrete `result` callback helpers. It
-  receives resolved expression types from `TypedModule`, so each native `result`
-  and inline closed-object layout is registered before Rust emission. It rejects
-  unsupported shapes without introducing a dynamic `Value` ABI.
+  callback list helpers, a typed string/list/math helper subset, and closed-row
+  object helpers including dynamic reads on homogeneous fields, plus concrete
+  `result` callback helpers. It receives resolved expression types from
+  `TypedModule`, so each native `result` and inline closed-object layout is
+  registered before Rust emission. It rejects unsupported shapes without
+  introducing a dynamic `Value` ABI.
 - `jisp-macros`: Cargo dependency-tracking proc macros that call the facade
   native-emission seam.
 - `jisp`: facade API, including detailed native emission with source files,

@@ -520,6 +520,13 @@ impl Inferencer {
         let key_ty = self.infer_expr_located(key)?;
         self.unify(key_ty, Type::Str)?;
         let object_ty = self.infer_expr_located(object)?;
+        if static_string_key(key).is_none() {
+            if let Type::Object(row) = self.apply(&object_ty) {
+                if let Some(field) = homogeneous_closed_field_type(&row) {
+                    return Ok(field);
+                }
+            }
+        }
         let field_ty = self.fresh_type();
         let rest = self.fresh_var();
         let fields = static_string_key(key)
@@ -552,15 +559,17 @@ impl Inferencer {
 
     fn infer_obj_get(&mut self, arguments: &[Expr]) -> Result<Option<Type>, InferError> {
         require_arity(arguments, 2)?;
-        let Some(key) = static_string_key(&arguments[1]) else {
-            return Ok(None);
-        };
         let key_ty = self.infer_expr_located(&arguments[1])?;
         self.unify(key_ty, Type::Str)?;
         let Some(row) = self.infer_static_object_row(&arguments[0])? else {
             return Ok(None);
         };
-        let Some(field) = row.fields.get(&key).cloned() else {
+        let field = if let Some(key) = static_string_key(&arguments[1]) {
+            row.fields.get(&key).cloned()
+        } else {
+            homogeneous_closed_field_type(&row)
+        };
+        let Some(field) = field else {
             return Ok(None);
         };
         Ok(Some(result_type(field, Type::Str)))
@@ -782,6 +791,17 @@ fn static_string_key(expr: &Expr) -> Option<String> {
         }
         _ => None,
     }
+}
+
+fn homogeneous_closed_field_type(row: &ObjectRow) -> Option<Type> {
+    if row.rest.is_some() || row.fields.is_empty() {
+        return None;
+    }
+    let field = row.fields.values().next()?.clone();
+    row.fields
+        .values()
+        .all(|candidate| candidate == &field)
+        .then_some(field)
 }
 
 fn require_arity(arguments: &[Expr], expected: usize) -> Result<(), InferError> {

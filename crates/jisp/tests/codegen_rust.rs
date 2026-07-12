@@ -415,6 +415,31 @@ fn emit_rust_detailed_emits_bigint_without_runtime_fallback() {
 }
 
 #[test]
+fn emit_rust_detailed_rejects_dynamic_reads_on_heterogeneous_objects() {
+    let error = match jisp::emit_rust_as_detailed(
+        "main.lisp",
+        Syntax::Lisp,
+        r#"
+(export main
+  (fn ()
+    (let (key (str.cat "a" ""))
+      (+ (. (obj "a" 1 "b" true) key) 1))))
+"#,
+    ) {
+        Ok(_) => panic!("expected heterogeneous dynamic object read to be rejected"),
+        Err(error) => error.error,
+    };
+
+    assert!(matches!(error, jisp::Error::Codegen(_)), "{error}");
+    assert!(
+        error
+            .to_string()
+            .contains("dynamic native access on heterogeneous object"),
+        "{error}"
+    );
+}
+
+#[test]
 fn emit_rust_detailed_emits_native_file_imports() {
     let dir = fixture_dir("native-file-imports");
     let main = dir.join("main.lisp");

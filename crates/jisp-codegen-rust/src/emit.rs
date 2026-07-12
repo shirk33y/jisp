@@ -2,7 +2,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use jisp_core::Span;
 use jisp_ir::{CaseBranch, Definition, Expr, ExprKind, Literal, Pattern, StringPart};
-use jisp_types::{Scheme, Type, TypedModule};
+use jisp_types::{ObjectRow, Scheme, Type, TypedModule};
 use proc_macro2::{Ident, TokenStream};
 use quote::{format_ident, quote};
 
@@ -22,6 +22,9 @@ mod closures;
 
 #[path = "object_types.rs"]
 mod object_types;
+
+#[path = "dynamic_objects.rs"]
+mod dynamic_objects;
 
 #[path = "result.rs"]
 mod result;
@@ -275,7 +278,7 @@ impl<'a> EmitContext<'a> {
             }
             ExprKind::List(items) => self.emit_list(items, expected),
             ExprKind::Object(fields) => self.emit_object(fields, expected),
-            ExprKind::Field { object, key } => self.emit_field(object, key),
+            ExprKind::Field { object, key } => self.emit_field(object, key, expected),
             ExprKind::StringTemplate { lines, parts } => self.emit_string_template(*lines, parts),
             ExprKind::Case { subject, branches } => self.emit_case(subject, branches, expected),
         }
@@ -384,13 +387,19 @@ impl<'a> EmitContext<'a> {
         Ok(quote! { #ident { #(#fields),* } })
     }
 
-    fn emit_field(&mut self, object: &Expr, key: &Expr) -> Result<TokenStream, CodegenError> {
-        let Some(key) = static_string_key(key) else {
-            return Err(CodegenError::Unsupported("dynamic native field access"));
-        };
-        let object = self.emit_expr(object, None)?;
-        let key = rust_ident(&key);
-        Ok(quote! { #object.#key })
+    fn emit_field(
+        &mut self,
+        object: &Expr,
+        key: &Expr,
+        expected: Option<&Type>,
+    ) -> Result<TokenStream, CodegenError> {
+        if let Some(key) = static_string_key(key) {
+            let object = self.emit_expr(object, None)?;
+            let key = rust_ident(&key);
+            Ok(quote! { #object.#key })
+        } else {
+            self.emit_dynamic_field(object, key, expected)
+        }
     }
 
     fn emit_string_template(
@@ -685,6 +694,18 @@ impl<'a> EmitContext<'a> {
                     .or_else(|| self.top_level_schemes.get(name).map(|scheme| &scheme.body)),
                 _ => None,
             })
+    }
+
+    pub(super) fn native_closed_object_row(&self, expr: &Expr) -> Result<ObjectRow, CodegenError> {
+        match self.expression_type(expr) {
+            Some(Type::Object(row)) if row.rest.is_none() => Ok(row.clone()),
+            Some(Type::Object(_)) => {
+                Err(CodegenError::Unsupported("open object row type emission"))
+            }
+            _ => Err(CodegenError::Unsupported(
+                "native object helper arguments without known object rows",
+            )),
+        }
     }
 }
 

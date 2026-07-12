@@ -8,6 +8,9 @@
 (def words
   (list "ada" "lin" "grace"))
 
+(def scores
+  (obj "primary" 40 "secondary" 41))
+
 (def increment
   (fn (value)
     (+ value 1)))
@@ -271,3 +274,27 @@
     (let (offset (bigint "9223372036854775808")
           add-offset (fn (value) (+ value offset)))
       (add-offset (bigint "2")))))
+
+(export dynamic-field-entry
+  (fn ()
+    (let (key (str.cat "pri" "mary"))
+      (+ (. scores key) 2))))
+
+(export dynamic-object-get-entry
+  (fn ()
+    (let (key (str.cat "sec" "ondary"))
+      (case (obj.get scores key)
+        ((ok value) (+ value 1))
+        ((err _) 0)))))
+
+(export dynamic-object-get-missing-entry
+  (fn ()
+    (let (key (str.cat "mis" "sing"))
+      (case (obj.get scores key)
+        ((ok _) 0)
+        ((err _) 42)))))
+
+(export dynamic-object-has-entry
+  (fn ()
+    (let (key (str.cat "sec" "ondary"))
+      (if (obj.has scores key) 42 0))))

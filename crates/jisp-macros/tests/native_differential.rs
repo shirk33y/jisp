@@ -148,6 +148,23 @@ fn native_bigints_match_the_interpreter() {
     );
 }
 
+#[test]
+fn native_dynamic_reads_on_homogeneous_closed_objects_match_the_interpreter() {
+    assert_matches_interpreter("dynamic-field-entry", Value::Int(dynamic_field_entry()));
+    assert_matches_interpreter(
+        "dynamic-object-get-entry",
+        Value::Int(dynamic_object_get_entry()),
+    );
+    assert_matches_interpreter(
+        "dynamic-object-get-missing-entry",
+        Value::Int(dynamic_object_get_missing_entry()),
+    );
+    assert_matches_interpreter(
+        "dynamic-object-has-entry",
+        Value::Int(dynamic_object_has_entry()),
+    );
+}
+
 fn assert_matches_interpreter(export: &str, native: Value) {
     let interpreted = interpreter_export(export);
     assert!(

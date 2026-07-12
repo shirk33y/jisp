@@ -109,7 +109,9 @@ The lookup and slice functions return `result` values rather than trapping.
 
 Objects have string keys and immutable updates. In the interpreter, dynamic
 keys are valid for all object helpers. Native Rust generation currently needs a
-static closed object shape for the helpers it supports.
+closed object shape. Dynamic `.`/`obj.get`/`obj.has` reads are supported when
+every field has the same concrete type; heterogeneous dynamic reads and dynamic
+mutation remain interpreter-only.
 
 | Function | Signature | Description | Example |
 | --- | --- | --- | --- |

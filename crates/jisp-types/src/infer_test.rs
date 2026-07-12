@@ -683,6 +683,41 @@ fn prelude_keeps_dynamic_object_helper_fallback() {
 }
 
 #[test]
+fn prelude_refines_dynamic_reads_on_homogeneous_closed_objects() {
+    let mut inferencer = Inferencer::with_prelude();
+    let scores = || {
+        expr(ExprKind::Object(vec![
+            (string("primary"), int(40)),
+            (string("secondary"), int(41)),
+        ]))
+    };
+    let key = || {
+        expr(ExprKind::Call {
+            callee: Box::new(name("str.cat")),
+            arguments: vec![string("pri"), string("mary")],
+        })
+    };
+
+    let field = expr(ExprKind::Field {
+        object: Box::new(scores()),
+        key: Box::new(key()),
+    });
+    assert_eq!(inferencer.infer_expr(&field).unwrap(), Type::Int);
+
+    let get = expr(ExprKind::Call {
+        callee: Box::new(name("obj.get")),
+        arguments: vec![scores(), key()],
+    });
+    assert_eq!(
+        inferencer.infer_expr(&get).unwrap(),
+        Type::Named {
+            name: "result".to_owned(),
+            arguments: vec![Type::Int, Type::Str],
+        }
+    );
+}
+
+#[test]
 fn prelude_infers_variadic_runtime_helpers() {
     let mut inferencer = Inferencer::with_prelude();
 

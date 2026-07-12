@@ -767,7 +767,7 @@ impl<'a> EmitContext<'a> {
         let [object] = arguments else {
             return Err(CodegenError::Unsupported("non-unary native intrinsics"));
         };
-        let row = self.native_object_row(object)?;
+        let row = self.native_closed_object_row(object)?;
         let len = row.fields.len() as i64;
         Ok(quote! { #len })
     }
@@ -777,9 +777,9 @@ impl<'a> EmitContext<'a> {
             return Err(CodegenError::Unsupported("non-binary native intrinsics"));
         };
         let Some(key) = super::static_string_key(key) else {
-            return Err(CodegenError::Unsupported("dynamic native object keys"));
+            return self.emit_dynamic_obj_has(object, key);
         };
-        let row = self.native_object_row(object)?;
+        let row = self.native_closed_object_row(object)?;
         let has = row.fields.contains_key(&key);
         Ok(quote! { #has })
     }
@@ -793,9 +793,9 @@ impl<'a> EmitContext<'a> {
             return Err(CodegenError::Unsupported("non-binary native obj.get"));
         };
         let Some(key) = super::static_string_key(key) else {
-            return Err(CodegenError::Unsupported("dynamic native object keys"));
+            return self.emit_dynamic_obj_get(object, key, expected);
         };
-        let row = self.native_object_row(object)?;
+        let row = self.native_closed_object_row(object)?;
         let Some(field_type) = row.fields.get(&key) else {
             return Err(CodegenError::Unsupported("obj.get missing static field"));
         };
@@ -825,7 +825,7 @@ impl<'a> EmitContext<'a> {
         let [object] = arguments else {
             return Err(CodegenError::Unsupported("non-unary native intrinsics"));
         };
-        let row = self.native_object_row(object)?;
+        let row = self.native_closed_object_row(object)?;
         let keys = row.fields.keys();
         Ok(quote! { vec![#(String::from(#keys)),*] })
     }
@@ -906,7 +906,7 @@ impl<'a> EmitContext<'a> {
         let [object] = arguments else {
             return Err(CodegenError::Unsupported("non-unary native intrinsics"));
         };
-        let row = self.native_object_row(object)?;
+        let row = self.native_closed_object_row(object)?;
         let object = self.emit_expr(object, None)?;
         let fields = row.fields.keys().map(|name| {
             let field = super::rust_ident(name);
@@ -931,7 +931,7 @@ impl<'a> EmitContext<'a> {
         let ident = self.object_types.ident_for_row(row)?;
         let rows = arguments
             .iter()
-            .map(|argument| self.native_object_row(argument))
+            .map(|argument| self.native_closed_object_row(argument))
             .collect::<Result<Vec<_>, _>>()?;
         let objects = arguments
             .iter()
@@ -961,19 +961,6 @@ impl<'a> EmitContext<'a> {
             #(#bindings)*
             #ident { #(#fields),* }
         }})
-    }
-
-    fn native_object_row(&self, expr: &Expr) -> Result<jisp_types::ObjectRow, CodegenError> {
-        let ty = self.expression_type(expr);
-        match ty {
-            Some(Type::Object(row)) if row.rest.is_none() => Ok(row.clone()),
-            Some(Type::Object(_)) => {
-                Err(CodegenError::Unsupported("open object row type emission"))
-            }
-            _ => Err(CodegenError::Unsupported(
-                "native object helper arguments without known object rows",
-            )),
-        }
     }
 }
 
