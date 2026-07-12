@@ -24,8 +24,9 @@ matching structural comparison here whenever native codegen gains a supported
 value shape or intrinsic.
 
 Unsupported native shapes remain covered by explicit `CodegenError` regression
-tests. Compile-fail fixtures for generated Rust are the next extension of this
-suite when a feature can produce invalid downstream Rust.
+tests and downstream compile-fail fixtures. The latter build a temporary crate
+that invokes the proc macro and assert its Jisp diagnostic, so unsupported
+shapes never degrade into opaque generated-Rust failures.
 
 ## Documentation examples
 
