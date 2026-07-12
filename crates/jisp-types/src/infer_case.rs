@@ -15,8 +15,11 @@ impl Inferencer {
 
         for branch in branches {
             let body_ty = self.with_scope(|inferencer| {
-                let mut bindings = BTreeSet::new();
+                let mut bindings = BTreeMap::new();
                 inferencer.infer_pattern(&branch.pattern, subject_ty.clone(), &mut bindings)?;
+                for (name, ty) in bindings {
+                    inferencer.define(name, Scheme::mono(inferencer.apply(&ty)));
+                }
                 inferencer.infer_expr_located(&branch.body)
             })?;
             self.unify(result_ty.clone(), body_ty)?;
@@ -397,7 +400,7 @@ impl Inferencer {
         &mut self,
         pattern: &Pattern,
         expected: Type,
-        bindings: &mut BTreeSet<String>,
+        bindings: &mut BTreeMap<String, Type>,
     ) -> Result<(), InferError> {
         match pattern {
             Pattern::Wildcard => {}
@@ -484,12 +487,12 @@ impl Inferencer {
         &mut self,
         name: &str,
         ty: Type,
-        bindings: &mut BTreeSet<String>,
+        bindings: &mut BTreeMap<String, Type>,
     ) -> Result<(), InferError> {
-        if !bindings.insert(name.to_owned()) {
+        if bindings.contains_key(name) {
             return Err(InferError::DuplicatePatternBinding(name.to_owned()));
         }
-        self.define(name, Scheme::mono(self.apply(&ty)));
+        bindings.insert(name.to_owned(), self.apply(&ty));
         Ok(())
     }
 }
