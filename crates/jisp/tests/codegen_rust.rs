@@ -283,6 +283,31 @@ fn emit_rust_detailed_emits_native_enum_case() {
 }
 
 #[test]
+fn emit_rust_detailed_emits_native_enum_alias_case() {
+    let generated = jisp::emit_rust_as_detailed(
+        "main.lisp",
+        Syntax::Lisp,
+        r#"
+(type response
+  (ok int)
+  (err int))
+
+(export main
+  (fn ()
+    (case (ok 7)
+      ((as (ok value) whole) value)
+      ((err _) 0))))
+"#,
+    )
+    .unwrap();
+
+    let tokens = generated.tokens.to_string();
+
+    assert!(tokens.contains("whole @ JispEnum0 :: Ok (value)"));
+    assert!(!tokens.contains("Value"));
+}
+
+#[test]
 fn emit_rust_detailed_emits_native_list_case_patterns() {
     let generated = jisp::emit_rust_as_detailed(
         "main.lisp",

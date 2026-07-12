@@ -407,6 +407,18 @@ fn pattern_matches(
             bindings.push((name.clone(), value.clone()));
             Ok(true)
         }
+        Pattern::Alias { pattern, name } => {
+            if !pattern_matches(pattern, value, bindings)? {
+                return Ok(false);
+            }
+            if bindings.iter().any(|(existing, _)| existing == name) {
+                return Err(RuntimeError::message(format!(
+                    "pattern binds `{name}` more than once"
+                )));
+            }
+            bindings.push((name.clone(), value.clone()));
+            Ok(true)
+        }
         Pattern::Literal(literal) => literal_value(literal).structurally_equal(value),
         Pattern::Variant { tag, fields } => {
             let Value::Variant {

@@ -68,6 +68,27 @@ keeps expansion deterministic and avoids a second prelude, IO, and module
 loading contract. The full design and future boundaries are recorded in
 [`.agents/plans/0010-user-macros.md`](../.agents/plans/0010-user-macros.md).
 
+## Case alias patterns
+
+`(as pattern name)` both applies `pattern` and binds `name` to the entire
+matched value. It is transparent to exhaustiveness checking, so aliases do not
+make a case less complete.
+
+```lisp test=spec.case-alias mode=run
+(type response
+  (ok int)
+  (err int))
+
+(export main
+  (fn ()
+    (case (ok 7)
+      ((as (ok value) whole)
+        (case whole
+          ((ok repeated) (+ value repeated))
+          ((err _) 0)))
+      ((err _) 0))))
+```
+
 ## Definitions and modules
 
 ```yaml

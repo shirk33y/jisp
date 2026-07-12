@@ -90,3 +90,50 @@ fn detailed_errors_render_user_macro_expansion_origin() {
     assert!(rendered.contains("no overload of `+`"), "{rendered}");
     assert!(rendered.contains("expanded from here"), "{rendered}");
 }
+
+#[test]
+fn run_main_binds_the_whole_value_with_an_alias_pattern() {
+    let value = jisp::run_main(
+        "case-alias.lisp",
+        r#"
+(type response
+  (ok int)
+  (err int))
+
+(export main
+  (fn ()
+    (case (ok 7)
+      ((as (ok value) whole)
+        (case whole
+          ((ok repeated) (+ value repeated))
+          ((err _) 0)))
+      ((err _) 0))))
+"#,
+    )
+    .unwrap();
+
+    assert_eq!(value.display_string(), "14");
+}
+
+#[test]
+fn alias_patterns_reject_duplicate_bindings() {
+    let error = match jisp::check(
+        "case-alias-duplicate.lisp",
+        r#"
+(export main
+  (fn ()
+    (case 1
+      ((as value value) value))))
+"#,
+    ) {
+        Ok(_) => panic!("expected duplicate pattern binding error"),
+        Err(error) => error,
+    };
+
+    assert!(matches!(
+        error,
+        jisp::Error::Type(InferError::Located { error, .. })
+            if matches!(error.as_ref(), InferError::DuplicatePatternBinding(name) if name == "value")
+    ));
+}
+use jisp::jisp_types::InferError;

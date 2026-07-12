@@ -73,7 +73,7 @@ impl Inferencer {
                     &branch.pattern,
                 )));
             }
-            match &branch.pattern {
+            match strip_alias(&branch.pattern) {
                 Pattern::Wildcard | Pattern::Bind(_) => has_catch_all = true,
                 Pattern::Variant { tag, .. } => {
                     if !covered.insert(tag.clone()) {
@@ -92,6 +92,7 @@ impl Inferencer {
                     }
                 }
                 Pattern::Literal(_) | Pattern::List { .. } | Pattern::Object(_) => {}
+                Pattern::Alias { .. } => unreachable!("aliases are stripped above"),
             }
         }
 
@@ -128,7 +129,7 @@ impl Inferencer {
                 )));
             }
 
-            match &branch.pattern {
+            match strip_alias(&branch.pattern) {
                 Pattern::Wildcard | Pattern::Bind(_) => has_catch_all = true,
                 Pattern::List { prefix, rest } => {
                     let irrefutable_prefix = prefix
@@ -182,7 +183,8 @@ impl Inferencer {
                         refined_exact_expected.insert(length, expected);
                     }
                 }
-                _ => {}
+                Pattern::Literal(_) | Pattern::Variant { .. } | Pattern::Object(_) => {}
+                Pattern::Alias { .. } => unreachable!("aliases are stripped above"),
             }
         }
 
@@ -251,7 +253,7 @@ impl Inferencer {
     }
 
     fn pattern_is_irrefutable_for_type(&self, pattern: &Pattern, ty: &Type) -> bool {
-        match pattern {
+        match strip_alias(pattern) {
             Pattern::Wildcard | Pattern::Bind(_) => true,
             Pattern::Literal(Literal::Null) => matches!(self.apply(ty), Type::Null),
             Pattern::List {
@@ -278,6 +280,7 @@ impl Inferencer {
             Pattern::Literal(_) | Pattern::Variant { .. } | Pattern::List { rest: None, .. } => {
                 false
             }
+            Pattern::Alias { .. } => unreachable!("aliases are stripped above"),
         }
     }
 
@@ -321,7 +324,7 @@ impl Inferencer {
             });
         }
 
-        let Pattern::Object(fields) = pattern else {
+        let Pattern::Object(fields) = strip_alias(pattern) else {
             return None;
         };
         let Type::Object(row) = self.apply(ty) else {
@@ -372,7 +375,7 @@ impl Inferencer {
         ty: &Type,
         domain: &BTreeSet<String>,
     ) -> Option<BTreeSet<String>> {
-        match pattern {
+        match strip_alias(pattern) {
             Pattern::Wildcard | Pattern::Bind(_) => Some(domain.clone()),
             Pattern::Literal(Literal::Bool(value)) if matches!(self.apply(ty), Type::Bool) => {
                 let label = value.to_string();
@@ -399,6 +402,10 @@ impl Inferencer {
         match pattern {
             Pattern::Wildcard => {}
             Pattern::Bind(name) => self.bind_pattern_name(name, expected, bindings)?,
+            Pattern::Alias { pattern, name } => {
+                self.infer_pattern(pattern, expected.clone(), bindings)?;
+                self.bind_pattern_name(name, expected, bindings)?;
+            }
             Pattern::Literal(literal) => {
                 let literal_ty = self.infer_literal(literal);
                 self.unify(expected, literal_ty)?;
@@ -491,6 +498,7 @@ fn pattern_name(pattern: &Pattern) -> String {
     match pattern {
         Pattern::Wildcard => "_".to_owned(),
         Pattern::Bind(name) => name.clone(),
+        Pattern::Alias { pattern, name } => format!("{} as {name}", pattern_name(pattern)),
         Pattern::Literal(Literal::Null) => "null".to_owned(),
         Pattern::Literal(Literal::Bool(value)) => value.to_string(),
         Pattern::Literal(Literal::Int(value)) => value.to_string(),
@@ -517,7 +525,14 @@ fn object_refinements_are_exhaustive(
 }
 
 fn pattern_is_always_irrefutable(pattern: &Pattern) -> bool {
-    matches!(pattern, Pattern::Wildcard | Pattern::Bind(_))
+    matches!(strip_alias(pattern), Pattern::Wildcard | Pattern::Bind(_))
+}
+
+fn strip_alias(mut pattern: &Pattern) -> &Pattern {
+    while let Pattern::Alias { pattern: inner, .. } = pattern {
+        pattern = inner;
+    }
+    pattern
 }
 
 fn list_coverage_is_exhaustive(

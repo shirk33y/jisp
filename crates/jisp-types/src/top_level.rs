@@ -122,6 +122,10 @@ fn collect_pattern_bindings(pattern: &Pattern, bindings: &mut BTreeSet<String>) 
         Pattern::Bind(name) => {
             bindings.insert(name.clone());
         }
+        Pattern::Alias { pattern, name } => {
+            collect_pattern_bindings(pattern, bindings);
+            bindings.insert(name.clone());
+        }
         Pattern::Variant { fields, .. } => {
             for field in fields {
                 collect_pattern_bindings(field, bindings);

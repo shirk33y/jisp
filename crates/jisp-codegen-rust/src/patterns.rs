@@ -41,6 +41,15 @@ pub(crate) fn emit_pattern(
     match pattern {
         Pattern::Wildcard => Ok(PatternEmission::empty(quote! { true })),
         Pattern::Bind(name) => emit_bind_pattern(name, value),
+        Pattern::Alias { pattern, name } => {
+            let mut emitted = emit_pattern(pattern, value.clone())?;
+            let ident = rust_ident(name);
+            emitted.bindings.push(PatternBinding {
+                name: name.clone(),
+                tokens: quote! { let #ident = #value.clone(); },
+            });
+            Ok(emitted)
+        }
         Pattern::Literal(literal) => {
             let literal = emit_literal(literal)?;
             Ok(PatternEmission::empty(quote! { #value == #literal }))
@@ -100,6 +109,25 @@ pub(crate) fn emit_variant_match_pattern(
                 tokens: quote! { #ident },
                 bindings: vec![name.clone()],
             })
+        }
+        Pattern::Alias { pattern, name } => {
+            let PatternMatch {
+                tokens,
+                mut bindings,
+            } = emit_variant_match_pattern(pattern, enum_types, subject_type)?;
+            if matches!(pattern.as_ref(), Pattern::Bind(_)) {
+                return Err(CodegenError::Unsupported(
+                    "alias of a binding in native variant case",
+                ));
+            }
+            let ident = rust_ident(name);
+            let tokens = if matches!(pattern.as_ref(), Pattern::Wildcard) {
+                quote! { #ident }
+            } else {
+                quote! { #ident @ #tokens }
+            };
+            bindings.push(name.clone());
+            Ok(PatternMatch { tokens, bindings })
         }
         Pattern::Literal(_) => Err(CodegenError::Unsupported(
             "literal patterns in native variant case",
@@ -183,6 +211,9 @@ fn emit_variant_field_pattern(
             let ident = rust_ident(name);
             Ok(quote! { #ident })
         }
+        Pattern::Alias { .. } => Err(CodegenError::Unsupported(
+            "alias patterns nested in native variant fields",
+        )),
         Pattern::Literal(_) => Err(CodegenError::Unsupported("literal variant field patterns")),
         Pattern::Variant { .. } => Err(CodegenError::Unsupported("nested variant case patterns")),
         Pattern::List { .. } => Err(CodegenError::Unsupported("list case patterns")),

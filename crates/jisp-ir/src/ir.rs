@@ -133,6 +133,10 @@ pub struct CaseBranch {
 pub enum Pattern {
     Wildcard,
     Bind(String),
+    Alias {
+        pattern: Box<Pattern>,
+        name: String,
+    },
     Literal(Literal),
     Variant {
         tag: String,

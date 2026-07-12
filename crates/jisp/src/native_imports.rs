@@ -341,6 +341,10 @@ impl PrefixRewriter<'_> {
         match pattern {
             Pattern::Wildcard => Pattern::Wildcard,
             Pattern::Bind(name) => Pattern::Bind(name.clone()),
+            Pattern::Alias { pattern, name } => Pattern::Alias {
+                pattern: Box::new(self.pattern(pattern)),
+                name: name.clone(),
+            },
             Pattern::Literal(literal) => Pattern::Literal(literal.clone()),
             Pattern::Variant { tag, fields } => Pattern::Variant {
                 tag: self.variant_name(tag),
@@ -436,6 +440,10 @@ impl PrefixRewriter<'_> {
 fn collect_pattern_bindings(pattern: &Pattern, output: &mut BTreeSet<String>) {
     match pattern {
         Pattern::Bind(name) => {
+            output.insert(name.clone());
+        }
+        Pattern::Alias { pattern, name } => {
+            collect_pattern_bindings(pattern, output);
             output.insert(name.clone());
         }
         Pattern::Variant { fields, .. } => {

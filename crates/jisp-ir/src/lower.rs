@@ -517,9 +517,10 @@ fn lower_pattern(node: &Node) -> Result<Pattern, LowerError> {
             match head {
                 "list" => lower_list_pattern(node.span, &items[1..]),
                 "obj" => lower_object_pattern(node.span, &items[1..]),
-                "or" | "as" | "when" => Err(error(
+                "as" => lower_alias_pattern(node.span, &items[1..]),
+                "or" | "when" => Err(error(
                     node.span,
-                    "pattern alternatives, aliases, and guards are post-MVP features",
+                    "pattern alternatives and guards are post-MVP features",
                 )),
                 tag => Ok(Pattern::Variant {
                     tag: tag.to_owned(),
@@ -531,6 +532,16 @@ fn lower_pattern(node: &Node) -> Result<Pattern, LowerError> {
             }
         }
     }
+}
+
+fn lower_alias_pattern(span: Span, nodes: &[Node]) -> Result<Pattern, LowerError> {
+    if nodes.len() != 2 {
+        return Err(error(span, "as pattern expects a pattern and binding name"));
+    }
+    Ok(Pattern::Alias {
+        pattern: Box::new(lower_pattern(&nodes[0])?),
+        name: expect_symbol(&nodes[1], "as pattern binding")?.to_owned(),
+    })
 }
 
 fn lower_list_pattern(span: Span, nodes: &[Node]) -> Result<Pattern, LowerError> {

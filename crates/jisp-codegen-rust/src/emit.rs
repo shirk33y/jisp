@@ -444,7 +444,7 @@ impl<'a> EmitContext<'a> {
     ) -> Result<TokenStream, CodegenError> {
         if branches
             .iter()
-            .any(|branch| matches!(branch.pattern, Pattern::Variant { .. }))
+            .any(|branch| pattern_contains_variant(&branch.pattern))
         {
             return self.emit_variant_case(subject, branches, expected);
         }
@@ -706,6 +706,18 @@ impl<'a> EmitContext<'a> {
                 "native object helper arguments without known object rows",
             )),
         }
+    }
+}
+
+fn pattern_contains_variant(pattern: &Pattern) -> bool {
+    match pattern {
+        Pattern::Alias { pattern, .. } => pattern_contains_variant(pattern),
+        Pattern::Variant { .. } => true,
+        Pattern::Wildcard
+        | Pattern::Bind(_)
+        | Pattern::Literal(_)
+        | Pattern::List { .. }
+        | Pattern::Object(_) => false,
     }
 }
 
