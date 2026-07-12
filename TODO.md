@@ -55,6 +55,9 @@ This is the single authoritative list of intentionally unfinished work.
      `result.recover` callbacks.
   9. Done: emit typed function expressions, local closures, and closures that
      snapshot captured native values for direct calls and callback helpers.
+- Next scope: implement monomorphic native variadic functions using the concrete
+  final-`Vec<T>` ABI described in
+  `.agents/plans/0007-native-variadic-functions.md`.
 - Add native backend support for variadic user functions, `bigint` emission,
   dynamic object helpers/open rows, and dynamic field access.
 - Add compile-time evaluation for user macros.
