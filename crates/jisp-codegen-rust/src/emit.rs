@@ -161,7 +161,8 @@ impl<'a> EmitContext<'a> {
         expr: &Expr,
         expected: Option<&Type>,
     ) -> Result<TokenStream, CodegenError> {
-        let expected = expected.or_else(|| self.expression_types.get(&expr.span));
+        let inferred = self.expression_type(expr).cloned();
+        let expected = expected.or(inferred.as_ref());
         match &expr.kind {
             ExprKind::Literal(literal) => emit_literal(literal),
             ExprKind::Name(name) => {
@@ -563,14 +564,11 @@ impl<'a> EmitContext<'a> {
     }
 
     pub(super) fn native_callback_type(&self, callback: &Expr) -> Result<Type, CodegenError> {
-        let ExprKind::Name(name) = &callback.kind else {
+        let ExprKind::Name(_) = &callback.kind else {
             return Err(CodegenError::Unsupported("native callback expressions"));
         };
         let ty = self
-            .expression_types
-            .get(&callback.span)
-            .or_else(|| self.locals.get(name).and_then(Option::as_ref))
-            .or_else(|| self.top_level_schemes.get(name).map(|scheme| &scheme.body))
+            .expression_type(callback)
             .ok_or(CodegenError::Unsupported("native callback outside module"))?;
         match ty {
             Type::Function { rest: None, .. } => Ok(ty.clone()),
@@ -584,16 +582,18 @@ impl<'a> EmitContext<'a> {
     }
 
     fn known_expr_type(&self, expr: &Expr) -> Option<Type> {
+        self.expression_type(expr).cloned()
+    }
+
+    pub(super) fn expression_type(&self, expr: &Expr) -> Option<&Type> {
         self.expression_types
             .get(&expr.span)
-            .cloned()
             .or_else(|| match &expr.kind {
                 ExprKind::Name(name) => self
                     .locals
                     .get(name)
                     .and_then(Option::as_ref)
-                    .or_else(|| self.top_level_schemes.get(name).map(|scheme| &scheme.body))
-                    .cloned(),
+                    .or_else(|| self.top_level_schemes.get(name).map(|scheme| &scheme.body)),
                 _ => None,
             })
     }

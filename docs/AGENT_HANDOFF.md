@@ -35,9 +35,11 @@ object-row prelude schemes, plus static-key refinements for `obj.get`,
 `obj.set`, and `obj.del`, homogeneous closed-row `obj.values`, and closed-row
 `obj.cat` with dynamic-key fallback. Native codegen emits static closed-row
 `obj.len`, `obj.has`, `obj.keys`, `obj.set`, `obj.del`, `obj.values`, and
-`obj.cat`; `obj.get` still depends on the P2 generic `result<T,E>` native
-layout. The prelude also has fixed-arity stdlib functions plus simple runtime
-helpers such as predicates, `result.recover`, numeric overloads including
+`obj.cat`, and known-field `obj.get` as a concrete `result<T, str>`. Resolved
+expression types let the backend register concrete `result` layouts and emit
+`result.try`, `result.map`, `result.map-err`, and `result.recover`. The prelude
+also has fixed-arity stdlib functions plus simple runtime helpers such as
+predicates, numeric overloads including
 explicit `(bigint "...")` values, `io.println`, and basic object introspection.
 P0 is complete: `jisp-types` exposes
 `TypedModule`, and `jisp-codegen-rust::generate` accepts it as the native

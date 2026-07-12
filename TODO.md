@@ -50,6 +50,9 @@ This is the single authoritative list of intentionally unfinished work.
      and `list.every` callbacks.
   7. Done: emit known static closed-row `obj.get` fields as concrete
      `result<T, str>` values.
+  8. Done: retain resolved expression types for native layout registration and
+     emit concrete `result.try`, `result.map`, `result.map-err`, and
+     `result.recover` callbacks.
 - Add native backend support for nested/capturing function values, variadic user
   functions, `bigint` emission, dynamic object helpers/open rows, and dynamic
   field access.

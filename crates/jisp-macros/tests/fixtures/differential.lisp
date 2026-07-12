@@ -24,6 +24,30 @@
   (fn (callback value)
     (+ 0 (callback (callback value)))))
 
+(def wrap
+  (fn (value)
+    (list (+ value 0))))
+
+(def as-list-error
+  (fn (message)
+    (list (str.cat message ""))))
+
+(def failed-result
+  (fn ()
+    (if false
+      (ok 0)
+      (err "bad"))))
+
+(def retry-with-list
+  (fn (value)
+    (list.slice (list (+ value 0)) 0 1)))
+
+(def recover-list-error
+  (fn (message)
+    (if true
+      (ok 42)
+      (err (list (str.cat message ""))))))
+
 (export scalar-entry
   (fn ()
     (+ 20 22)))
@@ -46,6 +70,30 @@
   (fn ()
     (case (obj.get stats "score")
       ((ok value) (+ value 2))
+      ((err _) 0))))
+
+(export result-map-entry
+  (fn ()
+    (case (result.map (obj.get stats "score") wrap)
+      ((ok values) (list.len values))
+      ((err _) 0))))
+
+(export result-map-err-entry
+  (fn ()
+    (case (result.map-err (failed-result) as-list-error)
+      ((ok _) 0)
+      ((err messages) (list.len messages)))))
+
+(export result-try-entry
+  (fn ()
+    (case (result.try (obj.get stats "score") retry-with-list)
+      ((ok values) (list.len values))
+      ((err _) 0))))
+
+(export result-recover-entry
+  (fn ()
+    (case (result.recover (failed-result) recover-list-error)
+      ((ok value) value)
       ((err _) 0))))
 
 (export boolean-entry
