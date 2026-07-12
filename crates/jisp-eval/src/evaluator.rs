@@ -419,6 +419,16 @@ fn pattern_matches(
             bindings.push((name.clone(), value.clone()));
             Ok(true)
         }
+        Pattern::Or(alternatives) => {
+            for alternative in alternatives {
+                let checkpoint = bindings.len();
+                if pattern_matches(alternative, value, bindings)? {
+                    return Ok(true);
+                }
+                bindings.truncate(checkpoint);
+            }
+            Ok(false)
+        }
         Pattern::Literal(literal) => literal_value(literal).structurally_equal(value),
         Pattern::Variant { tag, fields } => {
             let Value::Variant {

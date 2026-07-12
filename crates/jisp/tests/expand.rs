@@ -136,4 +136,45 @@ fn alias_patterns_reject_duplicate_bindings() {
             if matches!(error.as_ref(), InferError::DuplicatePatternBinding(name) if name == "value")
     ));
 }
+
+#[test]
+fn run_main_uses_or_pattern_with_consistent_bindings() {
+    let value = jisp::run_main(
+        "case-or.lisp",
+        r#"
+(type response
+  (ok int)
+  (pending int)
+  (err int))
+
+(export main
+  (fn ()
+    (case (pending 7)
+      ((or (ok value) (pending value)) (+ value 1))
+      ((err _) 0))))
+"#,
+    )
+    .unwrap();
+
+    assert_eq!(value.display_string(), "8");
+}
+
+#[test]
+fn or_patterns_require_consistent_bindings() {
+    let error = jisp::check(
+        "case-or-bindings.lisp",
+        r#"
+(export main
+  (fn ()
+    (case true
+      ((or true value) 1))))
+"#,
+    );
+
+    assert!(matches!(
+        error,
+        Err(jisp::Error::Type(InferError::Located { error, .. }))
+            if matches!(error.as_ref(), InferError::InconsistentAlternativeBindings)
+    ));
+}
 use jisp::jisp_types::InferError;

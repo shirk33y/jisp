@@ -29,6 +29,9 @@ pub enum InferError {
     #[error("pattern binds `{0}` more than once")]
     DuplicatePatternBinding(String),
 
+    #[error("all alternatives in an or pattern must bind the same names")]
+    InconsistentAlternativeBindings,
+
     #[error("non-exhaustive case for `{type_name}`, missing patterns: {missing:?}")]
     NonExhaustiveCase {
         type_name: String,

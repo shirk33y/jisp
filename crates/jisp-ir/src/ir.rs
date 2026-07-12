@@ -137,6 +137,7 @@ pub enum Pattern {
         pattern: Box<Pattern>,
         name: String,
     },
+    Or(Vec<Pattern>),
     Literal(Literal),
     Variant {
         tag: String,

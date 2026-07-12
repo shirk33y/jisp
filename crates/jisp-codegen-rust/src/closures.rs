@@ -189,6 +189,11 @@ fn collect_pattern_bindings(pattern: &Pattern, output: &mut BTreeSet<String>) {
             collect_pattern_bindings(pattern, output);
             output.insert(name.clone());
         }
+        Pattern::Or(alternatives) => {
+            for alternative in alternatives {
+                collect_pattern_bindings(alternative, output);
+            }
+        }
         Pattern::Variant { fields, .. } => {
             for field in fields {
                 collect_pattern_bindings(field, output);

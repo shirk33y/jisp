@@ -712,6 +712,7 @@ impl<'a> EmitContext<'a> {
 fn pattern_contains_variant(pattern: &Pattern) -> bool {
     match pattern {
         Pattern::Alias { pattern, .. } => pattern_contains_variant(pattern),
+        Pattern::Or(alternatives) => alternatives.iter().any(pattern_contains_variant),
         Pattern::Variant { .. } => true,
         Pattern::Wildcard
         | Pattern::Bind(_)

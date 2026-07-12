@@ -50,6 +50,7 @@ pub(crate) fn emit_pattern(
             });
             Ok(emitted)
         }
+        Pattern::Or(_) => Err(CodegenError::Unsupported("or case patterns")),
         Pattern::Literal(literal) => {
             let literal = emit_literal(literal)?;
             Ok(PatternEmission::empty(quote! { #value == #literal }))
@@ -129,6 +130,7 @@ pub(crate) fn emit_variant_match_pattern(
             bindings.push(name.clone());
             Ok(PatternMatch { tokens, bindings })
         }
+        Pattern::Or(_) => Err(CodegenError::Unsupported("or case patterns")),
         Pattern::Literal(_) => Err(CodegenError::Unsupported(
             "literal patterns in native variant case",
         )),
@@ -214,6 +216,7 @@ fn emit_variant_field_pattern(
         Pattern::Alias { .. } => Err(CodegenError::Unsupported(
             "alias patterns nested in native variant fields",
         )),
+        Pattern::Or(_) => Err(CodegenError::Unsupported("or case patterns")),
         Pattern::Literal(_) => Err(CodegenError::Unsupported("literal variant field patterns")),
         Pattern::Variant { .. } => Err(CodegenError::Unsupported("nested variant case patterns")),
         Pattern::List { .. } => Err(CodegenError::Unsupported("list case patterns")),

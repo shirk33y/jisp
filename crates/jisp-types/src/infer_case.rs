@@ -76,26 +76,30 @@ impl Inferencer {
                     &branch.pattern,
                 )));
             }
-            match strip_alias(&branch.pattern) {
-                Pattern::Wildcard | Pattern::Bind(_) => has_catch_all = true,
-                Pattern::Variant { tag, .. } => {
-                    if !covered.insert(tag.clone()) {
-                        return Err(InferError::RedundantCasePattern(tag.clone()));
+            for pattern in coverage_patterns(&branch.pattern) {
+                match pattern {
+                    Pattern::Wildcard | Pattern::Bind(_) => has_catch_all = true,
+                    Pattern::Variant { tag, .. } => {
+                        if !covered.insert(tag.clone()) {
+                            return Err(InferError::RedundantCasePattern(tag.clone()));
+                        }
+                    }
+                    Pattern::Literal(Literal::Bool(value)) if type_name == "bool" => {
+                        let name = value.to_string();
+                        if !covered.insert(name.clone()) {
+                            return Err(InferError::RedundantCasePattern(name));
+                        }
+                    }
+                    Pattern::Literal(Literal::Null) if type_name == "null" => {
+                        if !covered.insert("null".to_owned()) {
+                            return Err(InferError::RedundantCasePattern("null".to_owned()));
+                        }
+                    }
+                    Pattern::Literal(_) | Pattern::List { .. } | Pattern::Object(_) => {}
+                    Pattern::Alias { .. } | Pattern::Or(_) => {
+                        unreachable!("patterns are flattened above")
                     }
                 }
-                Pattern::Literal(Literal::Bool(value)) if type_name == "bool" => {
-                    let name = value.to_string();
-                    if !covered.insert(name.clone()) {
-                        return Err(InferError::RedundantCasePattern(name));
-                    }
-                }
-                Pattern::Literal(Literal::Null) if type_name == "null" => {
-                    if !covered.insert("null".to_owned()) {
-                        return Err(InferError::RedundantCasePattern("null".to_owned()));
-                    }
-                }
-                Pattern::Literal(_) | Pattern::List { .. } | Pattern::Object(_) => {}
-                Pattern::Alias { .. } => unreachable!("aliases are stripped above"),
             }
         }
 
@@ -186,7 +190,10 @@ impl Inferencer {
                         refined_exact_expected.insert(length, expected);
                     }
                 }
-                Pattern::Literal(_) | Pattern::Variant { .. } | Pattern::Object(_) => {}
+                Pattern::Literal(_)
+                | Pattern::Variant { .. }
+                | Pattern::Object(_)
+                | Pattern::Or(_) => {}
                 Pattern::Alias { .. } => unreachable!("aliases are stripped above"),
             }
         }
@@ -283,6 +290,9 @@ impl Inferencer {
             Pattern::Literal(_) | Pattern::Variant { .. } | Pattern::List { rest: None, .. } => {
                 false
             }
+            Pattern::Or(alternatives) => alternatives
+                .iter()
+                .any(|alternative| self.pattern_is_irrefutable_for_type(alternative, ty)),
             Pattern::Alias { .. } => unreachable!("aliases are stripped above"),
         }
     }
@@ -409,6 +419,28 @@ impl Inferencer {
                 self.infer_pattern(pattern, expected.clone(), bindings)?;
                 self.bind_pattern_name(name, expected, bindings)?;
             }
+            Pattern::Or(alternatives) => {
+                let mut shared: Option<BTreeMap<String, Type>> = None;
+                for alternative in alternatives {
+                    let mut alternative_bindings = BTreeMap::new();
+                    self.infer_pattern(alternative, expected.clone(), &mut alternative_bindings)?;
+                    if let Some(first) = &shared {
+                        if first.keys().collect::<Vec<_>>()
+                            != alternative_bindings.keys().collect::<Vec<_>>()
+                        {
+                            return Err(InferError::InconsistentAlternativeBindings);
+                        }
+                        for (name, ty) in first {
+                            self.unify(ty.clone(), alternative_bindings[name].clone())?;
+                        }
+                    } else {
+                        shared = Some(alternative_bindings);
+                    }
+                }
+                for (name, ty) in shared.expect("or patterns are non-empty after lowering") {
+                    self.bind_pattern_name(&name, ty, bindings)?;
+                }
+            }
             Pattern::Literal(literal) => {
                 let literal_ty = self.infer_literal(literal);
                 self.unify(expected, literal_ty)?;
@@ -502,6 +534,7 @@ fn pattern_name(pattern: &Pattern) -> String {
         Pattern::Wildcard => "_".to_owned(),
         Pattern::Bind(name) => name.clone(),
         Pattern::Alias { pattern, name } => format!("{} as {name}", pattern_name(pattern)),
+        Pattern::Or(_) => "or pattern".to_owned(),
         Pattern::Literal(Literal::Null) => "null".to_owned(),
         Pattern::Literal(Literal::Bool(value)) => value.to_string(),
         Pattern::Literal(Literal::Int(value)) => value.to_string(),
@@ -536,6 +569,13 @@ fn strip_alias(mut pattern: &Pattern) -> &Pattern {
         pattern = inner;
     }
     pattern
+}
+
+fn coverage_patterns<'a>(pattern: &'a Pattern) -> Vec<&'a Pattern> {
+    match strip_alias(pattern) {
+        Pattern::Or(alternatives) => alternatives.iter().flat_map(coverage_patterns).collect(),
+        pattern => vec![pattern],
+    }
 }
 
 fn list_coverage_is_exhaustive(

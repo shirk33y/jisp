@@ -518,10 +518,8 @@ fn lower_pattern(node: &Node) -> Result<Pattern, LowerError> {
                 "list" => lower_list_pattern(node.span, &items[1..]),
                 "obj" => lower_object_pattern(node.span, &items[1..]),
                 "as" => lower_alias_pattern(node.span, &items[1..]),
-                "or" | "when" => Err(error(
-                    node.span,
-                    "pattern alternatives and guards are post-MVP features",
-                )),
+                "or" => lower_or_pattern(node.span, &items[1..]),
+                "when" => Err(error(node.span, "pattern guards are post-MVP features")),
                 tag => Ok(Pattern::Variant {
                     tag: tag.to_owned(),
                     fields: items[1..]
@@ -532,6 +530,18 @@ fn lower_pattern(node: &Node) -> Result<Pattern, LowerError> {
             }
         }
     }
+}
+
+fn lower_or_pattern(span: Span, nodes: &[Node]) -> Result<Pattern, LowerError> {
+    if nodes.len() < 2 {
+        return Err(error(span, "or pattern expects at least two alternatives"));
+    }
+    Ok(Pattern::Or(
+        nodes
+            .iter()
+            .map(lower_pattern)
+            .collect::<Result<Vec<_>, _>>()?,
+    ))
 }
 
 fn lower_alias_pattern(span: Span, nodes: &[Node]) -> Result<Pattern, LowerError> {
