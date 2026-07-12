@@ -2,7 +2,8 @@
 
 Jisp is an experimental, statically oriented Lisp for JSON-shaped programs.
 Lisp, canonical JSON, and a restricted YAML-like syntax share one source-aware
-frontend, type checker, interpreter, and limited Rust code generator.
+frontend, type checker, interpreter, and deliberately bounded Rust code
+generator.
 
 Rust is the implementation backend, not the language surface. Native emission
 uses concrete typed layouts and rejects unsupported programs instead of falling
@@ -117,7 +118,8 @@ P2 language completeness: broader native codegen, compile-time user macros,
 richer patterns, diagnostics for generated Rust, formatter and tooling work,
 and a designed FFI boundary.
 
-The authoritative roadmap is [TODO.md](TODO.md). The language contract is in
+The product-level direction is in [ROADMAP.md](ROADMAP.md); the authoritative
+implementation queue is [TODO.md](TODO.md). The language contract is in
 [docs/SPEC.md](docs/SPEC.md).
 
 ## Development
@@ -138,6 +140,7 @@ compilation of generated Rust in downstream fixtures.
 
 - [Language specification](docs/SPEC.md)
 - [Standard library surface](docs/STDLIB.md)
+- [Roadmap](ROADMAP.md)
 - [Architecture and invariants](docs/ARCHITECTURE.md)
 - [Diagnostics](docs/DIAGNOSTICS.md)
 - [Testing strategy](docs/TESTING.md)

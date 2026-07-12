@@ -2,6 +2,10 @@
 
 FFI is intentionally not implemented.
 
+It is deferred behind the language and native-codegen milestones in
+[ROADMAP.md](../ROADMAP.md), so no prelude API should accidentally become an
+unstable host ABI.
+
 Before implementation, specify:
 
 - direction A: Jisp calls external Rust/host functions;

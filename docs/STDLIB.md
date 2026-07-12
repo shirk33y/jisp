@@ -1,28 +1,147 @@
-# Minimal standard library
+# Standard library
 
-Compiler primitives: arithmetic/comparison, `def`, `export`, `import`, `fn`,
-`let`, `do`, `if`, `case`, `type`, quoting, boolean short-circuiting, and field
-lookup. `bigint` constructs arbitrary-precision integers from decimal strings.
+This is the complete public prelude installed by the type checker and
+interpreter. There are no imports for these names: call them directly. The
+interpreter implements every function below. Native Rust emission supports only
+the narrower subset described in the [README](../README.md), and rejects the
+rest instead of falling back to a universal dynamic value.
 
-Initial modules:
+`A`, `B`, `E`, and `F` denote inferred type variables. `N` means one matching
+numeric type: `int`, `bigint`, or `float`. `(... A)` means zero or more
+arguments of type `A`. Callback positions such as `list.map` require the fixed
+arity shown in the signature; a variadic function is not valid there.
 
-- `math`: abs, min, max, pow, sqrt, floor, ceil, round, log, sin, cos, atan2.
-  `abs`, `min`, and `max` accept bigints; `pow` does not yet.
-- `str`: is, from, cat, lines, len, join, split, trim, upper, lower, has,
-  starts, ends, replace, slice.
-- `list`: is, len, get, first, last, rest, slice, map, filter, fold, some,
-  every, has, cat, prepend, append.
-- `obj`: is, len, has, get, set, del, keys, values, cat.
-- `result`: map, map-err, try, recover.
-- `ui`: html. `ui.html` is a prototype renderer from structural UI objects to
-  escaped HTML strings; it is not a full UI framework.
+Compiler forms such as `def`, `export`, `fn`, `let`, `if`, `case`, `use`,
+`type`, `import`, `obj`, `list`, `str`, quoting, and field lookup (`.`) are not
+stdlib functions. Their syntax is specified in [SPEC.md](SPEC.md).
 
-Not every listed function is implemented in the evaluator yet. Keep the surface
-small and add functions with tests rather than copying all of Gleam stdlib.
+## Constructors and equality
 
-## Examples
+| Function | Signature | Description | Example |
+| --- | --- | --- | --- |
+| `ok` | `(A) -> result<A, E>` | Constructs a successful result. | `(ok 42)` |
+| `err` | `(E) -> result<A, E>` | Constructs an error result. | `(err "missing")` |
+| `some` | `(A) -> option<A>` | Constructs an option containing a value. | `(some "Ada")` |
+| `none` | `option<A>` | The empty option constructor. | `none` |
+| `bigint` | `(str) -> bigint` | Parses a base-10 arbitrary-precision integer; invalid input is a runtime error. | `(bigint "9223372036854775808")` |
+| `=` | `(A, A) -> bool` | Structural equality. Functions and opaque native handles are not comparable. | `(= (list 1 2) (list 1 2))` |
 
-`list` helpers compose with ordinary functions.
+## Numeric operators and `math`
+
+Numbers never coerce implicitly. Matching integer operations are checked and
+division by zero is an error. `/` truncates integer and bigint results toward
+zero; `//` and `%` use Euclidean division and remainder. See [Numbers in the
+language specification](SPEC.md#numbers) for the full contract.
+
+| Function | Signature | Description | Example |
+| --- | --- | --- | --- |
+| `+` | `(N, N) -> N` | Adds matching numbers. | `(+ 20 22)` |
+| `-` | `(N, N) -> N` | Subtracts matching numbers. | `(- 44 2)` |
+| `*` | `(N, N) -> N` | Multiplies matching numbers. | `(* 6 7)` |
+| `/` | `(N, N) -> N` | Divides matching numbers; integer/bigint division truncates toward zero. | `(/ 85 2)` |
+| `//` | `(N, N) -> N` | Euclidean division; a float result is floored. | `(// -5 2)` |
+| `%` | `(N, N) -> N` | Euclidean remainder. | `(% -5 2)` |
+| `<` | `(N, N) -> bool` or `(str, str) -> bool` | Strict ordered comparison. | `(< 1 2)` |
+| `>` | `(N, N) -> bool` or `(str, str) -> bool` | Strict ordered comparison. | `(> "z" "a")` |
+| `<=` | `(N, N) -> bool` or `(str, str) -> bool` | Non-strict ordered comparison. | `(<= 2 2)` |
+| `>=` | `(N, N) -> bool` or `(str, str) -> bool` | Non-strict ordered comparison. | `(>= 3 2)` |
+| `math.abs` | `(N) -> N` | Absolute value for an integer, bigint, or float. | `(math.abs -42)` |
+| `math.min` | `(N, N) -> N` | Smaller of two matching numbers. | `(math.min 9 4)` |
+| `math.max` | `(N, N) -> N` | Larger of two matching numbers. | `(math.max 9 4)` |
+| `math.pow` | `(int, int) -> int` or `(float, float) -> float` | Raises a value to a power; integer exponents must be non-negative. | `(math.pow 2 10)` |
+| `math.sqrt` | `(float) -> float` | Square root; negative values follow `f64` and produce `NaN`. | `(math.sqrt 9.0)` |
+| `math.floor` | `(float) -> float` | Rounds down while retaining `float`. | `(math.floor 2.9)` |
+| `math.ceil` | `(float) -> float` | Rounds up while retaining `float`. | `(math.ceil 2.1)` |
+| `math.round` | `(float) -> float` | Rounds to the nearest integral-valued float. | `(math.round 2.5)` |
+
+## `str`
+
+String lengths and slice positions count Unicode scalar values, not bytes.
+`str.slice` returns an error result for negative or out-of-bounds bounds.
+
+| Function | Signature | Description | Example |
+| --- | --- | --- | --- |
+| `str.is` | `(A) -> bool` | Tests whether a value is a string. | `(str.is "Ada")` |
+| `str.from` | `(A) -> str` | Converts a value to its display string. | `(str.from 42)` |
+| `str.len` | `(str) -> int` | Counts Unicode scalar values. | `(str.len "Żółw")` |
+| `str.cat` | `(... str) -> str` | Concatenates zero or more strings. | `(str.cat "Ji" "sp")` |
+| `str.join` | `(str, list<str>) -> str` | Joins a list using the first argument as delimiter. | `(str.join ", " (list "Ada" "Lin"))` |
+| `str.split` | `(str, str) -> list<str>` | Splits the first string on the delimiter. | `(str.split "a,b" ",")` |
+| `str.trim` | `(str) -> str` | Removes leading and trailing Unicode whitespace. | `(str.trim "  Ada ")` |
+| `str.upper` | `(str) -> str` | Converts to Unicode uppercase. | `(str.upper "Ada")` |
+| `str.lower` | `(str) -> str` | Converts to Unicode lowercase. | `(str.lower "ADA")` |
+| `str.has` | `(str, str) -> bool` | Tests whether the first string contains the second. | `(str.has "Jisp" "is")` |
+| `str.starts` | `(str, str) -> bool` | Tests a prefix. | `(str.starts "Jisp" "Ji")` |
+| `str.ends` | `(str, str) -> bool` | Tests a suffix. | `(str.ends "Jisp" "sp")` |
+| `str.replace` | `(str, str, str) -> str` | Replaces every non-overlapping occurrence. | `(str.replace "a-b-a" "a" "x")` |
+| `str.slice` | `(str, int, int) -> result<str, str>` | Returns the half-open range `[start, end)`, or `err`. | `(str.slice "Jisp" 1 3)` |
+
+## `list`
+
+Lists are immutable. Indexes are zero-based and slice ranges are half-open.
+The lookup and slice functions return `result` values rather than trapping.
+
+| Function | Signature | Description | Example |
+| --- | --- | --- | --- |
+| `list.is` | `(A) -> bool` | Tests whether a value is a list. | `(list.is (list 1 2))` |
+| `list.len` | `(list<A>) -> int` | Returns the item count. | `(list.len (list "a" "b"))` |
+| `list.get` | `(list<A>, int) -> result<A, str>` | Gets an item, or returns `err` for an invalid index. | `(list.get (list 10 20) 1)` |
+| `list.first` | `(list<A>) -> result<A, str>` | Gets the first item, or `err` for an empty list. | `(list.first (list 10 20))` |
+| `list.last` | `(list<A>) -> result<A, str>` | Gets the last item, or `err` for an empty list. | `(list.last (list 10 20))` |
+| `list.rest` | `(list<A>) -> list<A>` | Returns all items after the first; empty input stays empty. | `(list.rest (list 10 20))` |
+| `list.slice` | `(list<A>, int, int) -> result<list<A>, str>` | Returns a half-open slice, or `err` for invalid bounds. | `(list.slice (list 10 20 30) 1 3)` |
+| `list.map` | `((A) -> B, list<A>) -> list<B>` | Applies a unary function to each item. | `(list.map (fn (x) (+ x 1)) (list 1 2))` |
+| `list.filter` | `((A) -> bool, list<A>) -> list<A>` | Keeps items whose predicate result is true. | `(list.filter (fn (x) (> x 1)) (list 1 2))` |
+| `list.fold` | `((B, A) -> B, B, list<A>) -> B` | Left fold; callback receives accumulator then item. | `(list.fold + 0 (list 1 2 3))` |
+| `list.some` | `((A) -> bool, list<A>) -> bool` | True if any item satisfies the predicate. | `(list.some (fn (x) (= x 2)) (list 1 2))` |
+| `list.every` | `((A) -> bool, list<A>) -> bool` | True if every item satisfies the predicate. | `(list.every (fn (x) (> x 0)) (list 1 2))` |
+| `list.has` | `(list<A>, A) -> bool` | Tests structural membership. | `(list.has (list 1 2) 2)` |
+| `list.cat` | `(... list<A>) -> list<A>` | Concatenates zero or more lists. | `(list.cat (list 1) (list 2 3))` |
+| `list.prepend` | `(A, list<A>) -> list<A>` | Returns a list with an item at the front. | `(list.prepend 1 (list 2 3))` |
+| `list.append` | `(list<A>, A) -> list<A>` | Returns a list with an item at the end. | `(list.append (list 1 2) 3)` |
+
+## `obj`
+
+Objects have string keys and immutable updates. In the interpreter, dynamic
+keys are valid for all object helpers. Native Rust generation currently needs a
+static closed object shape for the helpers it supports.
+
+| Function | Signature | Description | Example |
+| --- | --- | --- | --- |
+| `obj.is` | `(A) -> bool` | Tests whether a value is an object. | `(obj.is (obj "name" "Ada"))` |
+| `obj.len` | `(obj) -> int` | Counts keys. | `(obj.len (obj "name" "Ada"))` |
+| `obj.has` | `(obj, str) -> bool` | Tests whether a key exists. | `(obj.has (obj "name" "Ada") "name")` |
+| `obj.get` | `(obj, str) -> result<A, str>` | Looks up a key, returning `err` when absent. | `(obj.get (obj "name" "Ada") "name")` |
+| `obj.set` | `(obj, str, A) -> obj` | Returns a copy with a key inserted or replaced. | `(obj.set (obj "name" "Ada") "name" "Lin")` |
+| `obj.del` | `(obj, str) -> obj` | Returns a copy without a key; an absent key changes nothing. | `(obj.del (obj "name" "Ada") "name")` |
+| `obj.keys` | `(obj) -> list<str>` | Returns keys in insertion order. | `(obj.keys (obj "name" "Ada" "age" 42))` |
+| `obj.values` | `(obj) -> list<A>` | Returns values in insertion order; a closed static row must be homogeneous. | `(obj.values (obj "a" 1 "b" 2))` |
+| `obj.cat` | `(... obj) -> obj` | Merges left to right; later duplicate keys win. | `(obj.cat (obj "a" 1) (obj "b" 2))` |
+
+## `result` and `option`
+
+`result` helpers preserve an `err` unless their contract explicitly recovers
+from it. `option` deliberately has only its constructors; consume it with
+`case`.
+
+| Function | Signature | Description | Example |
+| --- | --- | --- | --- |
+| `result.try` | `(result<A, E>, (A) -> result<B, E>) -> result<B, E>` | Calls the callback for `ok`, otherwise preserves `err`; `use` expands around this shape. | `(result.try (ok 2) (fn (x) (ok (+ x 1))))` |
+| `result.map` | `(result<A, E>, (A) -> B) -> result<B, E>` | Maps the success value only. | `(result.map (ok 2) (fn (x) (+ x 1)))` |
+| `result.map-err` | `(result<A, E>, (E) -> F) -> result<A, F>` | Maps the error value only. | `(result.map-err (err "bad") (fn (e) (str.cat "error: " e)))` |
+| `result.recover` | `(result<A, E>, (E) -> result<A, F>) -> result<A, F>` | Calls the callback for `err`, otherwise preserves `ok`. | `(result.recover (err "bad") (fn (_) (ok 0)))` |
+
+## `ui` and `io`
+
+| Function | Signature | Description | Example |
+| --- | --- | --- | --- |
+| `ui.html` | `(A) -> str` | Prototype renderer for the structural UI shape in [SPEC.md](SPEC.md#data); escapes text and attributes. | `(ui.html (obj "tag" "text" "value" "Hi"))` |
+| `io.println` | `(A) -> null` | Writes a display value followed by a newline. | `(io.println "Hello")` |
+
+## Runnable examples
+
+These longer examples exercise representative API contracts in the normal test
+suite. The per-function examples above are concise call-site references.
 
 ```lisp test=stdlib.list-pipeline mode=run
 (export main
@@ -34,8 +153,6 @@ small and add functions with tests rather than copying all of Gleam stdlib.
         (fn (value) (+ value 1))
         (list 1 2 3)))))
 ```
-
-`use` makes callback-last result propagation direct.
 
 ```lisp test=stdlib.result-use mode=run
 (def parse-count
@@ -50,7 +167,14 @@ small and add functions with tests rather than copying all of Gleam stdlib.
       (ok (+ value 1)))))
 ```
 
-`ui.html` renders structural UI data and escapes text and attributes.
+```lisp test=stdlib.variadic mode=run
+(def count-rest
+  (fn (first ... rest)
+    (+ first (list.len rest))))
+
+(export main
+  (fn () (count-rest 40 1 2)))
+```
 
 ```lisp test=stdlib.ui-html mode=run
 (export main

@@ -65,7 +65,7 @@ listing through `jisp::import_dependencies` and `jisp check --deps`. Mixed
 extensionless/directory/transitive dependency lists are covered by regression
 tests. `jisp-macros` consumes the same `jisp::import_dependencies` seam during
 macro expansion and emits generated `include_str!` entries for transitive
-imports before its current native-codegen scaffold `compile_error!`.
+imports alongside supported native Rust items.
 
 Portable Lisp fixture tests now live under `tests/language/` and are registered
 as Cargo-visible tests by `crates/jisp-eval/build.rs`. The generated tests call

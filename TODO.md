@@ -1,6 +1,7 @@
 # Jisp remaining work
 
-This is the single authoritative list of intentionally unfinished work.
+This is the single authoritative list of intentionally unfinished work. For
+product-level direction and ordering rationale, see [ROADMAP.md](ROADMAP.md).
 
 ## P0 — complete
 

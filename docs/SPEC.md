@@ -30,13 +30,14 @@ All readers produce the same source-aware AST.
 ```
 
 `["str", ...]` concatenates literal fragments. Nested unquote evaluates an
-expression that must produce a string. `str.lines` joins fragments with `\n`.
+expression that must produce a string.
 
 ## Core forms
 
 - `def`, `export`, `import`, `type`
 - `fn`, `let`, `do`, `if`, `case`, `use`
-- `quote`, `quasiquote`, `unquote`, `unquote-splicing`, `macro`
+- `quote`, `quasiquote`, `unquote`, `unquote-splicing`; `macro` is reserved
+  until compile-time user macro evaluation is implemented
 - `.`, `and`, `or`, `not`
 
 Arguments evaluate left-to-right. Only `false` and `null` are falsey.
@@ -59,6 +60,27 @@ qualified symbols such as `list.map`.
 Definition names, type names, constructors, and import aliases must each be
 unique within a module. Constructors share the value namespace with
 definitions. Reusing one is a lowering error rather than a shadowing rule.
+
+## Functions and calls
+
+Functions are values and use lexical scope. Their parameters are inferred; a
+definition may have a final rest binding introduced by `...`. The rest binding
+is a list of the remaining arguments, including an empty list when no
+arguments remain.
+
+```lisp test=spec.variadic-function mode=run
+(def sum-rest
+  (fn (head ... tail)
+    (+ head (list.fold + 0 tail))))
+
+(export main
+  (fn () (sum-rest 40 1 1)))
+```
+
+Calls evaluate the callee and arguments left to right. A typed function value
+can be called directly, returned, or passed to a fixed-arity callback helper.
+`str.cat`, `list.cat`, and `obj.cat` are prelude functions that are themselves
+variadic; see [STDLIB.md](STDLIB.md) for their signatures.
 
 ## Types
 

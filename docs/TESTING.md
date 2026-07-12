@@ -45,4 +45,6 @@ suite and can be filtered by their name.
 
 Use `mode=run` for an exported, zero-argument `main`; use `mode=check` when an
 example demonstrates a valid module without an entry point. Untagged blocks
-remain ordinary documentation.
+remain ordinary documentation. API signatures and tables in `STDLIB.md` are
+checked against the prelude source during review; add a tagged example whenever
+prose introduces a non-obvious semantic guarantee.
