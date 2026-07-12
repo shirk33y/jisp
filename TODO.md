@@ -77,8 +77,9 @@ product-level direction and ordering rationale, see [ROADMAP.md](ROADMAP.md).
   reads, and open rows with an explicitly designed concrete ABI.
 - Extend the intentionally bounded macro system only after designing hygiene,
   cross-module visibility, and a general compile-time evaluator.
-- Add stronger exhaustiveness analysis and native emission for alternative
-  patterns.
+- Add stronger list/object exhaustiveness analysis and native emission for
+  non-enum alternative patterns. Native enum alternatives with shared bindings
+  now emit Rust `|` patterns.
 - Expand `jisp-macros` beyond item-position native file emission.
 - Broaden the current item-level generated-to-source mapping for `emit-rust`
   output into the granularity needed for diagnostics. The facade already maps

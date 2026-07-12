@@ -130,7 +130,28 @@ pub(crate) fn emit_variant_match_pattern(
             bindings.push(name.clone());
             Ok(PatternMatch { tokens, bindings })
         }
-        Pattern::Or(_) => Err(CodegenError::Unsupported("or case patterns")),
+        Pattern::Or(alternatives) => {
+            let mut alternatives = alternatives.iter();
+            let Some(first) = alternatives.next() else {
+                return Err(CodegenError::Unsupported("empty or case pattern"));
+            };
+            let PatternMatch { tokens, bindings } =
+                emit_variant_match_pattern(first, enum_types, subject_type)?;
+            let mut tokens = vec![tokens];
+            for alternative in alternatives {
+                let emitted = emit_variant_match_pattern(alternative, enum_types, subject_type)?;
+                if emitted.bindings != bindings {
+                    return Err(CodegenError::Unsupported(
+                        "native or pattern bindings differ between alternatives",
+                    ));
+                }
+                tokens.push(emitted.tokens);
+            }
+            Ok(PatternMatch {
+                tokens: quote! { #(#tokens)|* },
+                bindings,
+            })
+        }
         Pattern::Literal(_) => Err(CodegenError::Unsupported(
             "literal patterns in native variant case",
         )),

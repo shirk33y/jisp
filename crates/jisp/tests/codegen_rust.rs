@@ -329,6 +329,31 @@ fn emit_rust_detailed_emits_native_case_guards() {
 }
 
 #[test]
+fn emit_rust_detailed_emits_native_variant_or_patterns() {
+    let generated = jisp::emit_rust_as_detailed(
+        "main.lisp",
+        Syntax::Lisp,
+        r#"
+(type response
+  (ok int)
+  (pending int)
+  (err int))
+
+(export main
+  (fn ()
+    (case (pending 7)
+      ((or (ok value) (pending value)) (+ value 1))
+      ((err _) 0))))
+"#,
+    )
+    .unwrap();
+
+    let tokens = generated.tokens.to_string();
+
+    assert!(tokens.contains("JispEnum0 :: Ok (value) | JispEnum0 :: Pending (value)"));
+}
+
+#[test]
 fn emit_rust_detailed_emits_native_list_case_patterns() {
     let generated = jisp::emit_rust_as_detailed(
         "main.lisp",
