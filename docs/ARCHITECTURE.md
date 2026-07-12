@@ -7,7 +7,7 @@ JSON / restricted YAML / Lisp
               ↓
         macro expansion
               ↓
- module/name resolution (TODO)
+ module/import resolution
               ↓
         type inference
               ↓

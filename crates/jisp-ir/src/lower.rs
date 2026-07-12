@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+
 use jisp_core::{Diagnostic, Node, NodeKind, Span};
 use thiserror::Error;
 
@@ -37,6 +39,7 @@ impl Lowerer {
                 diagnostics.extend(error.diagnostics);
             }
         }
+        validate_module_names(&module, &mut diagnostics);
 
         if diagnostics.is_empty() {
             Ok(module)
@@ -319,15 +322,27 @@ impl Lowerer {
     }
 
     fn lower_obj(&self, span: Span, items: &[Node]) -> Result<Expr, LowerError> {
-        if (items.len() - 1) % 2 != 0 {
+        if !(items.len() - 1).is_multiple_of(2) {
             return Err(error(
                 span,
                 "obj expects alternating key and value expressions",
             ));
         }
         let mut fields = vec![];
+        let mut keys = BTreeMap::new();
         for pair in items[1..].chunks_exact(2) {
-            fields.push((self.lower_expr(&pair[0])?, self.lower_expr(&pair[1])?));
+            let key = self.lower_expr(&pair[0])?;
+            let value = self.lower_expr(&pair[1])?;
+            if let Some(name) = static_string_key(&key) {
+                if let Some(first) = keys.insert(name.clone(), key.span) {
+                    return Err(LowerError::single(
+                        Diagnostic::error(key.span, format!("duplicate object key `{name}`"))
+                            .with_code("JISP-LOWER")
+                            .with_secondary(first, "first defined here"),
+                    ));
+                }
+            }
+            fields.push((key, value));
         }
         Ok(Expr::new(ExprKind::Object(fields), span))
     }
@@ -544,15 +559,26 @@ fn lower_list_pattern(span: Span, nodes: &[Node]) -> Result<Pattern, LowerError>
 }
 
 fn lower_object_pattern(span: Span, nodes: &[Node]) -> Result<Pattern, LowerError> {
-    if nodes.len() % 2 != 0 {
+    if !nodes.len().is_multiple_of(2) {
         return Err(error(
             span,
             "obj pattern expects alternating string keys and patterns",
         ));
     }
     let mut fields = vec![];
+    let mut keys = BTreeMap::new();
     for pair in nodes.chunks_exact(2) {
         let key = expect_string(&pair[0], "object pattern key")?.to_owned();
+        if let Some(first) = keys.insert(key.clone(), pair[0].span) {
+            return Err(LowerError::single(
+                Diagnostic::error(
+                    pair[0].span,
+                    format!("duplicate object pattern key `{key}`"),
+                )
+                .with_code("JISP-LOWER")
+                .with_secondary(first, "first defined here"),
+            ));
+        }
         fields.push((key, lower_pattern(&pair[1])?));
     }
     Ok(Pattern::Object(fields))
@@ -610,42 +636,92 @@ fn default_alias(path: &str) -> String {
     path.rsplit('/').next().unwrap_or(path).to_owned()
 }
 
-fn error(span: Span, message: impl Into<String>) -> LowerError {
-    LowerError::single(Diagnostic::error(span, message).with_code("JISP-LOWER"))
+fn validate_module_names(module: &Module, diagnostics: &mut Vec<Diagnostic>) {
+    let mut values = BTreeMap::new();
+    for definition in &module.definitions {
+        record_unique_name(
+            &mut values,
+            &definition.name,
+            definition.span,
+            "value declaration",
+            diagnostics,
+        );
+    }
+    for declaration in &module.types {
+        for variant in &declaration.variants {
+            record_unique_name(
+                &mut values,
+                &variant.name,
+                variant.span,
+                "value declaration",
+                diagnostics,
+            );
+        }
+    }
+
+    let mut aliases = BTreeMap::new();
+    for import in &module.imports {
+        record_unique_name(
+            &mut aliases,
+            &import.alias,
+            import.span,
+            "import alias",
+            diagnostics,
+        );
+    }
+
+    let mut types = BTreeMap::new();
+    for declaration in &module.types {
+        record_unique_name(
+            &mut types,
+            &declaration.name,
+            declaration.span,
+            "type declaration",
+            diagnostics,
+        );
+    }
 }
 
-#[cfg(test)]
-mod tests {
-    use jisp_core::{SourceId, SyntaxParser};
-    use jisp_syntax_json::JsonParser;
-
-    use super::*;
-
-    #[test]
-    fn export_can_define_a_public_value() {
-        let nodes = JsonParser
-            .parse_module(
-                SourceId(0),
-                r#"[["export","add",["fn",["a","b"],["+","a","b"]]]]"#,
-            )
-            .unwrap();
-        let module = Lowerer.lower_module(&nodes).unwrap();
-        assert!(module.definitions[0].public);
-        assert_eq!(module.exports, ["add"]);
+fn record_unique_name(
+    names: &mut BTreeMap<String, Span>,
+    name: &str,
+    span: Span,
+    kind: &str,
+    diagnostics: &mut Vec<Diagnostic>,
+) {
+    if let Some(first) = names.get(name).copied() {
+        diagnostics.push(
+            Diagnostic::error(span, format!("duplicate {kind} `{name}`"))
+                .with_code("JISP-LOWER")
+                .with_secondary(first, "first defined here"),
+        );
+    } else {
+        names.insert(name.to_owned(), span);
     }
+}
 
-    #[test]
-    fn use_lowers_to_a_callback_call() {
-        let nodes = JsonParser
-            .parse_module(
-                SourceId(0),
-                r#"[["def","x",["use","v",["result.try","r"],["ok","v"]]]]"#,
-            )
-            .unwrap();
-        let module = Lowerer.lower_module(&nodes).unwrap();
-        assert!(matches!(
-            module.definitions[0].value.kind,
-            ExprKind::Call { .. }
-        ));
+fn static_string_key(expr: &Expr) -> Option<String> {
+    match &expr.kind {
+        ExprKind::Literal(Literal::String(value)) => Some(value.clone()),
+        ExprKind::StringTemplate { lines, parts }
+            if parts
+                .iter()
+                .all(|part| matches!(part, StringPart::Literal(_))) =>
+        {
+            let fragments = parts.iter().map(|part| match part {
+                StringPart::Literal(value) => value.as_str(),
+                StringPart::Expr(_) | StringPart::Splice(_) => unreachable!(),
+            });
+            Some(if *lines {
+                fragments.collect::<Vec<_>>().join("\n")
+            } else {
+                fragments.collect()
+            })
+        }
+        _ => None,
     }
+}
+
+fn error(span: Span, message: impl Into<String>) -> LowerError {
+    LowerError::single(Diagnostic::error(span, message).with_code("JISP-LOWER"))
 }

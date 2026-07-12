@@ -1135,12 +1135,9 @@ impl Inferencer {
     ) -> Result<Type, InferError> {
         for overload in overloads {
             let mut candidate = self.clone();
-            match candidate.infer_call_with_scheme(overload, arguments) {
-                Ok(result) => {
-                    *self = candidate;
-                    return Ok(self.apply(&result));
-                }
-                Err(_) => {}
+            if let Ok(result) = candidate.infer_call_with_scheme(overload, arguments) {
+                *self = candidate;
+                return Ok(self.apply(&result));
             }
         }
 

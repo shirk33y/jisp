@@ -13,6 +13,14 @@ use crate::{CodegenError, GeneratedRust, RustItemKind, RustSourceItem, RustSourc
 mod intrinsics;
 
 pub(crate) fn emit_module(module: &TypedModule) -> Result<GeneratedRust, CodegenError> {
+    ensure_unique_rust_idents(
+        module
+            .module
+            .definitions
+            .iter()
+            .map(|definition| definition.name.as_str()),
+        "definition",
+    )?;
     let names = module
         .module
         .definitions
@@ -62,6 +70,7 @@ fn emit_definition(
                 parameters, result, ..
             },
         ) => {
+            ensure_unique_rust_idents(params.iter().map(String::as_str), "function parameter")?;
             if rest.is_some() {
                 return Err(CodegenError::Unsupported("native variadic functions"));
             }
@@ -192,6 +201,10 @@ impl<'a> EmitContext<'a> {
         body: &Expr,
         expected: Option<&Type>,
     ) -> Result<TokenStream, CodegenError> {
+        ensure_unique_rust_idents(
+            bindings.iter().map(|(name, _)| name.as_str()),
+            "let binding",
+        )?;
         let mut emitted = Vec::new();
         let mut added: Vec<String> = Vec::new();
         for (name, value) in bindings {
@@ -341,6 +354,10 @@ impl<'a> EmitContext<'a> {
                 condition,
                 bindings,
             } = emit_pattern(&branch.pattern, quote! { #subject_name })?;
+            ensure_unique_rust_idents(
+                bindings.iter().map(|binding| binding.name.as_str()),
+                "case binding",
+            )?;
             let mut previous_locals = Vec::new();
             for binding in &bindings {
                 previous_locals.push((
@@ -400,6 +417,7 @@ impl<'a> EmitContext<'a> {
     ) -> Result<TokenStream, CodegenError> {
         let PatternMatch { tokens, bindings } =
             emit_variant_match_pattern(pattern, self.enum_types)?;
+        ensure_unique_rust_idents(bindings.iter().map(String::as_str), "case binding")?;
         let mut previous_locals = Vec::new();
         for binding in &bindings {
             previous_locals.push((binding.clone(), self.locals.insert(binding.clone(), None)));
@@ -832,6 +850,25 @@ pub(crate) fn rust_ident(name: &str) -> Ident {
         output.push('_');
     }
     format_ident!("{output}")
+}
+
+fn ensure_unique_rust_idents<'a>(
+    names: impl IntoIterator<Item = &'a str>,
+    scope: &'static str,
+) -> Result<(), CodegenError> {
+    let mut emitted = BTreeMap::new();
+    for name in names {
+        let rust = rust_ident(name).to_string();
+        if let Some(first) = emitted.insert(rust.clone(), name.to_owned()) {
+            return Err(CodegenError::IdentifierCollision {
+                scope,
+                first,
+                second: name.to_owned(),
+                rust,
+            });
+        }
+    }
+    Ok(())
 }
 
 fn is_rust_keyword(value: &str) -> bool {

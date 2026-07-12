@@ -163,6 +163,56 @@ fn emits_top_level_function_and_direct_call() {
 }
 
 #[test]
+fn rejects_definition_names_that_collide_in_rust() {
+    let module = typed_module(
+        vec![
+            definition("foo-bar", false, literal(Literal::Int(1))),
+            definition("foo_bar", false, literal(Literal::Int(2))),
+        ],
+        vec![("foo-bar", Type::Int), ("foo_bar", Type::Int)],
+    );
+
+    assert!(matches!(
+        generate(&module),
+        Err(CodegenError::IdentifierCollision {
+            scope: "definition",
+            ..
+        })
+    ));
+}
+
+#[test]
+fn rejects_function_parameters_that_collide_in_rust() {
+    let module = typed_module(
+        vec![definition(
+            "main",
+            true,
+            expr(ExprKind::Lambda {
+                params: vec!["foo-bar".to_owned(), "foo_bar".to_owned()],
+                rest: None,
+                body: Box::new(literal(Literal::Int(1))),
+            }),
+        )],
+        vec![(
+            "main",
+            Type::Function {
+                parameters: vec![Type::Int, Type::Int],
+                rest: None,
+                result: Box::new(Type::Int),
+            },
+        )],
+    );
+
+    assert!(matches!(
+        generate(&module),
+        Err(CodegenError::IdentifierCollision {
+            scope: "function parameter",
+            ..
+        })
+    ));
+}
+
+#[test]
 fn emits_let_if_and_bool_expressions() {
     let module = typed_module(
         vec![definition(

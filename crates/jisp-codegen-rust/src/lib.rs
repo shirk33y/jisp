@@ -35,6 +35,16 @@ pub enum CodegenError {
 
     #[error("native Rust code generation does not support {0} yet")]
     Unsupported(&'static str),
+
+    #[error(
+        "native {scope} `{second}` collides with `{first}` after Rust identifier normalization (`{rust}`)"
+    )]
+    IdentifierCollision {
+        scope: &'static str,
+        first: String,
+        second: String,
+        rust: String,
+    },
 }
 
 pub fn generate(module: &TypedModule) -> Result<TokenStream, CodegenError> {

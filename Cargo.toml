@@ -20,7 +20,7 @@ members = [
 version = "0.0.1"
 edition = "2021"
 license = "MIT OR Apache-2.0"
-repository = "https://example.invalid/jisp"
+repository = "https://github.com/shirk33y/jisp"
 authors = ["Jisp contributors"]
 
 [workspace.dependencies]
