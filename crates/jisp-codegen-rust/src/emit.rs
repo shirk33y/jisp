@@ -14,6 +14,9 @@ use crate::{CodegenError, GeneratedRust, RustItemKind, RustSourceItem, RustSourc
 #[path = "intrinsics.rs"]
 mod intrinsics;
 
+#[path = "bigint.rs"]
+mod bigint;
+
 #[path = "closures.rs"]
 mod closures;
 
@@ -800,7 +803,7 @@ fn emit_type(
         Type::Null => Ok(quote! { () }),
         Type::Bool => Ok(quote! { bool }),
         Type::Int => Ok(quote! { i64 }),
-        Type::BigInt => Err(CodegenError::Unsupported("bigint type emission")),
+        Type::BigInt => Ok(quote! { ::num_bigint::BigInt }),
         Type::Float => Ok(quote! { f64 }),
         Type::Str => Ok(quote! { String }),
         Type::List(item) => {

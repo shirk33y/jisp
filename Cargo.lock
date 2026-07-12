@@ -186,6 +186,7 @@ dependencies = [
  "jisp-core",
  "jisp-ir",
  "jisp-types",
+ "num-bigint",
  "proc-macro2",
  "quote",
  "thiserror",
@@ -240,6 +241,7 @@ name = "jisp-macros"
 version = "0.0.1"
 dependencies = [
  "jisp",
+ "num-bigint",
  "proc-macro2",
  "quote",
  "syn",

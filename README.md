@@ -64,17 +64,20 @@ literal. In Lisp and YAML-like source, quoted values are strings.
   null, list, and structural-object cases.
 - Interpreter execution of an exported, typed, zero-argument `main`.
 - A deliberately narrower native Rust subset: monomorphic definitions, closed
-  objects, lists, typed function values, capturing closures, and variadic user
-  functions, supported `case` patterns, imports, and selected helpers including
-  `list.map`, `list.filter`, `list.fold`, `list.some`, `list.every`, static
-  known-field `obj.get` on closed objects (including inline literals), and
-  concrete `result.try`, `result.map`, `result.map-err`, and `result.recover`.
+  objects, lists, bigints, typed function values, capturing closures, and
+  variadic user functions, supported `case` patterns, imports, and selected
+  helpers including `list.map`, `list.filter`, `list.fold`, `list.some`,
+  `list.every`, static known-field `obj.get` on closed objects (including inline
+  literals), and concrete `result.try`, `result.map`, `result.map-err`, and
+  `result.recover`.
 - Proc-macro integration that compiles supported Jisp files into native Rust
   items while tracking imported source dependencies.
 
 The interpreter is the broadest execution path. Native closures snapshot their
-captured values, and native emission intentionally does not yet support
-bigints, open object rows, or dynamic field access.
+captured values, and native emission intentionally does not yet support open
+object rows or dynamic field access. A proc-macro consumer whose generated
+module uses bigints must declare `num-bigint = "0.4"` directly; generated Rust
+uses its concrete `num_bigint::BigInt` type.
 
 ## CLI
 

@@ -237,3 +237,37 @@
     (case (success 41)
       ((success value) (+ value 1))
       ((failure _) 0))))
+
+(export bigint-sum-entry
+  (fn ()
+    (+ (bigint "9223372036854775808") (bigint "2"))))
+
+(export bigint-floor-entry
+  (fn ()
+    (// (bigint "-5") (bigint "2"))))
+
+(export bigint-modulo-entry
+  (fn ()
+    (% (bigint "-5") (bigint "2"))))
+
+(export bigint-abs-entry
+  (fn ()
+    (math.abs (bigint "-9223372036854775808"))))
+
+(export bigint-minmax-entry
+  (fn ()
+    (+
+      (math.min (bigint "4") (bigint "9"))
+      (math.max (bigint "4") (bigint "9")))))
+
+(export bigint-comparison-entry
+  (fn ()
+    (if (> (bigint "9223372036854775808") (bigint "9223372036854775807"))
+      42
+      0)))
+
+(export bigint-closure-entry
+  (fn ()
+    (let (offset (bigint "9223372036854775808")
+          add-offset (fn (value) (+ value offset)))
+      (add-offset (bigint "2")))))

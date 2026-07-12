@@ -399,21 +399,19 @@ fn emit_rust_detailed_emits_captured_closures_without_runtime_fallback() {
 }
 
 #[test]
-fn emit_rust_detailed_rejects_bigint_without_runtime_fallback() {
-    let error = match jisp::emit_rust_as_detailed(
+fn emit_rust_detailed_emits_bigint_without_runtime_fallback() {
+    let generated = jisp::emit_rust_as_detailed(
         "main.lisp",
         Syntax::Lisp,
-        r#"(export main (fn () (bigint "32849384983498230592309502398509388908203986232306")))"#,
-    ) {
-        Ok(_) => panic!("expected unsupported bigint codegen"),
-        Err(error) => error.error,
-    };
+        r#"(export main (fn () (+ (bigint "32849384983498230592309502398509388908203986232306") (bigint "2"))))"#,
+    )
+    .unwrap();
+    let tokens = generated.tokens.to_string();
 
-    assert!(matches!(error, jisp::Error::Codegen(_)), "{error}");
-    assert!(
-        error.to_string().contains("bigint type emission"),
-        "{error}"
-    );
+    assert!(tokens.contains("pub fn main () -> :: num_bigint :: BigInt"));
+    assert!(tokens.contains("BigInt :: parse_bytes"));
+    assert!(!tokens.contains("Value"));
+    assert!(!tokens.contains("jisp_eval"));
 }
 
 #[test]

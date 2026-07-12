@@ -22,8 +22,8 @@ with the interpreter. The fixture covers scalars, strings, lists,
 closed-object field access, enum `case` expressions, local and returned
 capturing closures, callbacks in `list.map`, `list.filter`, `list.fold`,
 `list.some`, and `list.every`, plus calls through a conditional typed function
-expression and variadic functions with empty/non-empty rest arguments. It also
-covers `result` patterns for statically typed `obj.get`,
+expression, bigint construction/arithmetic, and variadic functions with
+empty/non-empty rest arguments. It also covers `result` patterns for statically typed `obj.get`,
 including an inline closed object, `option` cases, and `result.try`,
 `result.map`, `result.map-err`, and `result.recover` callbacks that change the
 concrete success or error layout.
@@ -34,6 +34,9 @@ Unsupported native shapes remain covered by explicit `CodegenError` regression
 tests and downstream compile-fail fixtures. The latter build a temporary crate
 that invokes the proc macro and assert its Jisp diagnostic, so unsupported
 shapes never degrade into opaque generated-Rust failures.
+The macro suite also builds and runs a downstream bigint fixture with an
+explicit `num-bigint` dependency, proving the concrete generated ABI instead of
+only inspecting tokens.
 
 ## Documentation examples
 

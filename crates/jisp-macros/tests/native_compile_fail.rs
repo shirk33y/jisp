@@ -1,10 +1,10 @@
 use std::{env, fs, path::PathBuf, process::Command};
 
 #[test]
-fn bigint_native_values_fail_during_downstream_macro_expansion() {
-    let crate_dir = fixture_dir("bigint");
+fn ui_html_native_values_fail_during_downstream_macro_expansion() {
+    let crate_dir = fixture_dir("ui-html");
     let fixture = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("tests/fixtures/unsupported_first_class_call.lisp")
+        .join("tests/fixtures/unsupported_ui_html.lisp")
         .canonicalize()
         .unwrap();
     let macros_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -46,8 +46,50 @@ fn bigint_native_values_fail_during_downstream_macro_expansion() {
         "{diagnostics}"
     );
     assert!(
-        diagnostics.contains("bigint type emission"),
+        diagnostics.contains("calls outside native module"),
         "{diagnostics}"
+    );
+}
+
+#[test]
+fn bigint_native_values_compile_in_downstream_macro_crates() {
+    let crate_dir = fixture_dir("bigint");
+    let fixture = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fixtures/bigint.lisp")
+        .canonicalize()
+        .unwrap();
+    let macros_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let target_dir = macros_dir.join("../../target");
+
+    fs::write(
+        crate_dir.join("Cargo.toml"),
+        format!(
+            "[workspace]\n\n[package]\nname = \"jisp-macro-bigint\"\nversion = \"0.0.0\"\nedition = \"2021\"\n\n[dependencies]\njisp-macros = {{ path = {macros_dir:?} }}\nnum-bigint = \"0.4\"\n"
+        ),
+    )
+    .unwrap();
+    fs::create_dir_all(crate_dir.join("src")).unwrap();
+    fs::write(
+        crate_dir.join("src/main.rs"),
+        format!(
+            "jisp_macros::lisp_file!({fixture:?});\n\nfn main() {{\n    assert_eq!(entry().to_string(), \"9223372036854775810\");\n}}\n"
+        ),
+    )
+    .unwrap();
+
+    let cargo = env::var_os("CARGO").unwrap_or_else(|| "cargo".into());
+    let output = Command::new(cargo)
+        .current_dir(&crate_dir)
+        .env("CARGO_TARGET_DIR", target_dir)
+        .args(["run", "--offline", "--quiet"])
+        .output()
+        .unwrap();
+
+    assert!(
+        output.status.success(),
+        "{}{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
     );
 }
 

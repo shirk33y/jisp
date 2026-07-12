@@ -131,6 +131,23 @@ fn native_enum_cases_match_the_interpreter() {
     assert_matches_interpreter("enum-case-entry", Value::Int(enum_case_entry()));
 }
 
+#[test]
+fn native_bigints_match_the_interpreter() {
+    assert_matches_interpreter("bigint-sum-entry", Value::BigInt(bigint_sum_entry()));
+    assert_matches_interpreter("bigint-floor-entry", Value::BigInt(bigint_floor_entry()));
+    assert_matches_interpreter("bigint-modulo-entry", Value::BigInt(bigint_modulo_entry()));
+    assert_matches_interpreter("bigint-abs-entry", Value::BigInt(bigint_abs_entry()));
+    assert_matches_interpreter("bigint-minmax-entry", Value::BigInt(bigint_minmax_entry()));
+    assert_matches_interpreter(
+        "bigint-comparison-entry",
+        Value::Int(bigint_comparison_entry()),
+    );
+    assert_matches_interpreter(
+        "bigint-closure-entry",
+        Value::BigInt(bigint_closure_entry()),
+    );
+}
+
 fn assert_matches_interpreter(export: &str, native: Value) {
     let interpreted = interpreter_export(export);
     assert!(

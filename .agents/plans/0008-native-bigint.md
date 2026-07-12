@@ -76,3 +76,12 @@ additional generated-code dependency on `num_traits::Signed`.
 - Existing unsupported-native compile-fail coverage moves to a genuinely
   unsupported operation rather than retaining an obsolete bigint failure.
 - Full local formatting, Clippy, workspace tests, and macro tests pass.
+
+## Status
+
+Implemented on `master`: native type emission uses `::num_bigint::BigInt`; the
+constructor, arithmetic, comparisons, `math.abs`, `math.min`, and `math.max`
+all stay concrete. Differential coverage includes values beyond `i64`, signed
+Euclidean division/modulo, comparison, and a captured bigint closure. The macro
+suite runs a downstream crate with direct `num-bigint` dependency and retains a
+separate compile-fail fixture for unsupported `ui.html` emission.

@@ -58,8 +58,11 @@ product-level direction and ordering rationale, see [ROADMAP.md](ROADMAP.md).
      snapshot captured native values for direct calls and callback helpers.
   10. Done: emit monomorphic native variadic definitions, local/returned
       closures, and typed calls using a final `Vec<T>` rest ABI.
-- Add native backend support for `bigint` emission, dynamic object helpers/open
-  rows, and dynamic field access.
+  11. Done: emit concrete `num_bigint::BigInt` values and supported bigint
+      arithmetic, comparisons, and helpers in native Rust without a dynamic
+      runtime fallback.
+- Add native backend support for dynamic object helpers/open rows and dynamic
+  field access.
 - Add compile-time evaluation for user macros.
 - Add case guards, alternative patterns, aliases, and robust exhaustiveness.
 - Expand `jisp-macros` beyond item-position native file emission.

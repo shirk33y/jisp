@@ -6,6 +6,11 @@ interpreter implements every function below. Native Rust emission supports only
 the narrower subset described in the [README](../README.md), and rejects the
 rest instead of falling back to a universal dynamic value.
 
+Native bigint values are emitted as `num_bigint::BigInt`. A crate using
+`jisp_macros::lisp_file!` with bigint code must declare a compatible direct
+`num-bigint = "0.4"` dependency so the generated Rust can name that concrete
+type.
+
 `A`, `B`, `E`, and `F` denote inferred type variables. `N` means one matching
 numeric type: `int`, `bigint`, or `float`. `(... A)` means zero or more
 arguments of type `A`. Callback positions such as `list.map` require the fixed

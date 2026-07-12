@@ -17,6 +17,7 @@ impl<'a> EmitContext<'a> {
             return self.emit_binary_intrinsic(arguments, operator);
         }
         match name {
+            "bigint" => self.emit_bigint_intrinsic(arguments),
             "/" => self.emit_divide_intrinsic(arguments, expected),
             "//" => self.emit_floor_divide_intrinsic(arguments, expected),
             "%" => self.emit_modulo_intrinsic(arguments, expected),
@@ -100,6 +101,14 @@ impl<'a> EmitContext<'a> {
                     .checked_div(__jisp_right)
                     .expect("jisp / integer division by zero or overflow")
             }}),
+            Some(Type::BigInt) => Ok(quote! {{
+                let __jisp_left = #left;
+                let __jisp_right = #right;
+                if __jisp_right == ::num_bigint::BigInt::from(0i64) {
+                    panic!("jisp / division by zero");
+                }
+                __jisp_left / __jisp_right
+            }}),
             Some(Type::Float) => Ok(quote! {{
                 let __jisp_left = #left;
                 let __jisp_right = #right;
@@ -131,6 +140,25 @@ impl<'a> EmitContext<'a> {
                 __jisp_left
                     .checked_div_euclid(__jisp_right)
                     .expect("jisp // integer division by zero or overflow")
+            }}),
+            Some(Type::BigInt) => Ok(quote! {{
+                let __jisp_left = #left;
+                let __jisp_right = #right;
+                let __jisp_zero = ::num_bigint::BigInt::from(0i64);
+                if __jisp_right == __jisp_zero {
+                    panic!("jisp // division by zero");
+                }
+                let __jisp_quotient = &__jisp_left / &__jisp_right;
+                let __jisp_remainder = &__jisp_left % &__jisp_right;
+                if __jisp_remainder < __jisp_zero {
+                    if __jisp_right > __jisp_zero {
+                        __jisp_quotient - ::num_bigint::BigInt::from(1i64)
+                    } else {
+                        __jisp_quotient + ::num_bigint::BigInt::from(1i64)
+                    }
+                } else {
+                    __jisp_quotient
+                }
             }}),
             Some(Type::Float) => Ok(quote! {{
                 let __jisp_left = #left;
@@ -164,6 +192,24 @@ impl<'a> EmitContext<'a> {
                     .checked_rem_euclid(__jisp_right)
                     .expect("jisp % integer modulo by zero or overflow")
             }}),
+            Some(Type::BigInt) => Ok(quote! {{
+                let __jisp_left = #left;
+                let __jisp_right = #right;
+                let __jisp_zero = ::num_bigint::BigInt::from(0i64);
+                if __jisp_right == __jisp_zero {
+                    panic!("jisp % modulo by zero");
+                }
+                let __jisp_remainder = &__jisp_left % &__jisp_right;
+                if __jisp_remainder < __jisp_zero {
+                    if __jisp_right > __jisp_zero {
+                        __jisp_remainder + __jisp_right
+                    } else {
+                        __jisp_remainder - __jisp_right
+                    }
+                } else {
+                    __jisp_remainder
+                }
+            }}),
             Some(Type::Float) => Ok(quote! {{
                 let __jisp_left = #left;
                 let __jisp_right = #right;
@@ -193,6 +239,14 @@ impl<'a> EmitContext<'a> {
                 __jisp_value
                     .checked_abs()
                     .expect("jisp math.abs integer overflow")
+            }}),
+            Some(Type::BigInt) => Ok(quote! {{
+                let __jisp_value = #value;
+                if __jisp_value < ::num_bigint::BigInt::from(0i64) {
+                    -__jisp_value
+                } else {
+                    __jisp_value
+                }
             }}),
             Some(Type::Float) => Ok(quote! { #value.abs() }),
             _ => Err(CodegenError::Unsupported(

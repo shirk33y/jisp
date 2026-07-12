@@ -8,6 +8,7 @@ license.workspace = true
 jisp-core.workspace = true
 jisp-ir.workspace = true
 jisp-types.workspace = true
+num-bigint.workspace = true
 proc-macro2.workspace = true
 quote.workspace = true
 thiserror.workspace = true
