@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::Path;
 
 use jisp_ir::{
@@ -99,18 +99,25 @@ fn merge_modules(imported: Vec<TypedModule>, main: TypedModule) -> TypedModule {
         exports: main.module.exports.clone(),
     };
     let mut schemes = BTreeMap::new();
+    let mut expression_types = HashMap::new();
 
     for imported in imported {
         module.types.extend(imported.module.types);
         module.definitions.extend(imported.module.definitions);
         schemes.extend(imported.schemes);
+        expression_types.extend(imported.expression_types);
     }
 
     module.types.extend(main.module.types);
     module.definitions.extend(main.module.definitions);
     schemes.extend(main.schemes);
+    expression_types.extend(main.expression_types);
 
-    TypedModule { module, schemes }
+    TypedModule {
+        module,
+        schemes,
+        expression_types,
+    }
 }
 
 fn prefix_module(module: TypedModule, prefix: &str) -> TypedModule {
@@ -168,6 +175,11 @@ fn prefix_module(module: TypedModule, prefix: &str) -> TypedModule {
         .iter()
         .map(|(name, scheme)| (join_prefix(prefix, name), rewriter.scheme(scheme)))
         .collect();
+    let expression_types = module
+        .expression_types
+        .iter()
+        .map(|(span, ty)| (*span, rewriter.ty(ty)))
+        .collect();
 
     TypedModule {
         module: Module {
@@ -177,6 +189,7 @@ fn prefix_module(module: TypedModule, prefix: &str) -> TypedModule {
             exports: vec![],
         },
         schemes,
+        expression_types,
     }
 }
 

@@ -1,6 +1,7 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::fmt;
 
+use jisp_core::Span;
 use jisp_ir::Module;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -45,6 +46,7 @@ pub struct Scheme {
 pub struct TypedModule {
     pub module: Module,
     pub schemes: BTreeMap<String, Scheme>,
+    pub expression_types: HashMap<Span, Type>,
 }
 
 impl Scheme {

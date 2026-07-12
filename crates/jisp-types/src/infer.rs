@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use jisp_core::Span;
 use jisp_ir::{Expr, ExprKind, Import, Literal, Module, StringPart, TypeDecl};
@@ -87,6 +87,7 @@ pub struct Inferencer {
     pub environment: BTreeMap<String, Scheme>,
     overloads: BTreeMap<String, Vec<Scheme>>,
     type_variants: BTreeMap<String, BTreeSet<String>>,
+    expression_types: HashMap<Span, Type>,
 }
 
 impl Inferencer {
@@ -183,8 +184,18 @@ impl Inferencer {
         module: Module,
         imports: &ImportTypeEnvironments,
     ) -> Result<TypedModule, InferError> {
+        self.expression_types.clear();
         let schemes = self.infer_module_with_imports(&module, imports)?;
-        Ok(TypedModule { module, schemes })
+        let expression_types = self
+            .expression_types
+            .iter()
+            .map(|(span, ty)| (*span, self.apply(ty)))
+            .collect();
+        Ok(TypedModule {
+            module,
+            schemes,
+            expression_types,
+        })
     }
 
     fn install_imports(
@@ -305,7 +316,13 @@ impl Inferencer {
             };
             Ok(self.apply(&ty))
         })();
-        result.map_err(|error| error.locate(expr.span))
+        match result {
+            Ok(ty) => {
+                self.expression_types.insert(expr.span, ty.clone());
+                Ok(ty)
+            }
+            Err(error) => Err(error.locate(expr.span)),
+        }
     }
 
     fn infer_call(&mut self, callee: &Expr, arguments: &[Expr]) -> Result<Type, InferError> {

@@ -99,6 +99,7 @@ fn typed_module(definitions: Vec<Definition>, schemes: Vec<(&str, Type)>) -> Typ
             .into_iter()
             .map(|(name, ty)| (name.to_owned(), Scheme::mono(ty)))
             .collect(),
+        expression_types: Default::default(),
     }
 }
 

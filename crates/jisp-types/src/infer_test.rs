@@ -223,6 +223,34 @@ fn returns_typed_module_for_backend_contract() {
 }
 
 #[test]
+fn records_resolved_types_for_each_expression() {
+    let source = SourceId(1);
+    let callee_span = Span::new(source, 0, 1);
+    let first_span = Span::new(source, 2, 3);
+    let second_span = Span::new(source, 4, 5);
+    let call_span = Span::new(source, 0, 6);
+    let expression = Expr::new(
+        ExprKind::Call {
+            callee: Box::new(Expr::new(ExprKind::Name("+".to_owned()), callee_span)),
+            arguments: vec![
+                Expr::new(ExprKind::Literal(Literal::Int(1)), first_span),
+                Expr::new(ExprKind::Literal(Literal::Int(2)), second_span),
+            ],
+        },
+        call_span,
+    );
+    let mut inferencer = Inferencer::with_prelude();
+
+    let typed = inferencer
+        .infer_typed_module(module(vec![definition("main", expression)]))
+        .unwrap();
+
+    assert_eq!(typed.expression_types[&first_span], Type::Int);
+    assert_eq!(typed.expression_types[&second_span], Type::Int);
+    assert_eq!(typed.expression_types[&call_span], Type::Int);
+}
+
+#[test]
 fn generalizes_top_level_dependencies_before_dependents() {
     let mut inferencer = Inferencer::default();
     let identity = expr(ExprKind::Lambda {

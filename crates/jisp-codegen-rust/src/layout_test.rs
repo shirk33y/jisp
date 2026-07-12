@@ -72,6 +72,7 @@ fn rejects_polymorphic_top_level_definitions() {
                 },
             },
         )]),
+        expression_types: Default::default(),
     };
 
     let error = classify_module(&module).unwrap_err();
@@ -97,6 +98,7 @@ fn classifies_monomorphic_module_definitions() {
                 result: Box::new(Type::Str),
             }),
         )]),
+        expression_types: Default::default(),
     };
 
     let layout = classify_module(&module).unwrap();

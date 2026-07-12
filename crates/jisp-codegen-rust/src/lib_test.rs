@@ -15,6 +15,7 @@ fn generate_rejects_open_object_rows_before_emitting_rust() {
                 rest: Some(TypeVar(1)),
             })),
         )]),
+        expression_types: Default::default(),
     };
 
     let error = generate(&module).unwrap_err();
@@ -27,6 +28,7 @@ fn generate_reaches_emitter_after_layout_classification() {
     let module = TypedModule {
         module: jisp_ir::Module::empty(),
         schemes: BTreeMap::from([("main".to_owned(), Scheme::mono(Type::Int))]),
+        expression_types: Default::default(),
     };
 
     assert_eq!(generate(&module).unwrap().to_string(), "");
@@ -52,6 +54,7 @@ fn generate_detailed_maps_rust_functions_to_jisp_definitions() {
             exports: vec![],
         },
         schemes: BTreeMap::from([("main".to_owned(), Scheme::mono(Type::Int))]),
+        expression_types: Default::default(),
     };
 
     let generated = generate_detailed(&module).unwrap();
