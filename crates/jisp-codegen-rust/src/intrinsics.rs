@@ -895,16 +895,17 @@ impl<'a> EmitContext<'a> {
     }
 
     fn native_object_row(&self, expr: &Expr) -> Result<jisp_types::ObjectRow, CodegenError> {
-        let jisp_ir::ExprKind::Name(name) = &expr.kind else {
-            return Err(CodegenError::Unsupported(
-                "native object helper arguments without known object rows",
-            ));
-        };
         let ty = self
-            .locals
-            .get(name)
-            .and_then(Option::as_ref)
-            .or_else(|| self.top_level_schemes.get(name).map(|scheme| &scheme.body));
+            .expression_types
+            .get(&expr.span)
+            .or_else(|| match &expr.kind {
+                jisp_ir::ExprKind::Name(name) => self
+                    .locals
+                    .get(name)
+                    .and_then(Option::as_ref)
+                    .or_else(|| self.top_level_schemes.get(name).map(|scheme| &scheme.body)),
+                _ => None,
+            });
         match ty {
             Some(Type::Object(row)) if row.rest.is_none() => Ok(row.clone()),
             Some(Type::Object(_)) => {

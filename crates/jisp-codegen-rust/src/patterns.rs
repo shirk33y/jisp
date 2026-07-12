@@ -59,7 +59,12 @@ pub(crate) fn emit_variant_match_pattern(
     match pattern {
         Pattern::Variant { tag, fields } => {
             let variant = match subject_type {
-                Some(Type::Named { name, .. }) if matches!(name.as_str(), "result" | "option") => {
+                Some(Type::Named { name, arguments })
+                    if matches!(
+                        (name.as_str(), arguments.len()),
+                        ("result", 2) | ("option", 1)
+                    ) =>
+                {
                     enum_types.prelude_constructor(tag, subject_type)?.ok_or(
                         CodegenError::Unsupported("unregistered native enum variant"),
                     )?

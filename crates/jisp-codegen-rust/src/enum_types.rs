@@ -1,6 +1,7 @@
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 
-use jisp_ir::{Definition, Expr, ExprKind, StringPart, TypeDecl, VariantDecl};
+use jisp_core::Span;
+use jisp_ir::{TypeDecl, VariantDecl};
 use jisp_types::{Scheme, Type};
 use proc_macro2::Ident;
 use quote::format_ident;
@@ -17,8 +18,8 @@ pub(crate) struct EnumTypes {
 impl EnumTypes {
     pub(crate) fn from_module(
         declarations: &[TypeDecl],
-        definitions: &[Definition],
         schemes: &BTreeMap<String, Scheme>,
+        expression_types: &HashMap<Span, Type>,
     ) -> Result<Self, CodegenError> {
         let mut names = BTreeMap::new();
         let mut enums = BTreeMap::new();
@@ -29,15 +30,12 @@ impl EnumTypes {
             let shape = enum_shape(declaration, enum_ident, &mut variants)?;
             enums.insert(declaration.name.clone(), shape);
         }
-        let mut types = Self {
+        let types = Self {
             names,
             enums,
             variants,
         }
-        .with_prelude_instances(schemes);
-        for definition in definitions {
-            types.collect_static_obj_get_instances(&definition.value, schemes);
-        }
+        .with_prelude_instances(schemes, expression_types);
         Ok(types)
     }
 
@@ -102,101 +100,21 @@ impl EnumTypes {
         }))
     }
 
-    fn with_prelude_instances(mut self, schemes: &BTreeMap<String, Scheme>) -> Self {
-        for scheme in schemes.values() {
-            collect_prelude_instances(&scheme.body, &mut self.enums);
+    fn with_prelude_instances(
+        mut self,
+        schemes: &BTreeMap<String, Scheme>,
+        expression_types: &HashMap<Span, Type>,
+    ) -> Self {
+        let mut types = schemes
+            .values()
+            .map(|scheme| &scheme.body)
+            .chain(expression_types.values())
+            .collect::<Vec<_>>();
+        types.sort_by_key(|ty| type_key(ty));
+        for ty in types {
+            collect_prelude_instances(ty, &mut self.enums);
         }
         self
-    }
-
-    fn collect_static_obj_get_instances(
-        &mut self,
-        expr: &Expr,
-        schemes: &BTreeMap<String, Scheme>,
-    ) {
-        if let ExprKind::Call { callee, arguments } = &expr.kind {
-            if let (ExprKind::Name(name), [object, key]) = (&callee.kind, arguments.as_slice()) {
-                if let ("obj.get", ExprKind::Name(object), Some(key)) = (
-                    name.as_str(),
-                    &object.kind,
-                    crate::emit::static_string_key(key),
-                ) {
-                    if let Some(Scheme {
-                        body: Type::Object(row),
-                        ..
-                    }) = schemes.get(object)
-                    {
-                        if let Some(field) = row.fields.get(&key) {
-                            collect_prelude_instances(
-                                &result_type(field.clone(), Type::Str),
-                                &mut self.enums,
-                            );
-                        }
-                    }
-                }
-            }
-            self.collect_static_obj_get_instances(callee, schemes);
-            for argument in arguments {
-                self.collect_static_obj_get_instances(argument, schemes);
-            }
-            return;
-        }
-
-        match &expr.kind {
-            ExprKind::Lambda { body, .. } | ExprKind::Not(body) => {
-                self.collect_static_obj_get_instances(body, schemes);
-            }
-            ExprKind::Let { bindings, body } => {
-                for (_, value) in bindings {
-                    self.collect_static_obj_get_instances(value, schemes);
-                }
-                self.collect_static_obj_get_instances(body, schemes);
-            }
-            ExprKind::Do(expressions) | ExprKind::And(expressions) | ExprKind::Or(expressions) => {
-                for expression in expressions {
-                    self.collect_static_obj_get_instances(expression, schemes);
-                }
-            }
-            ExprKind::If {
-                condition,
-                then_branch,
-                else_branch,
-            } => {
-                self.collect_static_obj_get_instances(condition, schemes);
-                self.collect_static_obj_get_instances(then_branch, schemes);
-                self.collect_static_obj_get_instances(else_branch, schemes);
-            }
-            ExprKind::List(items) => {
-                for item in items {
-                    self.collect_static_obj_get_instances(item, schemes);
-                }
-            }
-            ExprKind::Object(fields) => {
-                for (key, value) in fields {
-                    self.collect_static_obj_get_instances(key, schemes);
-                    self.collect_static_obj_get_instances(value, schemes);
-                }
-            }
-            ExprKind::Field { object, key } => {
-                self.collect_static_obj_get_instances(object, schemes);
-                self.collect_static_obj_get_instances(key, schemes);
-            }
-            ExprKind::StringTemplate { parts, .. } => {
-                for part in parts {
-                    if let StringPart::Expr(expression) | StringPart::Splice(expression) = part {
-                        self.collect_static_obj_get_instances(expression, schemes);
-                    }
-                }
-            }
-            ExprKind::Case { subject, branches } => {
-                self.collect_static_obj_get_instances(subject, schemes);
-                for branch in branches {
-                    self.collect_static_obj_get_instances(&branch.body, schemes);
-                }
-            }
-            ExprKind::Literal(_) | ExprKind::Name(_) => {}
-            ExprKind::Call { .. } => unreachable!("calls return before recursive traversal"),
-        }
     }
 }
 
@@ -315,13 +233,6 @@ fn prelude_enum_shape(name: &str, arguments: &[Type], index: usize) -> Option<En
 
 fn type_key(ty: &Type) -> String {
     ty.to_string()
-}
-
-fn result_type(ok: Type, err: Type) -> Type {
-    Type::Named {
-        name: "result".to_owned(),
-        arguments: vec![ok, err],
-    }
 }
 
 fn variant_shape(variant: &VariantDecl, enum_ident: &Ident) -> Result<VariantShape, CodegenError> {

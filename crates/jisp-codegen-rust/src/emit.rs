@@ -1,5 +1,6 @@
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 
+use jisp_core::Span;
 use jisp_ir::{CaseBranch, Definition, Expr, ExprKind, Literal, Pattern, StringPart};
 use jisp_types::{ObjectRow, Scheme, Type, TypedModule};
 use proc_macro2::{Ident, TokenStream};
@@ -30,8 +31,8 @@ pub(crate) fn emit_module(module: &TypedModule) -> Result<GeneratedRust, Codegen
     let object_types = ObjectTypes::from_module(module)?;
     let enum_types = EnumTypes::from_module(
         &module.module.types,
-        &module.module.definitions,
         &module.schemes,
+        &module.expression_types,
     )?;
     let object_structs = emit_object_structs(&object_types, &enum_types)?;
     let enum_definitions = emit_enum_definitions(&enum_types, &object_types)?;
@@ -83,8 +84,13 @@ fn emit_definition(
                     "function definitions with mismatched inferred arity",
                 ));
             }
-            let mut context =
-                EmitContext::new(top_level_names, &module.schemes, object_types, enum_types);
+            let mut context = EmitContext::new(
+                top_level_names,
+                &module.schemes,
+                &module.expression_types,
+                object_types,
+                enum_types,
+            );
             let params = params
                 .iter()
                 .zip(parameters)
@@ -106,8 +112,14 @@ fn emit_definition(
         }
         (_, ty) => {
             let result = emit_type(ty, object_types, enum_types)?;
-            let body = EmitContext::new(top_level_names, &module.schemes, object_types, enum_types)
-                .emit_expr(&definition.value, Some(ty))?;
+            let body = EmitContext::new(
+                top_level_names,
+                &module.schemes,
+                &module.expression_types,
+                object_types,
+                enum_types,
+            )
+            .emit_expr(&definition.value, Some(ty))?;
             Ok(quote! {
                 #visibility fn #name() -> #result {
                     #body
@@ -120,6 +132,7 @@ fn emit_definition(
 struct EmitContext<'a> {
     top_level_names: &'a BTreeSet<String>,
     top_level_schemes: &'a BTreeMap<String, Scheme>,
+    expression_types: &'a HashMap<Span, Type>,
     object_types: &'a ObjectTypes,
     enum_types: &'a EnumTypes,
     locals: BTreeMap<String, Option<Type>>,
@@ -129,12 +142,14 @@ impl<'a> EmitContext<'a> {
     fn new(
         top_level_names: &'a BTreeSet<String>,
         top_level_schemes: &'a BTreeMap<String, Scheme>,
+        expression_types: &'a HashMap<Span, Type>,
         object_types: &'a ObjectTypes,
         enum_types: &'a EnumTypes,
     ) -> Self {
         Self {
             top_level_names,
             top_level_schemes,
+            expression_types,
             object_types,
             enum_types,
             locals: BTreeMap::new(),
@@ -146,6 +161,7 @@ impl<'a> EmitContext<'a> {
         expr: &Expr,
         expected: Option<&Type>,
     ) -> Result<TokenStream, CodegenError> {
+        let expected = expected.or_else(|| self.expression_types.get(&expr.span));
         match &expr.kind {
             ExprKind::Literal(literal) => emit_literal(literal),
             ExprKind::Name(name) => {
@@ -551,9 +567,9 @@ impl<'a> EmitContext<'a> {
             return Err(CodegenError::Unsupported("native callback expressions"));
         };
         let ty = self
-            .locals
-            .get(name)
-            .and_then(Option::as_ref)
+            .expression_types
+            .get(&callback.span)
+            .or_else(|| self.locals.get(name).and_then(Option::as_ref))
             .or_else(|| self.top_level_schemes.get(name).map(|scheme| &scheme.body))
             .ok_or(CodegenError::Unsupported("native callback outside module"))?;
         match ty {
@@ -568,32 +584,18 @@ impl<'a> EmitContext<'a> {
     }
 
     fn known_expr_type(&self, expr: &Expr) -> Option<Type> {
-        match &expr.kind {
-            ExprKind::Name(name) => self
-                .locals
-                .get(name)
-                .and_then(Option::as_ref)
-                .or_else(|| self.top_level_schemes.get(name).map(|scheme| &scheme.body))
-                .cloned(),
-            ExprKind::Call { callee, arguments } if matches!(&callee.kind, ExprKind::Name(name) if name == "obj.get") =>
-            {
-                let [object, key] = arguments.as_slice() else {
-                    return None;
-                };
-                let ExprKind::Name(object) = &object.kind else {
-                    return None;
-                };
-                let key = static_string_key(key)?;
-                let Type::Object(row) = self.top_level_schemes.get(object)?.body.clone() else {
-                    return None;
-                };
-                row.fields
-                    .get(&key)
-                    .cloned()
-                    .map(|field| result_type(field, Type::Str))
-            }
-            _ => None,
-        }
+        self.expression_types
+            .get(&expr.span)
+            .cloned()
+            .or_else(|| match &expr.kind {
+                ExprKind::Name(name) => self
+                    .locals
+                    .get(name)
+                    .and_then(Option::as_ref)
+                    .or_else(|| self.top_level_schemes.get(name).map(|scheme| &scheme.body))
+                    .cloned(),
+                _ => None,
+            })
     }
 }
 
@@ -917,13 +919,6 @@ pub(crate) fn static_string_key(expr: &Expr) -> Option<String> {
             }
         }
         _ => None,
-    }
-}
-
-fn result_type(ok: Type, err: Type) -> Type {
-    Type::Named {
-        name: "result".to_owned(),
-        arguments: vec![ok, err],
     }
 }
 
