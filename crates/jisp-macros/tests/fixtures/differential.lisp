@@ -177,6 +177,12 @@
           append-prefix (fn (value) (str.cat prefix value)))
       (str.cat prefix (append-prefix "b")))))
 
+(export captured-string-map-entry
+  (fn ()
+    (let (prefix "a"
+          append-prefix (fn (value) (str.cat prefix value)))
+      (list.map append-prefix (list "b" "c")))))
+
 (export captured-use-entry
   (fn ()
     (let (offset 2)
