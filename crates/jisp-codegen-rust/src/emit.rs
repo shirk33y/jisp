@@ -405,11 +405,19 @@ impl<'a> EmitContext<'a> {
         branches: &[CaseBranch],
         expected: Option<&Type>,
     ) -> Result<TokenStream, CodegenError> {
-        let subject = self.emit_expr(subject, None)?;
+        let subject_type = self.known_expr_type(subject);
+        let subject = self.emit_expr(subject, subject_type.as_ref())?;
         let subject_name = format_ident!("__jisp_case_subject");
         let arms = branches
             .iter()
-            .map(|branch| self.emit_variant_case_arm(&branch.pattern, &branch.body, expected))
+            .map(|branch| {
+                self.emit_variant_case_arm(
+                    &branch.pattern,
+                    &branch.body,
+                    expected,
+                    subject_type.as_ref(),
+                )
+            })
             .collect::<Result<Vec<_>, _>>()?;
         Ok(quote! {{
             let #subject_name = #subject;
@@ -424,9 +432,10 @@ impl<'a> EmitContext<'a> {
         pattern: &Pattern,
         body: &Expr,
         expected: Option<&Type>,
+        subject_type: Option<&Type>,
     ) -> Result<TokenStream, CodegenError> {
         let PatternMatch { tokens, bindings } =
-            emit_variant_match_pattern(pattern, self.enum_types)?;
+            emit_variant_match_pattern(pattern, self.enum_types, subject_type)?;
         ensure_unique_rust_idents(bindings.iter().map(String::as_str), "case binding")?;
         let mut previous_locals = Vec::new();
         for binding in &bindings {
@@ -555,6 +564,35 @@ impl<'a> EmitContext<'a> {
             _ => Err(CodegenError::Unsupported(
                 "native callback is not a function",
             )),
+        }
+    }
+
+    fn known_expr_type(&self, expr: &Expr) -> Option<Type> {
+        match &expr.kind {
+            ExprKind::Name(name) => self
+                .locals
+                .get(name)
+                .and_then(Option::as_ref)
+                .or_else(|| self.top_level_schemes.get(name).map(|scheme| &scheme.body))
+                .cloned(),
+            ExprKind::Call { callee, arguments } if matches!(&callee.kind, ExprKind::Name(name) if name == "obj.get") =>
+            {
+                let [object, key] = arguments.as_slice() else {
+                    return None;
+                };
+                let ExprKind::Name(object) = &object.kind else {
+                    return None;
+                };
+                let key = static_string_key(key)?;
+                let Type::Object(row) = self.top_level_schemes.get(object)?.body.clone() else {
+                    return None;
+                };
+                row.fields
+                    .get(&key)
+                    .cloned()
+                    .map(|field| result_type(field, Type::Str))
+            }
+            _ => None,
         }
     }
 }
@@ -879,6 +917,13 @@ pub(crate) fn static_string_key(expr: &Expr) -> Option<String> {
             }
         }
         _ => None,
+    }
+}
+
+fn result_type(ok: Type, err: Type) -> Type {
+    Type::Named {
+        name: "result".to_owned(),
+        arguments: vec![ok, err],
     }
 }
 

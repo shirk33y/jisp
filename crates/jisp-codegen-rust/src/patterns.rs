@@ -1,4 +1,5 @@
 use jisp_ir::Pattern;
+use jisp_types::Type;
 use proc_macro2::TokenStream;
 use quote::quote;
 
@@ -53,10 +54,18 @@ pub(crate) fn emit_pattern(
 pub(crate) fn emit_variant_match_pattern(
     pattern: &Pattern,
     enum_types: &EnumTypes,
+    subject_type: Option<&Type>,
 ) -> Result<PatternMatch, CodegenError> {
     match pattern {
         Pattern::Variant { tag, fields } => {
-            let variant = enum_types.variant(tag)?;
+            let variant = match subject_type {
+                Some(Type::Named { name, .. }) if matches!(name.as_str(), "result" | "option") => {
+                    enum_types.prelude_constructor(tag, subject_type)?.ok_or(
+                        CodegenError::Unsupported("unregistered native enum variant"),
+                    )?
+                }
+                _ => enum_types.variant(tag)?.clone(),
+            };
             if fields.len() != variant.fields.len() {
                 return Err(CodegenError::Unsupported(
                     "variant case pattern arity mismatch",

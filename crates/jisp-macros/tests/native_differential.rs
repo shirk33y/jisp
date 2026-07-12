@@ -33,6 +33,7 @@ fn native_static_object_get_matches_the_interpreter() {
         "object-get-discarded-entry",
         Value::Int(object_get_discarded_entry()),
     );
+    assert_matches_interpreter("object-get-case-entry", Value::Int(object_get_case_entry()));
 }
 
 #[test]

@@ -42,6 +42,12 @@
       (obj.get stats "score")
       42)))
 
+(export object-get-case-entry
+  (fn ()
+    (case (obj.get stats "score")
+      ((ok value) (+ value 2))
+      ((err _) 0))))
+
 (export boolean-entry
   (fn ()
     (and (. stats "active") (list.has words "lin"))))
