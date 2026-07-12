@@ -65,7 +65,7 @@ literal. In Lisp and YAML-like source, quoted values are strings.
 - A deliberately narrower native Rust subset: monomorphic definitions, closed
   objects, lists, non-capturing top-level callbacks, supported `case` patterns,
   imports, and selected helpers including `list.map`, `list.filter`, and
-  `list.fold`.
+  `list.fold`, `list.some`, and `list.every`.
 - Proc-macro integration that compiles supported Jisp files into native Rust
   items while tracking imported source dependencies.
 

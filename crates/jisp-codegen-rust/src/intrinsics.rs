@@ -48,6 +48,8 @@ impl<'a> EmitContext<'a> {
             "list.map" => self.emit_list_map_intrinsic(arguments),
             "list.filter" => self.emit_list_filter_intrinsic(arguments),
             "list.fold" => self.emit_list_fold_intrinsic(arguments),
+            "list.some" => self.emit_list_predicate_intrinsic(arguments, true),
+            "list.every" => self.emit_list_predicate_intrinsic(arguments, false),
             "list.has" => self.emit_list_has_intrinsic(arguments),
             "list.prepend" => self.emit_list_prepend_intrinsic(arguments),
             "list.append" => self.emit_list_append_intrinsic(arguments),
@@ -598,6 +600,65 @@ impl<'a> EmitContext<'a> {
         let list_type = Type::List(Box::new(item_type.clone()));
         let list = self.emit_expr(list, Some(&list_type))?;
         Ok(quote! { #list.into_iter().fold(#initial, #callback) })
+    }
+
+    fn emit_list_predicate_intrinsic(
+        &mut self,
+        arguments: &[Expr],
+        matches_any: bool,
+    ) -> Result<TokenStream, CodegenError> {
+        let [callback, list] = arguments else {
+            return Err(CodegenError::Unsupported(
+                "non-binary native list predicate",
+            ));
+        };
+        let callback_type = self.native_callback_type(callback)?;
+        let Type::Function {
+            parameters,
+            rest: None,
+            result,
+        } = &callback_type
+        else {
+            unreachable!("native_callback_type only returns fixed-arity functions");
+        };
+        let [item_type] = parameters.as_slice() else {
+            return Err(CodegenError::Unsupported(
+                "native list predicate callback arity",
+            ));
+        };
+        if result.as_ref() != &Type::Bool {
+            return Err(CodegenError::Unsupported(
+                "native list predicate callback result",
+            ));
+        }
+        let callback = self.emit_expr(callback, Some(&callback_type))?;
+        let list_type = Type::List(Box::new(item_type.clone()));
+        let list = self.emit_expr(list, Some(&list_type))?;
+        let match_value = if matches_any {
+            quote! { true }
+        } else {
+            quote! { false }
+        };
+        let default_value = if matches_any {
+            quote! { false }
+        } else {
+            quote! { true }
+        };
+        let break_on_match = if matches_any {
+            quote! { #callback(__jisp_value) }
+        } else {
+            quote! { !#callback(__jisp_value) }
+        };
+        Ok(quote! {{
+            let mut __jisp_result = #default_value;
+            for __jisp_value in #list {
+                if #break_on_match {
+                    __jisp_result = #match_value;
+                    break;
+                }
+            }
+            __jisp_result
+        }})
     }
 
     fn emit_list_prepend_intrinsic(

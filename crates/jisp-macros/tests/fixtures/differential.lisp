@@ -56,6 +56,14 @@
   (fn ()
     (list.fold sum 0 (list 1 2 3))))
 
+(export some-entry
+  (fn ()
+    (+ 40 (if (list.some above-one (list 0 1 2)) 2 0))))
+
+(export every-entry
+  (fn ()
+    (+ 40 (if (list.every above-one (list 2 3 4)) 2 0))))
+
 (export higher-order-entry
   (fn ()
     (apply-twice increment 40)))

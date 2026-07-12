@@ -36,6 +36,8 @@ fn native_callbacks_and_list_higher_order_helpers_match_the_interpreter() {
         Value::List(filter_entry().into_iter().map(Value::Int).collect()),
     );
     assert_matches_interpreter("fold-entry", Value::Int(fold_entry()));
+    assert_matches_interpreter("some-entry", Value::Int(some_entry()));
+    assert_matches_interpreter("every-entry", Value::Int(every_entry()));
     assert_matches_interpreter("higher-order-entry", Value::Int(higher_order_entry()));
 }
 

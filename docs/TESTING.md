@@ -20,9 +20,9 @@ is compiled by the test harness.
 Jisp module through `jisp_macros::lisp_file!` and compares its native exports
 with the interpreter. The fixture covers scalars, strings, lists,
 closed-object field access, enum `case` expressions, and non-capturing
-function callbacks in `list.map`, `list.filter`, and `list.fold`. Add an export
-and a matching structural comparison here whenever native codegen gains a
-supported value shape or intrinsic.
+function callbacks in `list.map`, `list.filter`, `list.fold`, `list.some`, and
+`list.every`. Add an export and a matching structural comparison here whenever
+native codegen gains a supported value shape or intrinsic.
 
 Unsupported native shapes remain covered by explicit `CodegenError` regression
 tests and downstream compile-fail fixtures. The latter build a temporary crate
