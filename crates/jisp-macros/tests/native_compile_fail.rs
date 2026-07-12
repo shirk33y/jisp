@@ -1,8 +1,8 @@
 use std::{env, fs, path::PathBuf, process::Command};
 
 #[test]
-fn variadic_native_functions_fail_during_downstream_macro_expansion() {
-    let crate_dir = fixture_dir("variadic-function");
+fn bigint_native_values_fail_during_downstream_macro_expansion() {
+    let crate_dir = fixture_dir("bigint");
     let fixture = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/unsupported_first_class_call.lisp")
         .canonicalize()
@@ -46,7 +46,7 @@ fn variadic_native_functions_fail_during_downstream_macro_expansion() {
         "{diagnostics}"
     );
     assert!(
-        diagnostics.contains("native variadic functions"),
+        diagnostics.contains("bigint type emission"),
         "{diagnostics}"
     );
 }

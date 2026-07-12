@@ -72,6 +72,21 @@ fn native_callbacks_and_list_higher_order_helpers_match_the_interpreter() {
 }
 
 #[test]
+fn native_variadic_functions_match_the_interpreter() {
+    assert_matches_interpreter("variadic-empty-entry", Value::Int(variadic_empty_entry()));
+    assert_matches_interpreter("variadic-many-entry", Value::Int(variadic_many_entry()));
+    assert_matches_interpreter("variadic-local-entry", Value::Int(variadic_local_entry()));
+    assert_matches_interpreter(
+        "variadic-expression-entry",
+        Value::Int(variadic_expression_entry()),
+    );
+    assert_matches_interpreter(
+        "variadic-returned-entry",
+        Value::Int(variadic_returned_entry()),
+    );
+}
+
+#[test]
 fn native_local_closures_match_the_interpreter() {
     assert_matches_interpreter("local-function-entry", Value::Int(local_function_entry()));
     assert_matches_interpreter(

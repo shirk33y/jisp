@@ -1,5 +1,3 @@
 (export entry
-  (fn (head ... tail)
-    (if (list.has tail head)
-      (+ head 0)
-      (+ head 0))))
+  (fn ()
+    (bigint "32849384983498230592309502398509388908203986232306")))

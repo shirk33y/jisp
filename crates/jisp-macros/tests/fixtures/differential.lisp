@@ -28,6 +28,15 @@
   (fn (callback value)
     (+ 0 (callback (callback value)))))
 
+(def sum-rest
+  (fn (head ... tail)
+    (+ head (list.fold sum 0 tail))))
+
+(def make-rest-adder
+  (fn (offset)
+    (fn (head ... tail)
+      (+ offset (+ head (list.fold sum 0 tail))))))
+
 (def make-adder
   (fn (offset)
     (fn (value)
@@ -156,6 +165,29 @@
 (export first-class-call-entry
   (fn ()
     ((if true increment decrement) 41)))
+
+(export variadic-empty-entry
+  (fn ()
+    (sum-rest 42)))
+
+(export variadic-many-entry
+  (fn ()
+    (sum-rest 40 1 1)))
+
+(export variadic-local-entry
+  (fn ()
+    (let (offset 40
+          add-rest (fn (head ... tail)
+                     (+ offset (+ head (list.fold sum 0 tail)))))
+      (add-rest 1 1))))
+
+(export variadic-expression-entry
+  (fn ()
+    ((if true sum-rest sum-rest) 40 1 1)))
+
+(export variadic-returned-entry
+  (fn ()
+    ((make-rest-adder 40) 1 1)))
 
 (export local-function-entry
   (fn ()
