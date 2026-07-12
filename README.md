@@ -63,8 +63,8 @@ literal. In Lisp and YAML-like source, quoted values are strings.
   null, list, and structural-object cases.
 - Interpreter execution of an exported, typed, zero-argument `main`.
 - A deliberately narrower native Rust subset: monomorphic definitions, closed
-  objects, lists, non-capturing top-level callbacks, supported `case` patterns,
-  imports, and selected helpers including `list.map`, `list.filter`, and
+  objects, lists, non-capturing top-level function pointers and calls, supported
+  `case` patterns, imports, and selected helpers including `list.map`, `list.filter`, and
   `list.fold`, `list.some`, `list.every`, static known-field `obj.get` on
   closed objects (including inline literals), and concrete `result.try`,
   `result.map`, `result.map-err`, and `result.recover`.

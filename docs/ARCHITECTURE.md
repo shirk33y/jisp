@@ -33,7 +33,8 @@ JSON / restricted YAML / Lisp
   monomorphic scalar/function plus list literal, closed structural object, field
   access, string template, simple literal/bind/wildcard `case`, concrete native
   enum constructors, variant `case`, list/object `case` patterns, simple binary
-  intrinsic subset, non-capturing function pointers and callback list helpers,
+  intrinsic subset, non-capturing function pointers, calls through typed function
+  expressions, and callback list helpers,
   typed string/list/math helper subset, and static closed-row object helpers
   including known-field `obj.get`, plus concrete `result` callback helpers. It
   receives resolved expression types from `TypedModule`, so each native `result`

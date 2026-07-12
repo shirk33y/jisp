@@ -12,6 +12,10 @@
   (fn (value)
     (+ value 1)))
 
+(def decrement
+  (fn (value)
+    (- value 1)))
+
 (def above-one
   (fn (value)
     (> value 1)))
@@ -143,6 +147,10 @@
 (export higher-order-entry
   (fn ()
     (apply-twice increment 40)))
+
+(export first-class-call-entry
+  (fn ()
+    ((if true increment decrement) 41)))
 
 (export enum-case-entry
   (fn ()

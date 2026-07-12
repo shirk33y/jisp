@@ -53,6 +53,8 @@ This is the single authoritative list of intentionally unfinished work.
   8. Done: retain resolved expression types for native layout registration and
      emit concrete `result.try`, `result.map`, `result.map-err`, and
      `result.recover` callbacks.
+  9. Done: emit calls through non-capturing typed function expressions while
+     continuing to reject nested functions and closures.
 - Add native backend support for nested/capturing function values, variadic user
   functions, `bigint` emission, dynamic object helpers/open rows, and dynamic
   field access.

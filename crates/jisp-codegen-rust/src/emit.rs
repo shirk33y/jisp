@@ -498,61 +498,82 @@ impl<'a> EmitContext<'a> {
         arguments: &[Expr],
         expected: Option<&Type>,
     ) -> Result<TokenStream, CodegenError> {
-        let ExprKind::Name(name) = &callee.kind else {
-            return Err(CodegenError::Unsupported("first-class function calls"));
+        if let ExprKind::Name(name) = &callee.kind {
+            if let Some(variant) = self.enum_types.prelude_constructor(name, expected)? {
+                if variant.fields.len() != arguments.len() {
+                    return Err(CodegenError::Unsupported(
+                        "prelude enum constructor arity mismatch",
+                    ));
+                }
+                let enum_ident = &variant.enum_ident;
+                let variant_ident = &variant.ident;
+                let arguments = arguments
+                    .iter()
+                    .zip(&variant.fields)
+                    .map(|(argument, ty)| self.emit_expr(argument, Some(ty)))
+                    .collect::<Result<Vec<_>, _>>()?;
+                return if arguments.is_empty() {
+                    Ok(quote! { #enum_ident::#variant_ident })
+                } else {
+                    Ok(quote! { #enum_ident::#variant_ident(#(#arguments),*) })
+                };
+            }
+            if let Some(variant) = self.enum_types.variants.get(name).cloned() {
+                if variant.fields.len() != arguments.len() {
+                    return Err(CodegenError::Unsupported(
+                        "variant constructor arity mismatch",
+                    ));
+                }
+                let enum_ident = &variant.enum_ident;
+                let variant_ident = &variant.ident;
+                let arguments = arguments
+                    .iter()
+                    .zip(&variant.fields)
+                    .map(|(argument, ty)| self.emit_expr(argument, Some(ty)))
+                    .collect::<Result<Vec<_>, _>>()?;
+                return Ok(quote! { #enum_ident::#variant_ident(#(#arguments),*) });
+            }
+            if !self.locals.contains_key(name) && !self.top_level_names.contains(name) {
+                return self.emit_native_intrinsic(name, arguments, expected);
+            }
+            let name = rust_ident(name);
+            let parameter_types = self.callee_parameter_types(callee).map(Vec::from);
+            let arguments = arguments
+                .iter()
+                .enumerate()
+                .map(|(index, argument)| {
+                    self.emit_expr(
+                        argument,
+                        parameter_types
+                            .as_ref()
+                            .and_then(|parameters| parameters.get(index)),
+                    )
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+            return Ok(quote! { #name(#(#arguments),*) });
+        }
+        let callee_type = self
+            .expression_type(callee)
+            .cloned()
+            .ok_or(CodegenError::Unsupported("native callee type"))?;
+        let Type::Function {
+            parameters,
+            rest: None,
+            ..
+        } = &callee_type
+        else {
+            return Err(CodegenError::Unsupported("native first-class callee"));
         };
-        if let Some(variant) = self.enum_types.prelude_constructor(name, expected)? {
-            if variant.fields.len() != arguments.len() {
-                return Err(CodegenError::Unsupported(
-                    "prelude enum constructor arity mismatch",
-                ));
-            }
-            let enum_ident = &variant.enum_ident;
-            let variant_ident = &variant.ident;
-            let arguments = arguments
-                .iter()
-                .zip(&variant.fields)
-                .map(|(argument, ty)| self.emit_expr(argument, Some(ty)))
-                .collect::<Result<Vec<_>, _>>()?;
-            return if arguments.is_empty() {
-                Ok(quote! { #enum_ident::#variant_ident })
-            } else {
-                Ok(quote! { #enum_ident::#variant_ident(#(#arguments),*) })
-            };
+        if parameters.len() != arguments.len() {
+            return Err(CodegenError::Unsupported("native function call arity"));
         }
-        if let Some(variant) = self.enum_types.variants.get(name).cloned() {
-            if variant.fields.len() != arguments.len() {
-                return Err(CodegenError::Unsupported(
-                    "variant constructor arity mismatch",
-                ));
-            }
-            let enum_ident = &variant.enum_ident;
-            let variant_ident = &variant.ident;
-            let arguments = arguments
-                .iter()
-                .zip(&variant.fields)
-                .map(|(argument, ty)| self.emit_expr(argument, Some(ty)))
-                .collect::<Result<Vec<_>, _>>()?;
-            return Ok(quote! { #enum_ident::#variant_ident(#(#arguments),*) });
-        }
-        if !self.locals.contains_key(name) && !self.top_level_names.contains(name) {
-            return self.emit_native_intrinsic(name, arguments, expected);
-        }
-        let name = rust_ident(name);
-        let parameter_types = self.callee_parameter_types(callee).map(Vec::from);
+        let callee = self.emit_expr(callee, Some(&callee_type))?;
         let arguments = arguments
             .iter()
-            .enumerate()
-            .map(|(index, argument)| {
-                self.emit_expr(
-                    argument,
-                    parameter_types
-                        .as_ref()
-                        .and_then(|parameters| parameters.get(index)),
-                )
-            })
+            .zip(parameters)
+            .map(|(argument, ty)| self.emit_expr(argument, Some(ty)))
             .collect::<Result<Vec<_>, _>>()?;
-        Ok(quote! { #name(#(#arguments),*) })
+        Ok(quote! { (#callee)(#(#arguments),*) })
     }
 
     fn callee_parameter_types(&self, callee: &Expr) -> Option<&[Type]> {

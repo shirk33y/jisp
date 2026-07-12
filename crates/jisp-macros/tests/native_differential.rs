@@ -65,6 +65,10 @@ fn native_callbacks_and_list_higher_order_helpers_match_the_interpreter() {
     assert_matches_interpreter("some-entry", Value::Int(some_entry()));
     assert_matches_interpreter("every-entry", Value::Int(every_entry()));
     assert_matches_interpreter("higher-order-entry", Value::Int(higher_order_entry()));
+    assert_matches_interpreter(
+        "first-class-call-entry",
+        Value::Int(first_class_call_entry()),
+    );
 }
 
 #[test]
