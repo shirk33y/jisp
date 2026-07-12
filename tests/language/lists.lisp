@@ -66,6 +66,13 @@
       (list.prepend 0 (list 1 2))
       (list.append (list 3 4) 5))))
 
+(test "list updates do not mutate an aliased input"
+  (assert.equal
+    (obj "original" (list 1 2) "updated" (list 1 2 3))
+    (let (original (list 1 2)
+          updated (list.append original 3))
+      (obj "original" original "updated" updated))))
+
 (test "list predicates use structural equality"
   (assert.equal
     (list true true false)

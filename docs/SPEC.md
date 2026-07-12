@@ -237,5 +237,7 @@ Field lookup is explicit and works on structural objects.
 ## Equality and mutability
 
 Equality is structural for data values. Functions and opaque native handles are
-not comparable. Values are semantically immutable; evaluators may use COW and
-native code may reuse unique allocations when observably equivalent.
+not comparable. Values are semantically immutable: every list/object update
+returns a new value and leaves aliases to the input unchanged. The interpreter
+currently copies the affected container; evaluators may later use COW and native
+code may reuse unique allocations when observably equivalent.
