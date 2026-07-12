@@ -171,6 +171,7 @@ The main validation path is:
 
 ```sh
 cargo fmt --all -- --check
+cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace --exclude jisp-macros
 ```
 
