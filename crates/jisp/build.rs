@@ -6,6 +6,7 @@ use std::{
 
 #[derive(Debug)]
 struct DocExample {
+    document: String,
     name: String,
     syntax: String,
     mode: Mode,
@@ -19,12 +20,12 @@ enum Mode {
 }
 
 impl Mode {
-    fn parse(value: &str, line: usize) -> Self {
+    fn parse(document: &str, value: &str, line: usize) -> Self {
         match value {
             "check" => Self::Check,
             "run" => Self::Run,
             _ => panic!(
-                "README.md:{line}: unsupported doc example mode `{value}`; use `check` or `run`"
+                "{document}:{line}: unsupported doc example mode `{value}`; use `check` or `run`"
             ),
         }
     }
@@ -32,12 +33,20 @@ impl Mode {
 
 fn main() {
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").expect("manifest directory"));
-    let readme = manifest_dir.join("../..").join("README.md");
-    println!("cargo:rerun-if-changed={}", readme.display());
-
-    let markdown = fs::read_to_string(&readme)
-        .unwrap_or_else(|error| panic!("failed to read {}: {error}", readme.display()));
-    let examples = extract_examples(&markdown);
+    let root = manifest_dir.join("../..");
+    let documents = [
+        ("README.md", root.join("README.md")),
+        ("docs/SPEC.md", root.join("docs/SPEC.md")),
+        ("docs/STDLIB.md", root.join("docs/STDLIB.md")),
+    ];
+    let mut names = HashSet::new();
+    let mut examples = vec![];
+    for (document, path) in documents {
+        println!("cargo:rerun-if-changed={}", path.display());
+        let markdown = fs::read_to_string(&path)
+            .unwrap_or_else(|error| panic!("failed to read {}: {error}", path.display()));
+        examples.extend(extract_examples(document, &markdown, &mut names));
+    }
     let generated = generate_tests(&examples);
     let output =
         PathBuf::from(env::var("OUT_DIR").expect("output directory")).join("readme_doc_tests.rs");
@@ -45,9 +54,12 @@ fn main() {
         .unwrap_or_else(|error| panic!("failed to write {}: {error}", output.display()));
 }
 
-fn extract_examples(markdown: &str) -> Vec<DocExample> {
+fn extract_examples(
+    document: &str,
+    markdown: &str,
+    names: &mut HashSet<String>,
+) -> Vec<DocExample> {
     let mut examples = vec![];
-    let mut names = HashSet::new();
     let mut lines = markdown.lines().enumerate();
 
     while let Some((line_index, line)) = lines.next() {
@@ -55,7 +67,7 @@ fn extract_examples(markdown: &str) -> Vec<DocExample> {
             continue;
         };
         let line_number = line_index + 1;
-        let Some((syntax, name, mode)) = parse_fence_info(info, line_number) else {
+        let Some((syntax, name, mode)) = parse_fence_info(document, info, line_number) else {
             continue;
         };
 
@@ -71,17 +83,18 @@ fn extract_examples(markdown: &str) -> Vec<DocExample> {
         }
         assert!(
             closed,
-            "README.md:{line_number}: unterminated doc example `{name}`"
+            "{document}:{line_number}: unterminated doc example `{name}`"
         );
         assert!(
             !source.trim().is_empty(),
-            "README.md:{line_number}: doc example `{name}` is empty"
+            "{document}:{line_number}: doc example `{name}` is empty"
         );
         assert!(
             names.insert(name.clone()),
-            "README.md:{line_number}: duplicate doc example name `{name}`"
+            "{document}:{line_number}: duplicate doc example name `{name}`"
         );
         examples.push(DocExample {
+            document: document.to_owned(),
             name,
             syntax,
             mode,
@@ -92,7 +105,7 @@ fn extract_examples(markdown: &str) -> Vec<DocExample> {
     examples
 }
 
-fn parse_fence_info(info: &str, line: usize) -> Option<(String, String, Mode)> {
+fn parse_fence_info(document: &str, info: &str, line: usize) -> Option<(String, String, Mode)> {
     let mut tokens = info.split_whitespace();
     let syntax = tokens.next()?;
     if !matches!(syntax, "lisp" | "jisp" | "json" | "yaml" | "yml") {
@@ -101,29 +114,29 @@ fn parse_fence_info(info: &str, line: usize) -> Option<(String, String, Mode)> {
 
     let attributes = tokens.map(|token| {
         token.split_once('=').unwrap_or_else(|| {
-            panic!("README.md:{line}: unsupported doc example attribute `{token}`")
+            panic!("{document}:{line}: unsupported doc example attribute `{token}`")
         })
     });
     let mut values = HashMap::new();
     for (key, value) in attributes {
         assert!(
             matches!(key, "test" | "mode"),
-            "README.md:{line}: unsupported doc example attribute `{key}`"
+            "{document}:{line}: unsupported doc example attribute `{key}`"
         );
         assert!(
             values.insert(key, value).is_none(),
-            "README.md:{line}: repeated doc example attribute `{key}`"
+            "{document}:{line}: repeated doc example attribute `{key}`"
         );
     }
 
     let name = values.get("test")?;
     assert!(
         !name.is_empty(),
-        "README.md:{line}: doc example needs a non-empty `test` name"
+        "{document}:{line}: doc example needs a non-empty `test` name"
     );
     let mode = values
         .get("mode")
-        .map_or(Mode::Check, |mode| Mode::parse(mode, line));
+        .map_or(Mode::Check, |mode| Mode::parse(document, mode, line));
     Some((syntax.to_owned(), (*name).to_owned(), mode))
 }
 
@@ -132,21 +145,22 @@ fn generate_tests(examples: &[DocExample]) -> String {
     let mut identifiers = HashSet::new();
 
     for example in examples {
-        let identifier = unique_identifier(&format!("readme_{}", example.name), &mut identifiers);
+        let identifier = unique_identifier(&format!("doc_{}", example.name), &mut identifiers);
         let extension = match example.syntax.as_str() {
             "lisp" | "jisp" => "lisp",
             "json" => "json",
             "yaml" | "yml" => "yaml",
             _ => unreachable!("syntax was validated while extracting examples"),
         };
-        let file = format!("README.md#{}.{}", example.name, extension);
+        let file = format!("{}#{}.{}", example.document, example.name, extension);
         let invoke = match example.mode {
             Mode::Check => "jisp::check(FILE, SOURCE).map(|_| ())",
             Mode::Run => "jisp::run_main(FILE, SOURCE).map(|_| ())",
         };
         output.push_str(&format!(
-            "#[test]\nfn {identifier}() {{\n    const FILE: &str = {file:?};\n    const SOURCE: &str = {source:?};\n    {invoke}.unwrap_or_else(|error| panic!(\"README example `{name}` failed: {{error}}\"));\n}}\n\n",
+            "#[test]\nfn {identifier}() {{\n    const FILE: &str = {file:?};\n    const SOURCE: &str = {source:?};\n    {invoke}.unwrap_or_else(|error| panic!(\"Documentation example `{document}` / `{name}` failed: {{error}}\"));\n}}\n\n",
             source = example.source,
+            document = example.document,
             name = example.name,
         ));
     }
