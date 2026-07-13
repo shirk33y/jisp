@@ -304,3 +304,10 @@
     (let (key (str.cat "sec" "ondary")
           updated (obj.set scores key 42))
       (. updated "secondary"))))
+
+(export dynamic-object-set-immutable-entry
+  (fn ()
+    (let (key (str.cat "sec" "ondary")
+          original scores
+          updated (obj.set original key 42))
+      (+ (. original "secondary") (. updated "secondary")))))
