@@ -72,7 +72,9 @@ product-level direction and ordering rationale, see [ROADMAP.md](ROADMAP.md).
       exhaustiveness/redundancy analysis.
   15. Done: add `(when pattern guard)` case guards through lowering, typed
       boolean guards, interpreter execution, conservative exhaustiveness, and
-      native Rust case emission.
+      native Rust case emission. Guarded branches do not add exhaustiveness
+      coverage, but branches after earlier unguarded full coverage are rejected
+      as unreachable.
 - Add native backend support for dynamic object mutation, heterogeneous dynamic
   reads, and open rows with an explicitly designed concrete ABI. Homogeneous
   runtime-sized dictionaries are now explicit `map<str, A>` values backed by

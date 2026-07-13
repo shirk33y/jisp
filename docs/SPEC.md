@@ -147,9 +147,10 @@ missing combinations, for example `list [false]` or
 `object {active: false, visible: true}`. Open structural domains still use a
 conservative generic missing-pattern message.
 
-Guarded branches are type-checked but do not contribute to exhaustiveness or
-redundancy coverage, because the checker does not prove guard predicates. Keep
-an unguarded fallback for the remaining values.
+Guarded branches are type-checked but do not contribute new exhaustiveness
+coverage, because the checker does not prove guard predicates. They can still
+be reported as redundant when earlier unguarded branches already cover the
+whole finite domain. Keep an unguarded fallback for the remaining values.
 
 The deferred, fuller option is a general pattern-matrix coverage algorithm. It
 would model list/object shapes, nested constructors, overlapping alternatives,
