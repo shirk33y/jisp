@@ -920,6 +920,45 @@ fn reports_missing_object_product_case_pattern() {
 }
 
 #[test]
+fn rejects_object_product_case_pattern_after_full_product_coverage() {
+    let mut inferencer = Inferencer::default();
+    let field = |name: &str, value| (name.to_owned(), Pattern::Literal(Literal::Bool(value)));
+    let expression = expr(ExprKind::Case {
+        subject: Box::new(expr(ExprKind::Object(vec![
+            (string("active"), bool_(true)),
+            (string("visible"), bool_(true)),
+        ]))),
+        branches: vec![
+            branch(
+                Pattern::Object(vec![field("active", true), field("visible", true)]),
+                int(3),
+            ),
+            branch(
+                Pattern::Object(vec![field("active", true), field("visible", false)]),
+                int(2),
+            ),
+            branch(
+                Pattern::Object(vec![field("active", false), field("visible", true)]),
+                int(1),
+            ),
+            branch(
+                Pattern::Object(vec![field("active", false), field("visible", false)]),
+                int(0),
+            ),
+            branch(
+                Pattern::Object(vec![field("active", true), field("visible", true)]),
+                int(4),
+            ),
+        ],
+    });
+
+    assert!(matches!(
+        inferencer.infer_expr(&expression),
+        Err(InferError::RedundantCasePattern(pattern)) if pattern == "object pattern"
+    ));
+}
+
+#[test]
 fn guarded_object_product_patterns_do_not_establish_exhaustiveness() {
     let mut inferencer = Inferencer::default();
     let field = |name: &str, value| (name.to_owned(), Pattern::Literal(Literal::Bool(value)));

@@ -256,13 +256,19 @@ impl Inferencer {
             if branch.guard.is_some() {
                 continue;
             }
-            if has_catch_all || object_refinements_are_exhaustive(&refined_fields) {
+            if has_catch_all
+                || object_refinements_are_exhaustive(&refined_fields)
+                || product_coverage_is_exhaustive(product_expected.as_ref(), &product_coverage)
+            {
                 return Err(InferError::RedundantCasePattern(pattern_name(
                     &branch.pattern,
                 )));
             }
             for pattern in coverage_patterns(&branch.pattern) {
-                if has_catch_all || object_refinements_are_exhaustive(&refined_fields) {
+                if has_catch_all
+                    || object_refinements_are_exhaustive(&refined_fields)
+                    || product_coverage_is_exhaustive(product_expected.as_ref(), &product_coverage)
+                {
                     return Err(InferError::RedundantCasePattern(pattern_name(pattern)));
                 }
                 if self.pattern_is_irrefutable_for_type(pattern, subject_ty) {
@@ -295,9 +301,7 @@ impl Inferencer {
 
         if has_catch_all
             || object_refinements_are_exhaustive(&refined_fields)
-            || product_expected
-                .as_ref()
-                .is_some_and(|expected| expected.is_subset(&product_coverage))
+            || product_coverage_is_exhaustive(product_expected.as_ref(), &product_coverage)
         {
             Ok(())
         } else {
@@ -670,6 +674,13 @@ struct FiniteCoverage {
 struct ProductCoverage {
     covered: ObjectLabelSet,
     expected: ObjectLabelSet,
+}
+
+fn product_coverage_is_exhaustive(
+    expected: Option<&ObjectLabelSet>,
+    covered: &ObjectLabelSet,
+) -> bool {
+    expected.is_some_and(|expected| expected.is_subset(covered))
 }
 
 fn object_refinements_are_exhaustive(

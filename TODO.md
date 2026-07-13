@@ -91,8 +91,9 @@ product-level direction and ordering rationale, see [ROADMAP.md](ROADMAP.md).
   products of up to 256 finite object-field combinations are checked; native
   alternatives preserve branch-local bindings at top level and inside
   list/object patterns; enum alternatives with shared bindings emit Rust `|`
-  patterns; and missing diagnostics name finite list/object combinations when
-  known. A future full pattern-matrix checker is documented as the next step
+  patterns; missing diagnostics name finite list/object combinations when
+  known; and redundant object-product branches after full finite coverage are
+  rejected. A future full pattern-matrix checker is documented as the next step
   for arbitrary structural domains and richer open-domain missing-pattern
   reporting.
 - Expand `jisp-macros` further beyond item-position emission. `lisp_expr!`
