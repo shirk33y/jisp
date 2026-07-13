@@ -178,6 +178,7 @@ dependencies = [
  "jisp-core",
  "jisp-syntax-json",
  "jisp-syntax-lisp",
+ "jisp-syntax-yaml",
  "serde_json",
 ]
 

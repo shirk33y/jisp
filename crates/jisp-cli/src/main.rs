@@ -10,6 +10,7 @@ use clap::{Parser, Subcommand};
 use jisp_core::{Diagnostic, Node, NodeKind, SourceId, SyntaxParser};
 use jisp_syntax_json::JsonParser;
 use jisp_syntax_lisp::LispParser;
+use jisp_syntax_yaml::YamlParser;
 
 #[derive(Parser)]
 #[command(name = "jisp", version, about = "Jisp language toolkit")]
@@ -142,7 +143,15 @@ fn format_file(path: &Path, check: bool, write: bool) -> Result<()> {
                 .map_err(|error| anyhow::anyhow!(error.to_string()))?;
             format_json_module(&nodes)?
         }
-        _ => anyhow::bail!("jisp fmt currently supports .lisp, .jisp, and .json files"),
+        Some("yaml" | "yml") => {
+            let nodes = YamlParser
+                .parse_module(SourceId(0), &original)
+                .map_err(|error| anyhow::anyhow!(error.to_string()))?;
+            format_yaml_module(&nodes)
+        }
+        _ => {
+            anyhow::bail!("jisp fmt currently supports .lisp, .jisp, .json, .yaml, and .yml files")
+        }
     };
     if check {
         if formatted != original {
@@ -160,6 +169,38 @@ fn format_file(path: &Path, check: bool, write: bool) -> Result<()> {
 fn format_json_module(nodes: &[Node]) -> Result<String> {
     let root = serde_json::Value::Array(nodes.iter().map(json_node).collect());
     Ok(format!("{}\n", serde_json::to_string_pretty(&root)?))
+}
+
+fn format_yaml_module(nodes: &[Node]) -> String {
+    format!(
+        "[{}]\n",
+        nodes
+            .iter()
+            .map(format_yaml_node)
+            .collect::<Vec<_>>()
+            .join(", ")
+    )
+}
+
+fn format_yaml_node(node: &Node) -> String {
+    match &node.kind {
+        NodeKind::Null => "null".to_owned(),
+        NodeKind::Bool(value) => value.to_string(),
+        NodeKind::Int(value) => value.to_string(),
+        NodeKind::Float(value) => value.to_string(),
+        NodeKind::Symbol(value) => value.to_string(),
+        NodeKind::String(value) => {
+            serde_json::to_string(value.as_ref()).expect("string serialization")
+        }
+        NodeKind::Form(items) => format!(
+            "[{}]",
+            items
+                .iter()
+                .map(format_yaml_node)
+                .collect::<Vec<_>>()
+                .join(", ")
+        ),
+    }
 }
 
 fn json_node(node: &Node) -> serde_json::Value {
@@ -334,8 +375,8 @@ mod tests {
     use std::path::Path;
 
     use super::{
-        format_json_module, format_lisp_module, remapped_cargo_errors, JsonParser, LispParser,
-        SourceId, SyntaxParser,
+        format_json_module, format_lisp_module, format_yaml_module, remapped_cargo_errors,
+        JsonParser, LispParser, SourceId, SyntaxParser, YamlParser,
     };
 
     #[test]
@@ -392,6 +433,22 @@ mod tests {
             .all(|(left, right)| same_kind(left, right)));
         assert!(formatted.contains("\"hello\""));
         assert!(formatted.contains("\" world\""));
+    }
+
+    #[test]
+    fn yaml_formatter_preserves_symbols_and_strings() {
+        let original = r#"[[export, main, [fn, [], [str, "hello"]]]]"#;
+        let parser = YamlParser;
+        let nodes = parser.parse_module(SourceId(0), original).unwrap();
+        let formatted = format_yaml_module(&nodes);
+        let reparsed = parser.parse_module(SourceId(0), &formatted).unwrap();
+
+        assert!(nodes
+            .iter()
+            .zip(&reparsed)
+            .all(|(left, right)| same_kind(left, right)));
+        assert!(formatted.contains("export"));
+        assert!(formatted.contains("\"hello\""));
     }
 
     fn same_kind(left: &jisp_core::Node, right: &jisp_core::Node) -> bool {
