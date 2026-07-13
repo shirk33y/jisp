@@ -311,3 +311,9 @@
           original scores
           updated (obj.set original key 42))
       (+ (. original "secondary") (. updated "secondary")))))
+
+(export object-del-immutable-entry
+  (fn ()
+    (let (original (obj "first" 40 "second" 2)
+          updated (obj.del original "second"))
+      (+ (. original "second") (. updated "first")))))

@@ -894,7 +894,7 @@ impl<'a> EmitContext<'a> {
             })
             .collect::<Vec<_>>();
         Ok(quote! {{
-            let __jisp_object = #object;
+            let __jisp_object = (#object).clone();
             #ident { #(#fields),* }
         }})
     }
