@@ -88,7 +88,9 @@ product-level direction and ordering rationale, see [ROADMAP.md](ROADMAP.md).
   output into expression-level granularity needed for diagnostics. The facade
   now maps generated Rust function/struct/enum byte ranges back to Jisp
   definition/type spans; Cargo JSON ingestion remains separate.
-- Wrap Cargo/rustc JSON diagnostics and remap them to Jisp source ranges.
+- Broaden `native-check` remapping from generated item ranges to expressions
+  and preserve structured secondary rustc labels. Cargo JSON primary errors
+  already remap to the containing Jisp item.
 - Finalise immutable/COW semantics for `list` and `obj` updates.
 - Extend project-aware export schemas to explicit generic instantiations and
   richer recursive type annotations. Monomorphic JSON-native exports, including

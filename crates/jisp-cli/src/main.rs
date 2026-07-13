@@ -1,7 +1,13 @@
-use std::{fs, path::PathBuf, process};
+use std::{
+    fs,
+    path::{Path, PathBuf},
+    process,
+    time::{SystemTime, UNIX_EPOCH},
+};
 
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
+use jisp_core::Diagnostic;
 
 #[derive(Parser)]
 #[command(name = "jisp", version, about = "Jisp language toolkit")]
@@ -31,6 +37,9 @@ enum Command {
         output: Option<PathBuf>,
     },
     EmitRust {
+        path: PathBuf,
+    },
+    NativeCheck {
         path: PathBuf,
     },
 }
@@ -99,8 +108,87 @@ fn main() -> Result<()> {
             };
             println!("{}", generated.tokens);
         }
+        Command::NativeCheck { path } => native_check(&path)?,
     }
     Ok(())
+}
+
+fn native_check(path: &Path) -> Result<()> {
+    let text = read(&path.to_path_buf())?;
+    let generated = jisp::emit_rust_detailed(path, &text).map_err(|error| {
+        anyhow::anyhow!(error
+            .render_diagnostics()
+            .unwrap_or_else(|| error.error.to_string()))
+    })?;
+    let nonce = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("system time after Unix epoch")
+        .as_nanos();
+    let directory =
+        std::env::temp_dir().join(format!("jisp-native-check-{}-{nonce}", process::id()));
+    let source_dir = directory.join("src");
+    fs::create_dir_all(&source_dir).with_context(|| format!("create {}", source_dir.display()))?;
+    let generated_path = source_dir.join("lib.rs");
+    fs::write(
+        directory.join("Cargo.toml"),
+        "[package]\nname = \"jisp_native_check\"\nversion = \"0.0.0\"\nedition = \"2021\"\n\n[dependencies]\nnum-bigint = \"0.4\"\n",
+    )?;
+    fs::write(&generated_path, generated.tokens.to_string())?;
+
+    let output = process::Command::new("cargo")
+        .args(["check", "--offline", "--message-format=json"])
+        .current_dir(&directory)
+        .output()
+        .context("run Cargo native check")?;
+    let rendered = remapped_cargo_errors(
+        &String::from_utf8_lossy(&output.stdout),
+        &generated,
+        &generated_path,
+    );
+    let _ = fs::remove_dir_all(&directory);
+    if output.status.success() {
+        println!("ok: {}", path.display());
+        return Ok(());
+    }
+    if rendered.is_empty() {
+        eprint!("{}", String::from_utf8_lossy(&output.stderr));
+    } else {
+        for diagnostic in rendered {
+            eprintln!("{diagnostic}");
+        }
+    }
+    anyhow::bail!("native Rust check failed")
+}
+
+fn remapped_cargo_errors(
+    json_lines: &str,
+    generated: &jisp::GeneratedRustModule,
+    generated_path: &Path,
+) -> Vec<String> {
+    json_lines
+        .lines()
+        .filter_map(|line| serde_json::from_str::<serde_json::Value>(line).ok())
+        .filter(|message| {
+            message["reason"] == "compiler-message" && message["message"]["level"] == "error"
+        })
+        .filter_map(|message| {
+            let diagnostic = &message["message"];
+            let span = diagnostic["spans"].as_array()?.iter().find(|span| {
+                span["is_primary"] == true
+                    && Path::new(span["file_name"].as_str().unwrap_or_default()) == generated_path
+            })?;
+            let offset = span["byte_start"].as_u64()? as usize;
+            let item = generated.source_map.item_at(offset)?;
+            Some(
+                Diagnostic::error(
+                    item.source_span,
+                    diagnostic["message"].as_str().unwrap_or("rustc error"),
+                )
+                .with_code("JISP-RUST")
+                .render(&generated.sources),
+            )
+        })
+        .collect()
 }
 
 fn read(path: &PathBuf) -> Result<String> {
