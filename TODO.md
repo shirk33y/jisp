@@ -31,7 +31,7 @@ product-level direction and ordering rationale, see [ROADMAP.md](ROADMAP.md).
   are first-class object keys with boolean activation, not `class` or
   `className` strings.
 
-## P2 — language completeness
+## P2 — complete
 
 - P2 milestone queue:
   1. Done: add explicit `bigint` values to the language, interpreter, type
@@ -75,59 +75,59 @@ product-level direction and ordering rationale, see [ROADMAP.md](ROADMAP.md).
       native Rust case emission. Guarded branches do not add exhaustiveness
       coverage, but branches after earlier unguarded full coverage are rejected
       as unreachable.
-- Add native backend support for dynamic object mutation, heterogeneous dynamic
-  reads, and open rows with an explicitly designed concrete ABI. Homogeneous
-  runtime-sized dictionaries are now explicit `map<str, A>` values backed by
-  `IndexMap<String, A>` in native Rust, and dynamic `obj.set` on closed
-  homogeneous rows is supported without a dynamic runtime representation. A
-  homogeneous closed object can be explicitly converted with `obj.to-map` before
-  using runtime-sized helpers such as dynamic `map.del`. Direct dynamic object
-  deletion still changes a closed object's concrete shape. The required
-  remaining type/ABI split is recorded in
+- Done: choose the native object ABI boundary. Homogeneous runtime-sized
+  dictionaries are explicit `map<str, A>` values backed by
+  `IndexMap<String, A>`, dynamic `obj.set` on closed homogeneous rows is
+  supported without a dynamic runtime representation, and homogeneous closed
+  objects can be converted with `obj.to-map` before using runtime-sized helpers
+  such as dynamic `map.del`. Dynamic reads on heterogeneous closed rows are
+  type errors unless the key is statically known; open object rows and finite
+  heterogeneous selection require separate source-visible designs and are
+  deferred in
   [`.agents/plans/0016-native-open-object-abi.md`](.agents/plans/0016-native-open-object-abi.md).
-- Extend the intentionally bounded macro system only after designing any
-  general compile-time evaluator. Local template bindings introduced by macros
-  are now hygienic, while unquoted caller syntax keeps its own spelling and
-  scope. Macro exports are rejected during expansion in all source syntaxes.
-  Path-aware facade loading resolves `macro-import` before lowering and imports
-  file-module template macros as `alias.name`; these macro source files are
-  included in facade/native/proc-macro dependency lists, including transitive
-  macro-imports; transitive macro-import cycles are rejected with import-cycle
-  diagnostics; raw unresolved `macro-import` still lowers to a dedicated
-  diagnostic. The remaining macro gap is sandbox/capability rules if
-  compile-time evaluation grows beyond quote/quasiquote templates.
-- Add stronger list/object exhaustiveness analysis. Finite list patterns and
-  products of up to 256 finite object-field combinations are checked; native
-  alternatives preserve branch-local bindings at top level and inside
-  list/object patterns; enum alternatives with shared bindings emit Rust `|`
-  patterns; missing diagnostics name finite list/object combinations when
-  known; and redundant branches after full finite enum/bool/null, list, and
-  object product coverage are rejected. A future full pattern-matrix checker is
-  documented as the next step for arbitrary structural domains and richer
-  open-domain missing-pattern reporting.
-- Expand `jisp-macros` further beyond item-position emission. `lisp_expr!`
-  now compiles an exported zero-argument `main` as a typed Rust expression.
-- Generated Rust has stable byte ranges for expressions as well as functions,
-  structs, and enums; Cargo JSON primary and secondary spans resolve to the
-  narrowest containing Jisp spans, including macro expansion origins.
-- Finalise immutable/COW semantics for `list` and `obj` updates. Native
-  `list.prepend`/`list.append`/`list.cat` and `obj.set`/`obj.del`/`obj.cat`
-  now preserve reusable inputs; the native emitter gives every local Jisp value
-  an owned snapshot before it participates in a generated expression.
-- Project-aware export schemas cover recursive named variants, concrete generic
-  instantiations through `jisp export-schema --type <type>`, imported recursive
-  generic type declarations, and dependency graph output.
-- Add package registry tooling. `jisp init` creates a minimal manifest and `jisp run` reads its
-  entry point; `jisp lsp` provides stdio initialization, core-form completion
-  and hover, go-to-definition for top-level/imported names and `fn`/`let`/`case` bindings, and live frontend diagnostics;
-  local path dependencies from `[dependencies]` resolve during imports; `jisp repl --state <file>` persists accepted
-  definitions across process restarts; `jisp fmt` provides idempotent Lisp,
-  canonical JSON, and flow-style YAML formatting with print/check/write modes;
-  `jisp lock` writes a deterministic lockfile for local path dependencies and
-  preserves used registry cache entries or populates `.jisp/cache` from a local
-  file registry index; and registry dependency specs resolve from offline
-  lock/cache entries with version and SHA-256 verification, while remote
-  registry lookup and downloads remain deferred.
+- Done: keep the macro system intentionally bounded. Local template bindings
+  introduced by macros are hygienic, while unquoted caller syntax keeps its own
+  spelling and scope. Macro exports are rejected during expansion in all source
+  syntaxes. Path-aware facade loading resolves `macro-import` before lowering
+  and imports file-module template macros as `alias.name`; these macro source
+  files are included in facade/native/proc-macro dependency lists, including
+  transitive macro-imports; transitive macro-import cycles are rejected with
+  import-cycle diagnostics; raw unresolved `macro-import` still lowers to a
+  dedicated diagnostic. A general compile-time evaluator remains deferred.
+- Done: strengthen list/object exhaustiveness within the bounded checker.
+  Finite list patterns and products of up to 256 finite object-field
+  combinations are checked; native alternatives preserve branch-local bindings
+  at top level and inside list/object patterns; enum alternatives with shared
+  bindings emit Rust `|` patterns; missing diagnostics name finite list/object
+  combinations when known; redundant branches after full finite
+  enum/bool/null, list, and object product coverage are rejected; and guarded
+  branches after unguarded full coverage are unreachable. A full pattern-matrix
+  checker remains a future compatibility target.
+- Done: expand `jisp-macros` beyond item-position emission. `lisp_expr!`
+  compiles an exported zero-argument `main` as a typed Rust expression.
+- Done: generated Rust has stable byte ranges for expressions as well as
+  functions, structs, and enums; Cargo JSON primary and secondary spans resolve
+  to the narrowest containing Jisp spans, including macro expansion origins.
+- Done: finalize immutable/COW semantics for `list`, `obj`, and `map` updates.
+  Native `list.prepend`/`list.append`/`list.cat`, `obj.set`/`obj.del`/`obj.cat`,
+  and map updates preserve reusable inputs; the native emitter gives every local
+  Jisp value an owned snapshot before it participates in a generated expression.
+- Done: project-aware export schemas cover recursive named variants, concrete
+  generic instantiations through `jisp export-schema --type <type>`, imported
+  recursive generic type declarations, and dependency graph output.
+- Done: add package and project tooling. `jisp init` creates a minimal manifest
+  and `jisp run` reads its entry point; `jisp lsp` provides stdio
+  initialization, core-form completion and hover, go-to-definition for
+  top-level/imported names and `fn`/`let`/`case` bindings, and live frontend
+  diagnostics; local path dependencies from `[dependencies]` resolve during
+  imports; `jisp repl --state <file>` persists accepted definitions across
+  process restarts; `jisp fmt` provides idempotent Lisp, canonical JSON, and
+  flow-style YAML formatting with print/check/write modes; `jisp lock` writes a
+  deterministic lockfile for local path dependencies and preserves used
+  registry cache entries or populates `.jisp/cache` from a local file registry
+  index; and registry dependency specs resolve from offline lock/cache entries
+  with version and SHA-256 verification. Remote registry lookup and downloads
+  remain deferred.
 
 ## Deferred by design
 
@@ -137,3 +137,13 @@ product-level direction and ordering rationale, see [ROADMAP.md](ROADMAP.md).
   optional binding generators.
 - Runtime `eval`, classes, methods, Rust surface idioms, GC, and dynamic `any`
   are not planned for the core language.
+- Native open-row function monomorphisation and source-visible heterogeneous
+  dynamic selection/JSON values remain future language proposals. The compiled
+  ABI must stay concrete and must not silently use `jisp_eval::Value`,
+  `serde_json::Value`, or `Box<dyn Any>`.
+- A general compile-time macro evaluator is deferred until its capability,
+  sandboxing, dependency, and determinism contract is written.
+- A full pattern-matrix checker for arbitrary structural domains is a future
+  compatibility target beyond the current bounded finite-domain checker.
+- Remote registry index lookup and archive downloads are deferred until the
+  network, checksum, lockfile, and trust policy is implemented end to end.

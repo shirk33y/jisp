@@ -10,34 +10,40 @@ not dates. The detailed engineering queue remains [TODO.md](TODO.md).
 - One source-aware frontend accepts Lisp, canonical JSON, and restricted
   YAML-like syntax and lowers them to the same typed Core IR.
 - The interpreter supports immutable data, algebraic data types, imports,
-  pattern matching, results/options, bigint values, and the complete prelude.
-- Native Rust generation supports a growing monomorphic subset: typed functions
+  pattern matching, results/options, bigint values, maps, and the complete
+  prelude.
+- Native Rust generation supports the P2 monomorphic subset: typed functions
   and function values, captured closures, user-defined variadics, lists, closed
-  objects, selected `case` patterns, imports, and selected list/result/object
-  helpers. It rejects unsupported programs instead of using a universal dynamic
-  runtime value.
+  objects, explicit homogeneous maps, selected `case` patterns, imports,
+  diagnostics remapping, proc-macro expression/item integration, and selected
+  list/result/object/map helpers. It rejects unsupported programs instead of
+  using a universal dynamic runtime value.
 
-## Next: make native execution useful for more real programs
+## Next: harden the complete P2 surface
 
-1. **Bigints and dynamic objects.** Emit native `bigint` values, then support
-   open object rows and dynamic field access without weakening the concrete
-   native ABI.
-2. **Generated-code diagnostics.** Carry source mapping from emitted Rust
-   through Cargo/rustc JSON diagnostics so native errors point back to Jisp
-   code.
-3. **Conformance depth.** Grow interpreter-versus-native differential and
-   compile-fail tests whenever a new value shape or builtin becomes supported.
+1. **Conformance depth.** Grow interpreter-versus-native differential,
+   compile-fail, and executable documentation tests around every supported
+   value shape and helper.
+2. **Package workflow hardening.** Keep local/offline registry behavior
+   deterministic, improve lock/cache diagnostics, and defer network registry
+   fetches until the trust and checksum policy is implemented end to end.
+3. **Editor and diagnostics polish.** Improve LSP ranges, completions, hover,
+   and generated-code diagnostic remapping without changing the language
+   surface.
 
-## Then: complete the language seams
+## Then: extend language seams deliberately
 
-1. **User macros.** Module-local quote/template macros now preserve expansion
-   origins. Design hygiene, cross-module visibility, and any general
-   compile-time evaluator before extending that deliberately bounded model.
-2. **Pattern matching.** Add guards, alternatives, aliases, and stronger
-   exhaustiveness/redundancy analysis only with matching parser, type, runtime,
-   diagnostics, and native tests.
-3. **Value semantics.** Finish the documented copy-on-write/immutable update
-   contract for lists and objects.
+1. **User macros.** Template macros now have hygiene, origin diagnostics, and
+   path-aware namespaced `macro-import`. Add a general compile-time evaluator
+   only after its sandboxing, dependency, determinism, and capability contract
+   is designed.
+2. **Pattern matching.** The current checker covers finite enum/bool/null,
+   finite list, finite object-product, aliases, alternatives, and conservative
+   guards. A full pattern-matrix algorithm for arbitrary structural domains is
+   a future compatibility target.
+3. **Dynamic structural data.** Keep `map<str, A>` as the homogeneous runtime
+   dictionary. Native open rows and heterogeneous dynamic selection require a
+   source-visible type/ABI proposal before implementation.
 
 ## Tooling and project workflow
 
@@ -56,6 +62,8 @@ not dates. The detailed engineering queue remains [TODO.md](TODO.md).
   generation design first; see [docs/FFI_FUTURE.md](docs/FFI_FUTURE.md).
 - Runtime `eval`, classes, methods, a general dynamic `any`, and garbage
   collection are not planned for the core language.
+- Remote registry network lookup/downloads are deferred until they have a
+  complete trust, checksum, lockfile, and offline-cache design.
 
 ## How priorities are chosen
 

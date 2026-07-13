@@ -74,9 +74,12 @@ literal. In Lisp and YAML-like source, quoted values are strings.
   items while tracking imported source dependencies.
 
 The interpreter is the broadest execution path. Native closures snapshot their
-captured values, and native emission intentionally does not yet support open
-object rows, dynamic object mutation, or dynamic reads on heterogeneous object
-rows. A proc-macro consumer whose generated module uses bigints must declare
+captured values, and native emission intentionally rejects unsupported object
+shapes instead of compiling them through an implicit dynamic value. Use
+`map<str, A>` for runtime-sized homogeneous dictionaries. Dynamic reads on
+heterogeneous objects require a statically known key, and native open rows or
+heterogeneous dynamic selection remain future source-visible language designs.
+A proc-macro consumer whose generated module uses bigints must declare
 `num-bigint = "0.4"` directly; generated Rust uses its concrete
 `num_bigint::BigInt` type. A generated module that uses native maps must also
 declare `indexmap = "2"` directly.
@@ -154,9 +157,12 @@ the same frontend pipeline.
 
 ## Status and roadmap
 
-Jisp is a compiler foundation, not a production language. The current focus is
-P2 language completeness: broader native codegen, richer patterns, diagnostics
-for generated Rust, formatter and tooling work, and a designed FFI boundary.
+Jisp is a compiler foundation, not a production language. The P2 language
+completeness milestone is implemented for the current concrete native ABI. The
+current focus is hardening that surface with more conformance tests, sharper
+diagnostics, and package/editor workflow polish while keeping larger features
+such as FFI, remote registries, open-row native codegen, and heterogeneous
+dynamic values behind explicit designs.
 
 The product-level direction is in [ROADMAP.md](ROADMAP.md); the authoritative
 implementation queue is [TODO.md](TODO.md). The language contract is in

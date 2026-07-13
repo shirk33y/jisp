@@ -16,11 +16,11 @@ Repository-root files remain deliberately small and operational:
   behaviour, and example.
 - [Architecture](ARCHITECTURE.md): crate boundaries and non-negotiable design
   invariants.
-- [Diagnostics](DIAGNOSTICS.md): source ranges, expansion origins, and the
-  remaining generated-code diagnostic gap.
+- [Diagnostics](DIAGNOSTICS.md): source ranges, expansion origins, and
+  generated-code diagnostic remapping.
 - [Testing](TESTING.md): test layers, native conformance, and executable docs.
-- [Packages](PACKAGES.md): package manifest, local dependencies, and future
-  registry/checksum policy.
+- [Packages](PACKAGES.md): package manifest, local dependencies, offline
+  registry/cache behavior, and deferred remote registry policy.
 - [FFI future](FFI_FUTURE.md): constraints that must be designed before an FFI
   is implemented.
 
