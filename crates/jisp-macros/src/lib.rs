@@ -39,7 +39,7 @@ pub fn lisp_expr(input: TokenStream) -> TokenStream {
     let path = parse_macro_input!(input as LitStr);
     let source_path = resolve_path(&path.value());
     let source_literal = LitStr::new(&source_path.display().to_string(), path.span());
-    let generated = match generate_file(&source_path) {
+    let generated = match generate_expression_file(&source_path) {
         Ok(generated) => generated,
         Err(message) => return quote! { compile_error!(#message); }.into(),
     };
@@ -87,6 +87,7 @@ fn tracked_file(input: TokenStream) -> TokenStream {
     .into()
 }
 
+#[derive(Debug)]
 struct GeneratedFile {
     dependencies: Vec<PathBuf>,
     tokens: proc_macro2::TokenStream,
@@ -100,6 +101,24 @@ fn generate_file(path: &PathBuf) -> Result<GeneratedFile, String> {
         dependencies: generated.dependencies,
         tokens: generated.tokens,
     })
+}
+
+fn generate_expression_file(path: &PathBuf) -> Result<GeneratedFile, String> {
+    let text = read_source(path, "expression expansion")?;
+    let parsed = jisp::check(path, &text).map_err(|error| format!("{error}"))?;
+    if !parsed.module.exports.iter().any(|name| name == "main") {
+        return Err("lisp_expr! requires an exported zero-argument `main`".to_owned());
+    }
+    let Some(scheme) = parsed.types.and_then(|types| types.get("main").cloned()) else {
+        return Err("lisp_expr! could not determine the type of exported `main`".to_owned());
+    };
+    if !matches!(
+        scheme.body,
+        jisp::jisp_types::Type::Function { ref parameters, rest: None, .. } if parameters.is_empty()
+    ) {
+        return Err("lisp_expr! requires an exported zero-argument `main`".to_owned());
+    }
+    generate_file(path)
 }
 
 #[cfg(test)]

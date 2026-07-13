@@ -4,7 +4,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use crate::{generate_file, import_dependencies};
+use crate::{generate_expression_file, generate_file, import_dependencies};
 
 #[test]
 fn import_dependencies_include_transitive_source_files() {
@@ -59,6 +59,22 @@ fn generate_file_emits_native_tokens_without_value_fallback() {
     assert!(tokens.contains("answer ()"));
     assert!(!tokens.contains("Value"));
     assert!(!tokens.contains("jisp_eval"));
+}
+
+#[test]
+fn expression_expansion_requires_exported_zero_argument_main() {
+    let dir = fixture_dir("macro-expression-main");
+    let missing = dir.join("missing.lisp");
+    fs::write(&missing, "(export entry (fn () 42))").unwrap();
+    assert!(generate_expression_file(&missing)
+        .unwrap_err()
+        .contains("exported zero-argument `main`"));
+
+    let parameter = dir.join("parameter.lisp");
+    fs::write(&parameter, "(export main (fn (value) value))").unwrap();
+    assert!(generate_expression_file(&parameter)
+        .unwrap_err()
+        .contains("exported zero-argument `main`"));
 }
 
 fn dependency_set(paths: Vec<PathBuf>) -> BTreeSet<PathBuf> {
