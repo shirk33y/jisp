@@ -79,7 +79,7 @@ fn run_error_test(context: &str, module_nodes: &[Node], expected_message: &str) 
     let module = match Lowerer.lower_module(module_nodes) {
         Ok(module) => module,
         Err(error) => {
-            assert_error_contains(context, &error.to_string(), expected_message);
+            assert_error_contains(context, &lower_error_messages(&error), expected_message);
             return;
         }
     };
@@ -95,6 +95,15 @@ fn assert_error_contains(context: &str, actual: &str, expected: &str) {
         actual.contains(expected),
         "{context}: expected error containing `{expected}`, got `{actual}`"
     );
+}
+
+fn lower_error_messages(error: &jisp_ir::LowerError) -> String {
+    error
+        .diagnostics
+        .iter()
+        .map(|diagnostic| diagnostic.message.as_str())
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 fn collect_test(nodes: Vec<Node>, test_index: usize) -> Result<(Vec<Node>, PortableTest), String> {
@@ -197,13 +206,26 @@ fn lower_test_error_form(
         .as_string()
         .ok_or_else(|| format!("{name}: test-error expected message must be a string"))?
         .to_owned();
-    let actual = format!("__jisp_test_{index}_error");
-    module_nodes.push(export_node(&actual, items[3].clone(), &items[0]));
+    if let Some(module_items) = test_error_module_items(&items[3]) {
+        module_nodes.extend(module_items.iter().cloned());
+    } else {
+        let actual = format!("__jisp_test_{index}_error");
+        module_nodes.push(export_node(&actual, items[3].clone(), &items[0]));
+    }
 
     Ok(PortableTest::Error {
         name,
         expected_message,
     })
+}
+
+fn test_error_module_items(node: &Node) -> Option<&[Node]> {
+    let items = node.as_form()?;
+    if items.first().and_then(Node::as_symbol) == Some("module") {
+        Some(&items[1..])
+    } else {
+        None
+    }
 }
 
 fn export_node(name: &str, value: Node, source: &Node) -> Node {

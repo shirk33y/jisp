@@ -22,7 +22,10 @@ expected actual))`; the runner parses, expands quote/user macros, lowers,
 type-checks, evaluates, and structurally compares the expected and actual
 values. Negative tests use `(test-error "name" "expected message substring"
 expr)`; the runner inserts `expr` into a temporary export and expects lowering
-or type-checking to fail with a diagnostic containing that substring.
+or type-checking to fail with a diagnostic containing that substring. To test
+top-level rejections, wrap temporary module items in the fixture-only pseudo
+form `(module ...)`, for example `(test-error "name" "message" (module
+(macro-import macros "macros.lisp")))`.
 
 Add a fixture here for language semantics that should be independent of native
 Rust codegen, especially parser/lowering edge cases, macro expansion, pattern

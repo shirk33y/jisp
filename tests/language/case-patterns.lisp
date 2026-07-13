@@ -116,3 +116,8 @@
   "non-exhaustive case for `list`"
   (case (list true)
     ((list true) 1)))
+
+(test-error "macro-import stays reserved for cross-module macros"
+  "macro-import is reserved for future cross-module macros"
+  (module
+    (macro-import macros "macros.lisp")))
