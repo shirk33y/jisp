@@ -1,4 +1,5 @@
 use std::{
+    collections::HashMap,
     fs,
     io::{self, BufRead, Write},
     path::{Path, PathBuf},
@@ -186,6 +187,7 @@ fn lsp() -> Result<()> {
     let mut input = stdin.lock();
     let stdout = io::stdout();
     let mut output = stdout.lock();
+    let mut documents = HashMap::new();
     while let Some(message) = read_lsp_message(&mut input)? {
         let method = message["method"].as_str();
         match method {
@@ -196,7 +198,8 @@ fn lsp() -> Result<()> {
                     "id": message["id"],
                     "result": { "capabilities": {
                         "textDocumentSync": 1,
-                        "completionProvider": { "triggerCharacters": ["(", "."] }
+                        "completionProvider": { "triggerCharacters": ["(", "."] },
+                        "hoverProvider": true
                     } }
                 }),
             )?,
@@ -209,11 +212,7 @@ fn lsp() -> Result<()> {
                 }),
             )?,
             Some("textDocument/didOpen") | Some("textDocument/didChange") => {
-                let document = if method == Some("textDocument/didOpen") {
-                    &message["params"]["textDocument"]
-                } else {
-                    &message["params"]["textDocument"]
-                };
+                let document = &message["params"]["textDocument"];
                 let uri = document["uri"].as_str().unwrap_or("untitled.lisp");
                 let text = if method == Some("textDocument/didOpen") {
                     document["text"].as_str().unwrap_or("")
@@ -224,6 +223,7 @@ fn lsp() -> Result<()> {
                         .and_then(|change| change["text"].as_str())
                         .unwrap_or("")
                 };
+                documents.insert(uri.to_owned(), text.to_owned());
                 write_lsp_message(
                     &mut output,
                     &serde_json::json!({
@@ -231,6 +231,37 @@ fn lsp() -> Result<()> {
                         "method": "textDocument/publishDiagnostics",
                         "params": { "uri": uri, "diagnostics": lsp_diagnostics(uri, text) }
                     }),
+                )?;
+            }
+            Some("textDocument/didClose") => {
+                let uri = message["params"]["textDocument"]["uri"]
+                    .as_str()
+                    .unwrap_or("untitled.lisp");
+                documents.remove(uri);
+                write_lsp_message(
+                    &mut output,
+                    &serde_json::json!({
+                        "jsonrpc": "2.0",
+                        "method": "textDocument/publishDiagnostics",
+                        "params": { "uri": uri, "diagnostics": [] }
+                    }),
+                )?;
+            }
+            Some("textDocument/hover") => {
+                let uri = message["params"]["textDocument"]["uri"]
+                    .as_str()
+                    .unwrap_or_default();
+                let position = &message["params"]["position"];
+                let result = documents.get(uri).and_then(|text| {
+                    lsp_hover(
+                        text,
+                        position["line"].as_u64()? as usize,
+                        position["character"].as_u64()? as usize,
+                    )
+                });
+                write_lsp_message(
+                    &mut output,
+                    &serde_json::json!({ "jsonrpc": "2.0", "id": message["id"], "result": result }),
                 )?;
             }
             Some("shutdown") => write_lsp_message(
@@ -242,6 +273,56 @@ fn lsp() -> Result<()> {
         }
     }
     Ok(())
+}
+
+fn lsp_hover(text: &str, line: usize, character: usize) -> Option<serde_json::Value> {
+    let offset = lsp_byte_offset(text, line, character)?;
+    let symbol = lsp_symbol_at(text, offset)?;
+    let form = jisp_core::SPECIAL_FORMS
+        .iter()
+        .find(|form| form.name == symbol || form.aliases.contains(&symbol))?;
+    Some(serde_json::json!({
+        "contents": { "kind": "markdown", "value": format!("**{}** — {}", form.name, form.summary) }
+    }))
+}
+
+fn lsp_byte_offset(text: &str, line: usize, character: usize) -> Option<usize> {
+    let line_start = if line == 0 {
+        0
+    } else {
+        text.match_indices('\n').nth(line - 1)?.0 + 1
+    };
+    let line_end = text[line_start..]
+        .find('\n')
+        .map_or(text.len(), |index| line_start + index);
+    let line_text = &text[line_start..line_end];
+    let mut utf16_units = 0;
+    for (byte_offset, ch) in line_text.char_indices() {
+        if utf16_units == character {
+            return Some(line_start + byte_offset);
+        }
+        utf16_units += ch.len_utf16();
+        if utf16_units > character {
+            return None;
+        }
+    }
+    (utf16_units == character).then_some(line_end)
+}
+
+fn lsp_symbol_at(text: &str, offset: usize) -> Option<&str> {
+    let offset = offset.min(text.len());
+    let is_symbol =
+        |ch: char| !ch.is_whitespace() && !matches!(ch, '(' | ')' | '[' | ']' | ',' | '`' | '"');
+    let start = text[..offset]
+        .char_indices()
+        .rev()
+        .find(|(_, ch)| !is_symbol(*ch))
+        .map_or(0, |(index, ch)| index + ch.len_utf8());
+    let end = text[offset..]
+        .char_indices()
+        .find(|(_, ch)| !is_symbol(*ch))
+        .map_or(text.len(), |(index, _)| offset + index);
+    (start < end).then(|| &text[start..end])
 }
 
 fn lsp_completion_items() -> Vec<serde_json::Value> {
@@ -657,8 +738,8 @@ mod tests {
 
     use super::{
         format_json_module, format_lisp_module, format_yaml_module, init_project,
-        lsp_completion_items, lsp_diagnostics, package_entry, remapped_cargo_errors, repl_step,
-        JsonParser, LispParser, SourceId, SyntaxParser, YamlParser,
+        lsp_completion_items, lsp_diagnostics, lsp_hover, package_entry, remapped_cargo_errors,
+        repl_step, JsonParser, LispParser, SourceId, SyntaxParser, YamlParser,
     };
 
     #[test]
@@ -769,6 +850,18 @@ mod tests {
         assert!(labels.contains(&"macro"));
         assert!(labels.contains(&"~"));
         assert!(labels.contains(&"`"));
+    }
+
+    #[test]
+    fn lsp_hover_resolves_special_forms_and_utf16_positions() {
+        let hover = lsp_hover("\u{1f642} (case value)", 0, 5).unwrap();
+
+        assert_eq!(hover["contents"]["kind"], "markdown");
+        assert!(hover["contents"]["value"]
+            .as_str()
+            .unwrap()
+            .contains("**case**"));
+        assert!(lsp_hover("(unknown value)", 0, 2).is_none());
     }
 
     #[test]
