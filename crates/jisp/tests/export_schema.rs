@@ -42,7 +42,8 @@ fn export_schema_describes_named_variants_as_tagged_arrays() {
     )
     .unwrap();
 
-    let variants = schema["schema"]["oneOf"].as_array().unwrap();
+    assert_eq!(schema["schema"]["$ref"], "#/$defs/response");
+    let variants = schema["$defs"]["response"]["oneOf"].as_array().unwrap();
     assert_eq!(variants[0]["prefixItems"][0]["const"], "ok");
     assert_eq!(variants[0]["prefixItems"][1]["type"], "integer");
     assert_eq!(variants[1]["prefixItems"][0]["const"], "err");
