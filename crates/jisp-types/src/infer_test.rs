@@ -49,6 +49,7 @@ fn module(definitions: Vec<Definition>) -> Module {
         types: vec![],
         definitions,
         exports: vec![],
+        ui_app: None,
     }
 }
 
@@ -995,6 +996,7 @@ fn infers_qualified_values_from_import_type_environments() {
             }),
         )],
         exports: vec![],
+        ui_app: None,
     };
     let mut math = BTreeMap::new();
     math.insert(
@@ -1026,6 +1028,7 @@ fn rejects_unresolved_import_type_environments() {
         types: vec![],
         definitions: vec![],
         exports: vec![],
+        ui_app: None,
     };
 
     assert!(matches!(

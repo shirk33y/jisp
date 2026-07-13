@@ -95,6 +95,7 @@ fn typed_module(definitions: Vec<Definition>, schemes: Vec<(&str, Type)>) -> Typ
             types: vec![],
             definitions,
             exports: vec![],
+            ui_app: None,
         },
         schemes: schemes
             .into_iter()

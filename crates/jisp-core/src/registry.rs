@@ -216,6 +216,14 @@ pub const SPECIAL_FORMS: &[SpecialFormSpec] = &[
         summary: "Define a UI component over renderer-neutral structural nodes.",
     },
     SpecialFormSpec {
+        name: "ui.app",
+        aliases: &[],
+        min_args: 3,
+        max_args: Some(3),
+        top_level: true,
+        summary: "Declare init, reducer, and view bindings for a host-managed UI app.",
+    },
+    SpecialFormSpec {
         name: "fn",
         aliases: &[],
         min_args: 2,

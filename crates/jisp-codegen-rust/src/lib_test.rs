@@ -53,6 +53,7 @@ fn generate_detailed_maps_rust_functions_to_jisp_definitions() {
                 span: definition_span,
             }],
             exports: vec![],
+            ui_app: None,
         },
         schemes: BTreeMap::from([("main".to_owned(), Scheme::mono(Type::Int))]),
         expression_types: Default::default(),

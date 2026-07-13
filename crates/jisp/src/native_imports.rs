@@ -97,6 +97,7 @@ fn merge_modules(imported: Vec<TypedModule>, main: TypedModule) -> TypedModule {
         types: vec![],
         definitions: vec![],
         exports: main.module.exports.clone(),
+        ui_app: main.module.ui_app.clone(),
     };
     let mut schemes = BTreeMap::new();
     let mut expression_types = HashMap::new();
@@ -187,6 +188,7 @@ fn prefix_module(module: TypedModule, prefix: &str) -> TypedModule {
             types,
             definitions,
             exports: vec![],
+            ui_app: None,
         },
         schemes,
         expression_types,

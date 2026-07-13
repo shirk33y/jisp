@@ -5,7 +5,7 @@ use thiserror::Error;
 
 use crate::{
     CaseBranch, Definition, Expr, ExprKind, Import, Literal, Module, Pattern, StringPart, TypeDecl,
-    VariantDecl,
+    UiApp, VariantDecl,
 };
 
 #[derive(Debug, Error)]
@@ -40,6 +40,7 @@ impl Lowerer {
             }
         }
         validate_module_names(&module, &mut diagnostics);
+        validate_ui_app(&module, &mut diagnostics);
 
         if diagnostics.is_empty() {
             Ok(module)
@@ -109,6 +110,7 @@ impl Lowerer {
                 "macro-import must be resolved before lowering; runtime import does not import macros",
             )),
             "component" => crate::ui::lower_component(self, node.span, items, module),
+            "ui.app" => self.lower_ui_app(node.span, items, module),
             "type" => {
                 if items.len() < 3 {
                     return Err(error(
@@ -131,7 +133,7 @@ impl Lowerer {
             _ => Err(error(
                 node.span,
                 format!(
-                    "top-level expression `{head}` is not allowed; use def, defn, export, import, macro-import, type, or component"
+                    "top-level expression `{head}` is not allowed; use def, defn, export, import, macro-import, type, component, or ui.app"
                 ),
             )),
         }
@@ -230,8 +232,8 @@ impl Lowerer {
             Some("str.lines") => self.lower_string_template(span, true, &items[1..]),
             Some("case") => self.lower_case(span, items),
             Some("use") => self.lower_use(span, items),
-            Some("component") => Err(error(span, "component is only valid at top level")),
-            Some("text" | "attr" | "prop" | "class" | "class-if" | "on" | "key" | "for") => {
+            Some("component" | "ui.app") => Err(error(span, "this form is only valid at top level")),
+            Some("text" | "attr" | "prop" | "class" | "class-if" | "on" | "emit" | "key" | "for") => {
                 Err(error(span, "UI syntax is only valid inside a component"))
             }
             Some(name) if ui_element(name).is_some() => Err(error(
@@ -293,6 +295,25 @@ impl Lowerer {
                 },
                 span,
             ),
+            span,
+        });
+        Ok(())
+    }
+
+    fn lower_ui_app(
+        &self,
+        span: Span,
+        items: &[Node],
+        module: &mut Module,
+    ) -> Result<(), LowerError> {
+        expect_arity(items, 4, 4, span, "ui.app")?;
+        if module.ui_app.is_some() {
+            return Err(error(span, "a module can declare only one ui.app"));
+        }
+        module.ui_app = Some(UiApp {
+            init: expect_symbol(&items[1], "ui.app init binding")?.to_owned(),
+            reduce: expect_symbol(&items[2], "ui.app reducer binding")?.to_owned(),
+            view: expect_symbol(&items[3], "ui.app view binding")?.to_owned(),
             span,
         });
         Ok(())
@@ -761,6 +782,32 @@ fn validate_module_names(module: &Module, diagnostics: &mut Vec<Diagnostic>) {
             "type declaration",
             diagnostics,
         );
+    }
+}
+
+fn validate_ui_app(module: &Module, diagnostics: &mut Vec<Diagnostic>) {
+    let Some(app) = &module.ui_app else {
+        return;
+    };
+    let definitions = module
+        .definitions
+        .iter()
+        .map(|definition| definition.name.as_str())
+        .collect::<std::collections::BTreeSet<_>>();
+    for (role, name) in [
+        ("init binding", &app.init),
+        ("reducer binding", &app.reduce),
+        ("view binding", &app.view),
+    ] {
+        if !definitions.contains(name.as_str()) {
+            diagnostics.push(
+                Diagnostic::error(
+                    app.span,
+                    format!("ui.app {role} `{name}` does not name a module definition"),
+                )
+                .with_code("JISP-LOWER"),
+            );
+        }
     }
 }
 

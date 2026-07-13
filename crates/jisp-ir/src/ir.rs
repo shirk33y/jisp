@@ -6,6 +6,8 @@ pub struct Module {
     pub types: Vec<TypeDecl>,
     pub definitions: Vec<Definition>,
     pub exports: Vec<String>,
+    /// Entry points for a host-managed, reducer-driven UI application.
+    pub ui_app: Option<UiApp>,
 }
 
 impl Module {
@@ -15,8 +17,17 @@ impl Module {
             types: vec![],
             definitions: vec![],
             exports: vec![],
+            ui_app: None,
         }
     }
+}
+
+#[derive(Clone, Debug)]
+pub struct UiApp {
+    pub init: String,
+    pub reduce: String,
+    pub view: String,
+    pub span: Span,
 }
 
 #[derive(Clone, Debug)]

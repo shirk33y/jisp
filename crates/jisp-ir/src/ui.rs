@@ -216,7 +216,7 @@ fn lower_ui_directive(
                 &mut parts.event_names,
                 ui_name(&items[1], "event name")?,
                 items[1].span,
-                lowerer.lower_expr(&items[2])?,
+                lower_event_handler(lowerer, &items[2])?,
             )?;
             Ok(true)
         }
@@ -230,6 +230,24 @@ fn lower_ui_directive(
         }
         _ => Ok(false),
     }
+}
+
+fn lower_event_handler(lowerer: &Lowerer, node: &Node) -> Result<Expr, LowerError> {
+    let Some(items) = node.as_form() else {
+        return lowerer.lower_expr(node);
+    };
+    if items.first().and_then(Node::as_symbol) != Some("emit") {
+        return lowerer.lower_expr(node);
+    }
+    expect_arity(items, 2, 2, node.span, "emit")?;
+    Ok(Expr::new(
+        ExprKind::Lambda {
+            params: vec!["event".to_owned()],
+            rest: None,
+            body: Box::new(lowerer.lower_expr(&items[1])?),
+        },
+        node.span,
+    ))
 }
 
 fn lower_for(lowerer: &Lowerer, span: Span, items: &[Node]) -> Result<Expr, LowerError> {
