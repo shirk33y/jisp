@@ -189,6 +189,14 @@ fn native_nested_alternative_patterns_match_the_interpreter() {
     );
 }
 
+#[test]
+fn native_collection_updates_preserve_their_inputs() {
+    assert_matches_interpreter(
+        "collection-updates-immutable-entry",
+        Value::Int(collection_updates_immutable_entry()),
+    );
+}
+
 fn assert_matches_interpreter(export: &str, native: Value) {
     let interpreted = interpreter_export(export);
     assert!(

@@ -490,7 +490,7 @@ impl<'a> EmitContext<'a> {
             .iter()
             .map(|argument| self.emit_expr(argument, None))
             .collect::<Result<Vec<_>, _>>()?;
-        Ok(quote! { vec![#(#arguments),*].into_iter().flatten().collect::<Vec<_>>() })
+        Ok(quote! { vec![#((#arguments).clone()),*].into_iter().flatten().collect::<Vec<_>>() })
     }
 
     fn emit_list_rest_intrinsic(
@@ -741,7 +741,7 @@ impl<'a> EmitContext<'a> {
         let value = self.emit_expr(value, None)?;
         let list = self.emit_expr(list, None)?;
         Ok(quote! {{
-            let mut __jisp_list = #list;
+            let mut __jisp_list = (#list).clone();
             __jisp_list.insert(0usize, #value);
             __jisp_list
         }})
@@ -757,7 +757,7 @@ impl<'a> EmitContext<'a> {
         let list = self.emit_expr(list, None)?;
         let value = self.emit_expr(value, None)?;
         Ok(quote! {{
-            let mut __jisp_list = #list;
+            let mut __jisp_list = (#list).clone();
             __jisp_list.push(#value);
             __jisp_list
         }})
@@ -955,7 +955,7 @@ impl<'a> EmitContext<'a> {
             .collect::<Result<Vec<_>, _>>()?;
         let bindings = objects.into_iter().enumerate().map(|(index, object)| {
             let name = super::rust_ident(&format!("__jisp_object_{index}"));
-            quote! { let #name = #object; }
+            quote! { let #name = (#object).clone(); }
         });
         Ok(quote! {{
             #(#bindings)*

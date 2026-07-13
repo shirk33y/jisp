@@ -344,7 +344,7 @@ fn emits_native_string_and_list_prelude_helpers() {
 
     assert!(generated.contains("[String :: from (\"hi \") , words () . join"));
     assert!(generated.contains(". concat ()"));
-    assert!(generated.contains("let mut __jisp_list = vec ! [2i64]"));
+    assert!(generated.contains("let mut __jisp_list = (vec ! [2i64]) . clone ()"));
     assert!(generated.contains("__jisp_list . insert (0usize , 1i64)"));
     assert!(generated.contains("__jisp_list . push (3i64)"));
     assert!(generated.contains("greeting () . chars () . count () as i64"));

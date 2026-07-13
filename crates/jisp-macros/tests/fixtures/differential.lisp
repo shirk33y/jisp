@@ -329,3 +329,17 @@
     (case (obj "kind" "two" "value" 40)
       ((obj "kind" (or "one" "two") "value" value) (+ value 2))
       (_ 0))))
+
+(export collection-updates-immutable-entry
+  (fn ()
+    (let (original-list (list 1 2)
+          prepended (list.prepend 0 original-list)
+          appended (list.append original-list 3)
+          combined (list.cat original-list (list 4))
+          original-object (obj "first" 40)
+          merged-object (obj.cat original-object (obj "second" 2)))
+      (+
+        (+
+          (+ (list.len original-list) (list.len prepended))
+          (+ (list.len appended) (list.len combined)))
+        (+ (. original-object "first") (. merged-object "second"))))))
