@@ -14,6 +14,15 @@ CI pins the Rust toolchain, checks formatting and Clippy with warnings denied,
 runs the workspace suite, and runs `jisp-macros` separately so generated Rust
 is compiled by the test harness.
 
+## Portable language fixtures
+
+`tests/language/*.lisp` generate one interpreter test per `(test "...")` form.
+The runner parses, expands quote/user macros, lowers, type-checks, evaluates,
+and structurally compares the expected and actual values. Add a fixture here
+for language semantics that should be independent of native Rust codegen,
+especially parser/lowering edge cases, macro expansion, pattern matching,
+stdlib behaviour, and immutable value semantics.
+
 ## Native conformance
 
 `crates/jisp-macros/tests/native_differential.rs` compiles one representative

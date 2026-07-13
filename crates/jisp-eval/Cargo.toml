@@ -18,6 +18,7 @@ jisp-core.workspace = true
 jisp-syntax-lisp.workspace = true
 
 [dev-dependencies]
+jisp-expand.workspace = true
 jisp-syntax-json.workspace = true
 jisp-syntax-lisp.workspace = true
 jisp-syntax-yaml.workspace = true

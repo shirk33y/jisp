@@ -86,6 +86,43 @@ fn run_main_resolves_local_package_dependencies() {
 }
 
 #[test]
+fn sibling_module_wins_over_package_dependency_with_the_same_name() {
+    let dir = fixture_dir("package-dependency-shadowing");
+    let app = dir.join("app");
+    let dependency = dir.join("math");
+    fs::create_dir_all(&app).unwrap();
+    fs::create_dir_all(&dependency).unwrap();
+    let main = app.join("main.lisp");
+    fs::write(
+        app.join("jisp.toml"),
+        "[package]\nname = \"app\"\nentry = \"main.lisp\"\n\n[dependencies]\nmath = { path = \"../math\" }\n",
+    )
+    .unwrap();
+    fs::write(dependency.join("main.lisp"), "(export value (fn () 1000))").unwrap();
+    fs::write(app.join("math.lisp"), "(export value (fn () 42))").unwrap();
+    fs::write(
+        &main,
+        r#"
+(import math "math")
+(export main (fn () (math.value)))
+"#,
+    )
+    .unwrap();
+
+    let text = fs::read_to_string(&main).unwrap();
+    let checked = jisp::check(&main, &text).unwrap();
+    let value = jisp::run_main(&main, &text).unwrap();
+
+    assert_int(value, 42);
+    assert!(checked
+        .resolved_modules
+        .contains_key(&canonical(&app.join("math.lisp"))));
+    assert!(!checked
+        .resolved_modules
+        .contains_key(&canonical(&dependency.join("main.lisp"))));
+}
+
+#[test]
 fn type_errors_in_imports_render_the_imported_source() {
     let dir = fixture_dir("imported-type-diagnostics");
     let main = dir.join("main.lisp");

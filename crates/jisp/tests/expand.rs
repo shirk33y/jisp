@@ -1,3 +1,5 @@
+use jisp::jisp_ir::{Expr, ExprKind, Literal, Module, Pattern, StringPart};
+
 #[test]
 fn run_main_expands_lisp_quasiquote_before_lowering() {
     let value = jisp::run_main(
@@ -68,6 +70,71 @@ fn run_main_expands_user_macro_before_lowering() {
 }
 
 #[test]
+fn macro_hygiene_normalizes_to_the_same_ir_across_source_syntaxes() {
+    let cases = [
+        (
+            "hygienic-macro.lisp",
+            r#"
+(def wrap
+  (~ (fn (expression)
+       (quasiquote (let (value 1)
+          (unquote expression))))))
+
+(export main
+  (fn ()
+    (let (value 42)
+      (wrap value))))
+"#,
+        ),
+        (
+            "hygienic-macro.json",
+            r#"
+[
+  ["def", "wrap",
+    ["~", ["fn", ["expression"],
+      ["quasiquote", ["let", ["value", 1], ["unquote", "expression"]]]]]],
+  ["export", "main",
+    ["fn", [],
+      ["let", ["value", 42],
+        ["wrap", "value"]]]]
+]
+"#,
+        ),
+        (
+            "hygienic-macro.yaml",
+            r#"
+[
+  [def, wrap,
+    [~, [fn, [expression],
+      [quasiquote, [let, [value, 1], [unquote, expression]]]]]],
+  [export, main,
+    [fn, [],
+      [let, [value, 42],
+        [wrap, value]]]]
+]
+"#,
+        ),
+    ];
+
+    let mut shapes = vec![];
+    for (path, text) in cases {
+        let parsed = jisp::parse(path, text).unwrap();
+        let value = jisp::run_main(path, text).unwrap();
+
+        assert_eq!(value.display_string(), "42");
+        shapes.push(module_shape(&parsed.module));
+    }
+
+    assert_eq!(shapes[0], shapes[1]);
+    assert_eq!(shapes[1], shapes[2]);
+    assert!(
+        shapes[0].contains("__jisp_macro_0_value"),
+        "expected normalized IR to include the deterministic hygienic binding: {}",
+        shapes[0]
+    );
+}
+
+#[test]
 fn parse_rejects_macro_exports_in_all_source_syntaxes() {
     let cases = [
         (
@@ -134,6 +201,184 @@ fn user_macro_template_bindings_do_not_capture_caller_identifiers() {
     .unwrap();
 
     assert_eq!(value.display_string(), "42");
+}
+
+fn module_shape(module: &Module) -> String {
+    let imports = module
+        .imports
+        .iter()
+        .map(|import| format!("import:{}={}", import.alias, import.path))
+        .collect::<Vec<_>>()
+        .join(",");
+    let types = module
+        .types
+        .iter()
+        .map(|ty| {
+            let variants = ty
+                .variants
+                .iter()
+                .map(|variant| format!("{}({})", variant.name, variant.field_types.join(",")))
+                .collect::<Vec<_>>()
+                .join("|");
+            format!("type:{}={variants}", ty.name)
+        })
+        .collect::<Vec<_>>()
+        .join(",");
+    let definitions = module
+        .definitions
+        .iter()
+        .map(|definition| {
+            format!(
+                "def:{}:{}={}",
+                definition.public,
+                definition.name,
+                expr_shape(&definition.value)
+            )
+        })
+        .collect::<Vec<_>>()
+        .join(",");
+    format!(
+        "imports[{imports}] types[{types}] definitions[{definitions}] exports[{}]",
+        module.exports.join(",")
+    )
+}
+
+fn expr_shape(expr: &Expr) -> String {
+    match &expr.kind {
+        ExprKind::Literal(literal) => format!("literal:{}", literal_shape(literal)),
+        ExprKind::Name(name) => format!("name:{name}"),
+        ExprKind::Lambda { params, rest, body } => {
+            format!("fn({};{:?})=>{}", params.join(","), rest, expr_shape(body))
+        }
+        ExprKind::Let { bindings, body } => {
+            let bindings = bindings
+                .iter()
+                .map(|(name, value)| format!("{name}={}", expr_shape(value)))
+                .collect::<Vec<_>>()
+                .join(",");
+            format!("let({bindings})=>{}", expr_shape(body))
+        }
+        ExprKind::Do(expressions) => format!("do({})", exprs_shape(expressions)),
+        ExprKind::If {
+            condition,
+            then_branch,
+            else_branch,
+        } => format!(
+            "if({},{},{})",
+            expr_shape(condition),
+            expr_shape(then_branch),
+            expr_shape(else_branch)
+        ),
+        ExprKind::And(expressions) => format!("and({})", exprs_shape(expressions)),
+        ExprKind::Or(expressions) => format!("or({})", exprs_shape(expressions)),
+        ExprKind::Not(expression) => format!("not({})", expr_shape(expression)),
+        ExprKind::Call { callee, arguments } => {
+            format!("call({};{})", expr_shape(callee), exprs_shape(arguments))
+        }
+        ExprKind::List(items) => format!("list({})", exprs_shape(items)),
+        ExprKind::Object(fields) => {
+            let fields = fields
+                .iter()
+                .map(|(key, value)| format!("{}={}", expr_shape(key), expr_shape(value)))
+                .collect::<Vec<_>>()
+                .join(",");
+            format!("obj({fields})")
+        }
+        ExprKind::Field { object, key } => {
+            format!("field({},{})", expr_shape(object), expr_shape(key))
+        }
+        ExprKind::StringTemplate { lines, parts } => {
+            let parts = parts
+                .iter()
+                .map(string_part_shape)
+                .collect::<Vec<_>>()
+                .join(",");
+            format!("str:{lines}({parts})")
+        }
+        ExprKind::Case { subject, branches } => {
+            let branches = branches
+                .iter()
+                .map(|branch| {
+                    format!(
+                        "{} when {:?} => {}",
+                        pattern_shape(&branch.pattern),
+                        branch.guard.as_ref().map(expr_shape),
+                        expr_shape(&branch.body)
+                    )
+                })
+                .collect::<Vec<_>>()
+                .join("|");
+            format!("case({})[{branches}]", expr_shape(subject))
+        }
+    }
+}
+
+fn exprs_shape(expressions: &[Expr]) -> String {
+    expressions
+        .iter()
+        .map(expr_shape)
+        .collect::<Vec<_>>()
+        .join(",")
+}
+
+fn literal_shape(literal: &Literal) -> String {
+    match literal {
+        Literal::Null => "null".to_owned(),
+        Literal::Bool(value) => value.to_string(),
+        Literal::Int(value) => value.to_string(),
+        Literal::Float(value) => value.to_string(),
+        Literal::String(value) => format!("{value:?}"),
+    }
+}
+
+fn string_part_shape(part: &StringPart) -> String {
+    match part {
+        StringPart::Literal(value) => format!("literal:{value:?}"),
+        StringPart::Expr(expr) => format!("expr:{}", expr_shape(expr)),
+        StringPart::Splice(expr) => format!("splice:{}", expr_shape(expr)),
+    }
+}
+
+fn pattern_shape(pattern: &Pattern) -> String {
+    match pattern {
+        Pattern::Wildcard => "_".to_owned(),
+        Pattern::Bind(name) => format!("bind:{name}"),
+        Pattern::Alias { pattern, name } => format!("as({},{name})", pattern_shape(pattern)),
+        Pattern::Or(alternatives) => format!(
+            "or({})",
+            alternatives
+                .iter()
+                .map(pattern_shape)
+                .collect::<Vec<_>>()
+                .join(",")
+        ),
+        Pattern::Literal(literal) => format!("literal:{}", literal_shape(literal)),
+        Pattern::Variant { tag, fields } => format!(
+            "{tag}({})",
+            fields
+                .iter()
+                .map(pattern_shape)
+                .collect::<Vec<_>>()
+                .join(",")
+        ),
+        Pattern::List { prefix, rest } => format!(
+            "list({};{:?})",
+            prefix
+                .iter()
+                .map(pattern_shape)
+                .collect::<Vec<_>>()
+                .join(","),
+            rest
+        ),
+        Pattern::Object(fields) => format!(
+            "obj({})",
+            fields
+                .iter()
+                .map(|(name, pattern)| format!("{name}:{}", pattern_shape(pattern)))
+                .collect::<Vec<_>>()
+                .join(",")
+        ),
+    }
 }
 
 #[test]

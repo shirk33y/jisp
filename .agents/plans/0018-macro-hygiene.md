@@ -36,7 +36,8 @@ expansion order.
   in user diagnostics; diagnostics show the template/call origin chain.
 - Done: Lisp, JSON, and YAML reject exported macro bindings at expansion time,
   preserving the module-local macro contract before lowering/type checking.
-- Pending: Lisp, JSON, and YAML normalize to the same hygienic expanded Core IR.
+- Done: Lisp, JSON, and YAML normalize to the same hygienic expanded Core IR
+  for a macro-introduced binding plus caller-supplied syntax.
 - Pending: macro-import cycles produce source-ranged errors once macro imports
   exist. Expansion-step limits already produce source-ranged errors.
 

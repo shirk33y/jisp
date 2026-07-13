@@ -210,6 +210,7 @@ version = "0.0.1"
 dependencies = [
  "indexmap",
  "jisp-core",
+ "jisp-expand",
  "jisp-ir",
  "jisp-runtime",
  "jisp-syntax-json",

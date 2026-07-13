@@ -15,7 +15,9 @@ pub fn run_lisp_test(file: &str, source: &str, test_index: usize, test_name: &st
     let nodes = LispParser
         .parse_module(SourceId(0), source)
         .unwrap_or_else(|error| panic!("{generated_context}: parse failed: {error}"));
-    let (module_nodes, test) = collect_test(nodes, test_index)
+    let expanded = jisp_expand::expand_module(&nodes)
+        .unwrap_or_else(|error| panic!("{generated_context}: expand failed: {error}"));
+    let (module_nodes, test) = collect_test(expanded.nodes, test_index)
         .unwrap_or_else(|error| panic!("{generated_context}: {error}"));
     let context = format!("{file}: {}", test.name);
 
