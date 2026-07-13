@@ -96,10 +96,11 @@ product-level direction and ordering rationale, see [ROADMAP.md](ROADMAP.md).
   richer recursive type annotations. Monomorphic JSON-native exports, including
   non-parameterized algebraic types, now resolve imports and expose their
   dependency graph through `jisp export-schema`.
-- Add go-to-definition support to the LSP and package dependency/registry
+- Add imported-symbol go-to-definition support to the LSP and package dependency/registry
   tooling. `jisp init` creates a minimal manifest and `jisp run` reads its
   entry point; `jisp lsp` provides stdio initialization, core-form completion
-  and hover, and live frontend diagnostics; `jisp repl --state <file>` persists accepted
+  and hover, local top-level go-to-definition, and live frontend diagnostics;
+  `jisp repl --state <file>` persists accepted
   definitions across process restarts; and `jisp fmt` provides idempotent Lisp,
   canonical JSON, and flow-style YAML formatting with print/check/write modes.
 

@@ -199,7 +199,8 @@ fn lsp() -> Result<()> {
                     "result": { "capabilities": {
                         "textDocumentSync": 1,
                         "completionProvider": { "triggerCharacters": ["(", "."] },
-                        "hoverProvider": true
+                        "hoverProvider": true,
+                        "definitionProvider": true
                     } }
                 }),
             )?,
@@ -264,6 +265,24 @@ fn lsp() -> Result<()> {
                     &serde_json::json!({ "jsonrpc": "2.0", "id": message["id"], "result": result }),
                 )?;
             }
+            Some("textDocument/definition") => {
+                let uri = message["params"]["textDocument"]["uri"]
+                    .as_str()
+                    .unwrap_or_default();
+                let position = &message["params"]["position"];
+                let result = documents.get(uri).and_then(|text| {
+                    lsp_definition(
+                        uri,
+                        text,
+                        position["line"].as_u64()? as usize,
+                        position["character"].as_u64()? as usize,
+                    )
+                });
+                write_lsp_message(
+                    &mut output,
+                    &serde_json::json!({ "jsonrpc": "2.0", "id": message["id"], "result": result }),
+                )?;
+            }
             Some("shutdown") => write_lsp_message(
                 &mut output,
                 &serde_json::json!({ "jsonrpc": "2.0", "id": message["id"], "result": null }),
@@ -283,6 +302,28 @@ fn lsp_hover(text: &str, line: usize, character: usize) -> Option<serde_json::Va
         .find(|form| form.name == symbol || form.aliases.contains(&symbol))?;
     Some(serde_json::json!({
         "contents": { "kind": "markdown", "value": format!("**{}** — {}", form.name, form.summary) }
+    }))
+}
+
+fn lsp_definition(
+    uri: &str,
+    text: &str,
+    line: usize,
+    character: usize,
+) -> Option<serde_json::Value> {
+    let offset = lsp_byte_offset(text, line, character)?;
+    let symbol = lsp_symbol_at(text, offset)?;
+    let parsed = jisp::parse_detailed(uri.strip_prefix("file://").unwrap_or(uri), text).ok()?;
+    let span = parsed
+        .module
+        .definitions
+        .iter()
+        .find(|definition| definition.name == symbol)
+        .map(|definition| definition.span)?;
+    let file = parsed.sources.get(span.source)?;
+    Some(serde_json::json!({
+        "uri": uri,
+        "range": { "start": lsp_position(file, span.start), "end": lsp_position(file, span.end) }
     }))
 }
 
@@ -919,3 +960,6 @@ mod tests {
         }
     }
 }
+
+#[cfg(test)]
+mod lsp_test;
