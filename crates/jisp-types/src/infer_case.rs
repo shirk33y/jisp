@@ -90,7 +90,15 @@ impl Inferencer {
                     &branch.pattern,
                 )));
             }
+            if finite_coverage_is_exhaustive(&expected, &covered) {
+                return Err(InferError::RedundantCasePattern(pattern_name(
+                    &branch.pattern,
+                )));
+            }
             for pattern in coverage_patterns(&branch.pattern) {
+                if finite_coverage_is_exhaustive(&expected, &covered) {
+                    return Err(InferError::RedundantCasePattern(pattern_name(pattern)));
+                }
                 match pattern {
                     Pattern::Wildcard | Pattern::Bind(_) => has_catch_all = true,
                     Pattern::Variant { tag, .. } => {
@@ -669,6 +677,10 @@ struct FiniteCoverage {
     key: String,
     domain: BTreeSet<String>,
     labels: BTreeSet<String>,
+}
+
+fn finite_coverage_is_exhaustive(expected: &BTreeSet<String>, covered: &BTreeSet<String>) -> bool {
+    expected.is_subset(covered)
 }
 
 struct ProductCoverage {

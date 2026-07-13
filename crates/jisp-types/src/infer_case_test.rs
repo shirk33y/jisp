@@ -202,6 +202,24 @@ fn rejects_case_branch_after_catch_all() {
 }
 
 #[test]
+fn rejects_bool_case_branch_after_full_finite_coverage() {
+    let mut inferencer = Inferencer::default();
+    let expression = expr(ExprKind::Case {
+        subject: Box::new(bool_(true)),
+        branches: vec![
+            branch(Pattern::Literal(Literal::Bool(true)), int(1)),
+            branch(Pattern::Literal(Literal::Bool(false)), int(0)),
+            branch(Pattern::Wildcard, int(2)),
+        ],
+    });
+
+    assert!(matches!(
+        inferencer.infer_expr(&expression),
+        Err(InferError::RedundantCasePattern(pattern)) if pattern == "_"
+    ));
+}
+
+#[test]
 fn accepts_exhaustive_null_case() {
     let mut inferencer = Inferencer::default();
     let expression = expr(ExprKind::Case {
@@ -252,6 +270,58 @@ fn rejects_non_exhaustive_enum_case() {
         inferencer.infer_module(&module),
         Err(InferError::NonExhaustiveCase { type_name, missing })
             if type_name == "result" && missing == vec!["err".to_owned()]
+    ));
+}
+
+#[test]
+fn rejects_enum_case_branch_after_full_finite_coverage() {
+    let mut inferencer = Inferencer::default();
+    let result_decl = TypeDecl {
+        name: "result".to_owned(),
+        variants: vec![
+            VariantDecl {
+                name: "ok".to_owned(),
+                field_types: vec!["value".to_owned()],
+                span: span(),
+            },
+            VariantDecl {
+                name: "err".to_owned(),
+                field_types: vec!["error".to_owned()],
+                span: span(),
+            },
+        ],
+        span: span(),
+    };
+    let subject = expr(ExprKind::Call {
+        callee: Box::new(name("ok")),
+        arguments: vec![int(1)],
+    });
+    let case = expr(ExprKind::Case {
+        subject: Box::new(subject),
+        branches: vec![
+            branch(
+                Pattern::Variant {
+                    tag: "ok".to_owned(),
+                    fields: vec![Pattern::Wildcard],
+                },
+                int(1),
+            ),
+            branch(
+                Pattern::Variant {
+                    tag: "err".to_owned(),
+                    fields: vec![Pattern::Wildcard],
+                },
+                int(0),
+            ),
+            branch(Pattern::Bind("value".to_owned()), int(2)),
+        ],
+    });
+    let mut module = module(vec![definition("main", case)]);
+    module.types.push(result_decl);
+
+    assert!(matches!(
+        inferencer.infer_module(&module),
+        Err(InferError::RedundantCasePattern(pattern)) if pattern == "value"
     ));
 }
 
