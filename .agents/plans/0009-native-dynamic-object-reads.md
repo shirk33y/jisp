@@ -28,9 +28,13 @@ of its fields have the same resolved Jisp type:
 The call-site expected type must agree with every field type for `.` and the
 `ok` type of `obj.get`. This makes the generated Rust exhaustive and concrete.
 
-## Explicitly deferred
+## Later boundary
 
-- Dynamic `obj.set`, `obj.del`, and `obj.cat` results with an open row.
+- Dynamic `obj.set` on a closed homogeneous row is now supported: it evaluates
+  the object, key, and replacement once, updates a concrete struct copy through
+  key dispatch, and returns that same closed row. The replacement must have the
+  shared field type; an unknown key follows the interpreter's runtime error.
+- Dynamic `obj.del` and `obj.cat` results with an open row.
 - Dynamic object literals and parameters whose row tail has unknown or
   heterogeneous values.
 - A map/dictionary type or a generated dynamic union. Either requires a
@@ -51,4 +55,6 @@ homogeneous row to its shared field type. Native emission dispatches over the
 known keys for `.` and `obj.get`, preserves the interpreter's missing-key result
 message for `obj.get`, and emits boolean membership for `obj.has`. Differential
 tests cover present and missing reads; a codegen regression confirms that a
-heterogeneous row is rejected rather than erased.
+heterogeneous row is rejected rather than erased. Dynamic `obj.set` has the
+same closed-homogeneous dispatch boundary and is covered by a native/interpreter
+differential test.
