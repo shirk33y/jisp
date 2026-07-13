@@ -604,6 +604,90 @@ fn emits_closed_object_literals_as_native_structs() {
 }
 
 #[test]
+fn rejects_dynamic_field_on_heterogeneous_object_without_value_fallback() {
+    let stats_type = object_type([("active", Type::Bool), ("age", Type::Int)]);
+    let module = typed_module(
+        vec![
+            definition(
+                "stats",
+                false,
+                expr(ExprKind::Object(vec![
+                    (
+                        literal(Literal::String("active".to_owned())),
+                        literal(Literal::Bool(true)),
+                    ),
+                    (
+                        literal(Literal::String("age".to_owned())),
+                        literal(Literal::Int(42)),
+                    ),
+                ])),
+            ),
+            definition("key", false, literal(Literal::String("age".to_owned()))),
+            definition(
+                "main",
+                true,
+                expr(ExprKind::Field {
+                    object: Box::new(name("stats")),
+                    key: Box::new(name("key")),
+                }),
+            ),
+        ],
+        vec![
+            ("stats", stats_type),
+            ("key", Type::Str),
+            ("main", Type::Int),
+        ],
+    );
+
+    assert_eq!(
+        generate(&module).unwrap_err(),
+        CodegenError::Unsupported("dynamic native access on heterogeneous object")
+    );
+}
+
+#[test]
+fn rejects_dynamic_obj_get_on_heterogeneous_object_without_value_fallback() {
+    let stats_type = object_type([("active", Type::Bool), ("age", Type::Int)]);
+    let module = typed_module(
+        vec![
+            definition(
+                "stats",
+                false,
+                expr(ExprKind::Object(vec![
+                    (
+                        literal(Literal::String("active".to_owned())),
+                        literal(Literal::Bool(true)),
+                    ),
+                    (
+                        literal(Literal::String("age".to_owned())),
+                        literal(Literal::Int(42)),
+                    ),
+                ])),
+            ),
+            definition("key", false, literal(Literal::String("age".to_owned()))),
+            definition(
+                "main",
+                true,
+                expr(ExprKind::Call {
+                    callee: Box::new(name("obj.get")),
+                    arguments: vec![name("stats"), name("key")],
+                }),
+            ),
+        ],
+        vec![
+            ("stats", stats_type),
+            ("key", Type::Str),
+            ("main", result_type(Type::Int, Type::Str)),
+        ],
+    );
+
+    assert_eq!(
+        generate(&module).unwrap_err(),
+        CodegenError::Unsupported("dynamic native access on heterogeneous object")
+    );
+}
+
+#[test]
 fn propagates_expected_object_type_through_let_body() {
     let stats_type = object_type([("age", Type::Int)]);
     let module = typed_module(
