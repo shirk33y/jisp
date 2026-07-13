@@ -124,6 +124,28 @@ the same names, so the case body is valid regardless of which one matched.
       ((err _) 0))))
 ```
 
+## Case exhaustiveness and redundancy
+
+The current checker is intentionally conservative and only proves coverage for
+domains it can enumerate cheaply:
+
+- closed algebraic data constructors, `bool`, and `null`;
+- list lengths with irrefutable rest patterns;
+- exact-length list patterns whose element type has a finite domain, such as
+  `bool`, `null`, or a closed algebraic data type;
+- object fields whose value type has a finite domain, including nested fields
+  and products of up to 256 finite field combinations.
+
+Guarded branches are type-checked but do not contribute to exhaustiveness or
+redundancy coverage, because the checker does not prove guard predicates. Keep
+an unguarded fallback for the remaining values.
+
+The deferred, fuller option is a general pattern-matrix coverage algorithm. It
+would model list/object shapes, nested constructors, overlapping alternatives,
+and missing-pattern reporting uniformly instead of using the current
+finite-domain shortcuts. That is a future compatibility target, not required by
+the present language contract.
+
 ## Definitions and modules
 
 ```yaml

@@ -535,6 +535,35 @@ fn rejects_exact_bool_list_case_pattern_covered_by_refinements() {
 }
 
 #[test]
+fn guarded_list_refinements_do_not_establish_exhaustiveness() {
+    let mut inferencer = Inferencer::default();
+    let guarded_branch = |pattern| CaseBranch {
+        pattern,
+        guard: Some(bool_(true)),
+        body: int(1),
+        span: span(),
+    };
+    let expression = expr(ExprKind::Case {
+        subject: Box::new(expr(ExprKind::List(vec![bool_(true)]))),
+        branches: vec![
+            guarded_branch(Pattern::List {
+                prefix: vec![Pattern::Literal(Literal::Bool(true))],
+                rest: None,
+            }),
+            guarded_branch(Pattern::List {
+                prefix: vec![Pattern::Literal(Literal::Bool(false))],
+                rest: None,
+            }),
+        ],
+    });
+
+    assert!(matches!(
+        inferencer.infer_expr(&expression),
+        Err(InferError::NonExhaustiveCase { type_name, .. }) if type_name == "list"
+    ));
+}
+
+#[test]
 fn accepts_exhaustive_object_case_with_required_field_bindings() {
     let mut inferencer = Inferencer::default();
     let expression = expr(ExprKind::Case {
@@ -790,6 +819,76 @@ fn accepts_exhaustive_object_case_covering_two_boolean_fields() {
     });
 
     assert_eq!(inferencer.infer_expr(&expression).unwrap(), Type::Int);
+}
+
+#[test]
+fn rejects_redundant_object_product_case_pattern() {
+    let mut inferencer = Inferencer::default();
+    let field = |name: &str, value| (name.to_owned(), Pattern::Literal(Literal::Bool(value)));
+    let expression = expr(ExprKind::Case {
+        subject: Box::new(expr(ExprKind::Object(vec![
+            (string("active"), bool_(true)),
+            (string("visible"), bool_(true)),
+        ]))),
+        branches: vec![
+            branch(
+                Pattern::Object(vec![field("active", true), field("visible", true)]),
+                int(3),
+            ),
+            branch(
+                Pattern::Object(vec![field("active", true), field("visible", true)]),
+                int(4),
+            ),
+            branch(Pattern::Object(vec![]), int(0)),
+        ],
+    });
+
+    assert!(matches!(
+        inferencer.infer_expr(&expression),
+        Err(InferError::RedundantCasePattern(pattern)) if pattern == "object pattern"
+    ));
+}
+
+#[test]
+fn guarded_object_product_patterns_do_not_establish_exhaustiveness() {
+    let mut inferencer = Inferencer::default();
+    let field = |name: &str, value| (name.to_owned(), Pattern::Literal(Literal::Bool(value)));
+    let guarded_branch = |pattern| CaseBranch {
+        pattern,
+        guard: Some(bool_(true)),
+        body: int(1),
+        span: span(),
+    };
+    let expression = expr(ExprKind::Case {
+        subject: Box::new(expr(ExprKind::Object(vec![
+            (string("active"), bool_(true)),
+            (string("visible"), bool_(true)),
+        ]))),
+        branches: vec![
+            guarded_branch(Pattern::Object(vec![
+                field("active", true),
+                field("visible", true),
+            ])),
+            guarded_branch(Pattern::Object(vec![
+                field("active", true),
+                field("visible", false),
+            ])),
+            guarded_branch(Pattern::Object(vec![
+                field("active", false),
+                field("visible", true),
+            ])),
+            guarded_branch(Pattern::Object(vec![
+                field("active", false),
+                field("visible", false),
+            ])),
+        ],
+    });
+
+    assert!(matches!(
+        inferencer.infer_expr(&expression),
+        Err(InferError::NonExhaustiveCase { type_name, missing })
+            if type_name == "object" && missing == vec!["object pattern".to_owned()]
+    ));
 }
 
 #[test]
