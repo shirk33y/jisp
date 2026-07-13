@@ -16,12 +16,18 @@ is compiled by the test harness.
 
 ## Portable language fixtures
 
-`tests/language/*.lisp` generate one interpreter test per `(test "...")` form.
-The runner parses, expands quote/user macros, lowers, type-checks, evaluates,
-and structurally compares the expected and actual values. Add a fixture here
-for language semantics that should be independent of native Rust codegen,
-especially parser/lowering edge cases, macro expansion, pattern matching,
-stdlib behaviour, and immutable value semantics.
+`tests/language/*.lisp` generate one interpreter test per `(test "...")` or
+`(test-error "...")` form. Positive tests use `(test "name" (assert.equal
+expected actual))`; the runner parses, expands quote/user macros, lowers,
+type-checks, evaluates, and structurally compares the expected and actual
+values. Negative tests use `(test-error "name" "expected message substring"
+expr)`; the runner inserts `expr` into a temporary export and expects lowering
+or type-checking to fail with a diagnostic containing that substring.
+
+Add a fixture here for language semantics that should be independent of native
+Rust codegen, especially parser/lowering edge cases, macro expansion, pattern
+matching, stdlib behaviour, immutable value semantics, and portable frontend
+rejections such as redundant or non-exhaustive `case` patterns.
 
 ## Native conformance
 

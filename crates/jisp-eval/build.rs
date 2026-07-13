@@ -118,7 +118,10 @@ fn discover_tests(path: &Path, source: &str) -> Result<Vec<FixtureTest>, String>
         let Some(items) = node.as_form() else {
             continue;
         };
-        if items.first().and_then(Node::as_symbol) != Some("test") {
+        if !matches!(
+            items.first().and_then(Node::as_symbol),
+            Some("test" | "test-error")
+        ) {
             continue;
         }
         let name = items

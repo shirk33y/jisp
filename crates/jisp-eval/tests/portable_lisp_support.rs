@@ -4,10 +4,16 @@ use jisp_ir::Lowerer;
 use jisp_syntax_lisp::LispParser;
 use jisp_types::Inferencer;
 
-struct PortableTest {
-    name: String,
-    expected: String,
-    actual: String,
+enum PortableTest {
+    Equal {
+        name: String,
+        expected: String,
+        actual: String,
+    },
+    Error {
+        name: String,
+        expected_message: String,
+    },
 }
 
 pub fn run_lisp_test(file: &str, source: &str, test_index: usize, test_name: &str) {
@@ -19,10 +25,29 @@ pub fn run_lisp_test(file: &str, source: &str, test_index: usize, test_name: &st
         .unwrap_or_else(|error| panic!("{generated_context}: expand failed: {error}"));
     let (module_nodes, test) = collect_test(expanded.nodes, test_index)
         .unwrap_or_else(|error| panic!("{generated_context}: {error}"));
-    let context = format!("{file}: {}", test.name);
+    let context = format!("{file}: {}", test.name());
 
+    match test {
+        PortableTest::Equal {
+            expected, actual, ..
+        } => run_equal_test(&context, &module_nodes, &expected, &actual),
+        PortableTest::Error {
+            expected_message, ..
+        } => run_error_test(&context, &module_nodes, &expected_message),
+    }
+}
+
+impl PortableTest {
+    fn name(&self) -> &str {
+        match self {
+            PortableTest::Equal { name, .. } | PortableTest::Error { name, .. } => name,
+        }
+    }
+}
+
+fn run_equal_test(context: &str, module_nodes: &[Node], expected: &str, actual: &str) {
     let module = Lowerer
-        .lower_module(&module_nodes)
+        .lower_module(module_nodes)
         .unwrap_or_else(|error| panic!("{context}: lower failed: {error}"));
     Inferencer::with_prelude()
         .infer_module(&module)
@@ -33,12 +58,12 @@ pub fn run_lisp_test(file: &str, source: &str, test_index: usize, test_name: &st
 
     let expected = loaded
         .exports
-        .get(&test.expected)
-        .unwrap_or_else(|| panic!("{context}: missing export {}", test.expected));
+        .get(expected)
+        .unwrap_or_else(|| panic!("{context}: missing export {expected}"));
     let actual = loaded
         .exports
-        .get(&test.actual)
-        .unwrap_or_else(|| panic!("{context}: missing export {}", test.actual));
+        .get(actual)
+        .unwrap_or_else(|| panic!("{context}: missing export {actual}"));
     let equal = expected
         .structurally_equal(actual)
         .unwrap_or_else(|error| panic!("{context}: assertion failed: {error}"));
@@ -50,13 +75,35 @@ pub fn run_lisp_test(file: &str, source: &str, test_index: usize, test_name: &st
     );
 }
 
+fn run_error_test(context: &str, module_nodes: &[Node], expected_message: &str) {
+    let module = match Lowerer.lower_module(module_nodes) {
+        Ok(module) => module,
+        Err(error) => {
+            assert_error_contains(context, &error.to_string(), expected_message);
+            return;
+        }
+    };
+
+    match Inferencer::with_prelude().infer_module(&module) {
+        Ok(_) => panic!("{context}: expected lower/type error containing `{expected_message}`"),
+        Err(error) => assert_error_contains(context, &error.to_string(), expected_message),
+    }
+}
+
+fn assert_error_contains(context: &str, actual: &str, expected: &str) {
+    assert!(
+        actual.contains(expected),
+        "{context}: expected error containing `{expected}`, got `{actual}`"
+    );
+}
+
 fn collect_test(nodes: Vec<Node>, test_index: usize) -> Result<(Vec<Node>, PortableTest), String> {
     let mut module_nodes = vec![];
     let mut selected = None;
     let mut tests_seen = 0;
 
     for node in nodes {
-        if is_test(&node) {
+        if is_test_form(&node) {
             if tests_seen == test_index {
                 selected = Some(lower_test_form(&node, test_index, &mut module_nodes)?);
             }
@@ -71,11 +118,13 @@ fn collect_test(nodes: Vec<Node>, test_index: usize) -> Result<(Vec<Node>, Porta
         .ok_or_else(|| format!("missing generated test {test_index}"))
 }
 
-fn is_test(node: &Node) -> bool {
-    node.as_form()
-        .and_then(|items| items.first())
-        .and_then(Node::as_symbol)
-        == Some("test")
+fn is_test_form(node: &Node) -> bool {
+    matches!(
+        node.as_form()
+            .and_then(|items| items.first())
+            .and_then(Node::as_symbol),
+        Some("test" | "test-error")
+    )
 }
 
 fn lower_test_form(
@@ -86,6 +135,14 @@ fn lower_test_form(
     let items = node
         .as_form()
         .ok_or_else(|| "test must be a form".to_owned())?;
+    let form_name = items
+        .first()
+        .and_then(Node::as_symbol)
+        .ok_or_else(|| "test must start with a symbol".to_owned())?;
+    if form_name == "test-error" {
+        return lower_test_error_form(items, index, module_nodes);
+    }
+
     if items.len() != 3 {
         return Err(format!(
             "test expects a name and assertion, got {} item(s)",
@@ -114,10 +171,38 @@ fn lower_test_form(
     module_nodes.push(export_node(&expected, assertion[1].clone(), node));
     module_nodes.push(export_node(&actual, assertion[2].clone(), node));
 
-    Ok(PortableTest {
+    Ok(PortableTest::Equal {
         name,
         expected,
         actual,
+    })
+}
+
+fn lower_test_error_form(
+    items: &[Node],
+    index: usize,
+    module_nodes: &mut Vec<Node>,
+) -> Result<PortableTest, String> {
+    if items.len() != 4 {
+        return Err(format!(
+            "test-error expects a name, expected message substring, and expression, got {} item(s)",
+            items.len()
+        ));
+    }
+    let name = items[1]
+        .as_string()
+        .ok_or_else(|| "test-error name must be a string".to_owned())?
+        .to_owned();
+    let expected_message = items[2]
+        .as_string()
+        .ok_or_else(|| format!("{name}: test-error expected message must be a string"))?
+        .to_owned();
+    let actual = format!("__jisp_test_{index}_error");
+    module_nodes.push(export_node(&actual, items[3].clone(), &items[0]));
+
+    Ok(PortableTest::Error {
+        name,
+        expected_message,
     })
 }
 

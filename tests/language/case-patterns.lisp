@@ -105,3 +105,14 @@
         (+ (str.len value) 1))
       ((home) 0)
       ((profile _ _) 0))))
+
+(test-error "redundant guarded branch after catch-all is rejected"
+  "redundant case pattern"
+  (case true
+    (_ 1)
+    ((when false true) 0)))
+
+(test-error "non-exhaustive finite list case is rejected"
+  "non-exhaustive case for `list`"
+  (case (list true)
+    ((list true) 1)))
