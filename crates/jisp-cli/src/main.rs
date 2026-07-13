@@ -396,6 +396,44 @@ fn lsp_binding_in_node(
             }
             lsp_binding_in_node(&items[2], offset, symbol, &scope)
         }
+        Some("case") if items.len() >= 3 => {
+            if let Some(binding) = lsp_binding_in_node(&items[1], offset, symbol, scope) {
+                return Some(binding);
+            }
+            for branch in &items[2..] {
+                let branch_items = branch.as_form()?;
+                let pattern = branch_items.first()?;
+                let mut bindings = Vec::new();
+                lsp_pattern_bindings(pattern, &mut bindings);
+                if let Some(binding) = bindings.iter().find_map(|(name, span)| {
+                    (span_contains(*span, offset) && *name == symbol).then_some(*span)
+                }) {
+                    return Some(binding);
+                }
+                let mut branch_scope = scope.to_vec();
+                branch_scope.extend(bindings);
+                let (guard, body) = match pattern.as_form() {
+                    Some(when) if when.first().and_then(Node::as_symbol) == Some("when") => {
+                        (when.get(2), &branch_items[1..])
+                    }
+                    _ => (None, &branch_items[1..]),
+                };
+                if let Some(guard) = guard {
+                    if let Some(binding) = lsp_binding_in_node(guard, offset, symbol, &branch_scope)
+                    {
+                        return Some(binding);
+                    }
+                }
+                for expression in body {
+                    if let Some(binding) =
+                        lsp_binding_in_node(expression, offset, symbol, &branch_scope)
+                    {
+                        return Some(binding);
+                    }
+                }
+            }
+            None
+        }
         Some("def" | "export") if items.len() == 3 => {
             let name = items[1].as_symbol()?;
             if span_contains(items[1].span, offset) && name == symbol {
@@ -414,6 +452,65 @@ fn lsp_binding_in_node(
                 .rev()
                 .find_map(|(name, span)| (*name == symbol).then_some(*span))
         }
+    }
+}
+
+fn lsp_pattern_bindings<'a>(node: &'a Node, output: &mut Vec<(&'a str, Span)>) {
+    match &node.kind {
+        NodeKind::Symbol(symbol) => {
+            if symbol.as_str() != "_" {
+                let name = symbol.as_str();
+                output.push((name, node.span));
+            }
+        }
+        NodeKind::Form(items) => match items.first().and_then(Node::as_symbol) {
+            Some("list") => {
+                let mut index = 1;
+                while index < items.len() {
+                    if items[index].as_symbol() == Some("...") {
+                        if let Some(binding) = items.get(index + 1) {
+                            lsp_pattern_bindings(binding, output);
+                        }
+                        break;
+                    }
+                    lsp_pattern_bindings(&items[index], output);
+                    index += 1;
+                }
+            }
+            Some("obj") => {
+                for value in items.iter().skip(2).step_by(2) {
+                    lsp_pattern_bindings(value, output);
+                }
+            }
+            Some("as") => {
+                if let Some(pattern) = items.get(1) {
+                    lsp_pattern_bindings(pattern, output);
+                }
+                if let Some(binding) = items.get(2) {
+                    lsp_pattern_bindings(binding, output);
+                }
+            }
+            Some("or") => {
+                if let Some(pattern) = items.get(1) {
+                    lsp_pattern_bindings(pattern, output);
+                }
+            }
+            Some("when") => {
+                if let Some(pattern) = items.get(1) {
+                    lsp_pattern_bindings(pattern, output);
+                }
+            }
+            Some(_) | None => {
+                for field in items.iter().skip(1) {
+                    lsp_pattern_bindings(field, output);
+                }
+            }
+        },
+        NodeKind::Null
+        | NodeKind::Bool(_)
+        | NodeKind::Int(_)
+        | NodeKind::Float(_)
+        | NodeKind::String(_) => {}
     }
 }
 

@@ -25,6 +25,18 @@ fn definition_resolves_lambda_and_sequential_let_bindings() {
 }
 
 #[test]
+fn definition_resolves_case_pattern_bindings() {
+    let text = "(export main (fn () (case (some 1) ((some value) (+ value 1)))))\n";
+    let use_offset = text.rfind("value").unwrap();
+    let declaration = lsp_definition("file:///main.lisp", text, 0, use_offset).unwrap();
+
+    assert_eq!(
+        declaration["range"]["start"]["character"],
+        text.find("value").unwrap()
+    );
+}
+
+#[test]
 fn definition_ignores_unknown_and_non_name_symbols() {
     let text = "(export main (fn () 42))\n";
 
