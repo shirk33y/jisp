@@ -354,6 +354,27 @@ fn emit_rust_detailed_emits_native_variant_or_patterns() {
 }
 
 #[test]
+fn emit_rust_detailed_emits_non_enum_or_patterns() {
+    let generated = jisp::emit_rust_as_detailed(
+        "main.lisp",
+        Syntax::Lisp,
+        r#"
+(export main
+  (fn ()
+    (case 2
+      ((or 1 2) 42)
+      (_ 0))))
+"#,
+    )
+    .unwrap();
+
+    let tokens = generated.tokens.to_string();
+
+    assert!(tokens.contains("__jisp_case_subject == 1i64"));
+    assert!(tokens.contains("__jisp_case_subject == 2i64"));
+}
+
+#[test]
 fn emit_rust_detailed_emits_native_list_case_patterns() {
     let generated = jisp::emit_rust_as_detailed(
         "main.lisp",

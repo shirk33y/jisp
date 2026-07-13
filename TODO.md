@@ -79,9 +79,9 @@ product-level direction and ordering rationale, see [ROADMAP.md](ROADMAP.md).
   runtime representation; dynamic deletion still changes the concrete shape.
 - Extend the intentionally bounded macro system only after designing hygiene,
   cross-module visibility, and a general compile-time evaluator.
-- Add stronger list/object exhaustiveness analysis and native emission for
-  non-enum alternative patterns. Native enum alternatives with shared bindings
-  now emit Rust `|` patterns.
+- Add stronger list/object exhaustiveness analysis and nested alternative
+  patterns. Top-level native alternatives now preserve branch-local bindings;
+  enum alternatives with shared bindings emit Rust `|` patterns.
 - Expand `jisp-macros` further beyond item-position emission. `lisp_expr!`
   now compiles an exported zero-argument `main` as a typed Rust expression.
 - Broaden the current item-level generated-to-source mapping for `emit-rust`

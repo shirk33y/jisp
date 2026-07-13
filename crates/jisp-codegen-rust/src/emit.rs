@@ -451,54 +451,91 @@ impl<'a> EmitContext<'a> {
         let subject_name = format_ident!("__jisp_case_subject");
         let mut output = quote! { unreachable!("typechecked Jisp case should be exhaustive") };
         for branch in branches.iter().rev() {
-            let PatternEmission {
-                condition,
-                bindings,
-            } = emit_pattern(&branch.pattern, quote! { #subject_name })?;
-            ensure_unique_rust_idents(
-                bindings.iter().map(|binding| binding.name.as_str()),
-                "case binding",
-            )?;
-            let mut previous_locals = Vec::new();
-            let previous_captures = self.closure_captures.clone();
-            for binding in &bindings {
-                previous_locals.push((
-                    binding.name.clone(),
-                    self.locals.insert(binding.name.clone(), None),
-                ));
-                self.closure_captures.remove(&binding.name);
-            }
-            let guard = branch
-                .guard
-                .as_ref()
-                .map(|guard| self.emit_expr(guard, Some(&Type::Bool)))
-                .transpose()?;
-            let body = self.emit_expr(&branch.body, expected)?;
-            for (name, previous) in previous_locals.into_iter().rev() {
-                if let Some(previous) = previous {
-                    self.locals.insert(name, previous);
-                } else {
-                    self.locals.remove(&name);
+            if let Pattern::Or(alternatives) = &branch.pattern {
+                let fallback = output.clone();
+                let mut alternatives_output = fallback.clone();
+                for alternative in alternatives.iter().rev() {
+                    alternatives_output = self.emit_nonvariant_case_branch(
+                        alternative,
+                        branch.guard.as_ref(),
+                        &branch.body,
+                        expected,
+                        quote! { #alternatives_output },
+                        quote! { #fallback },
+                        quote! { #subject_name },
+                    )?;
                 }
+                output = alternatives_output;
+            } else {
+                output = self.emit_nonvariant_case_branch(
+                    &branch.pattern,
+                    branch.guard.as_ref(),
+                    &branch.body,
+                    expected,
+                    quote! { #output },
+                    quote! { #output },
+                    quote! { #subject_name },
+                )?;
             }
-            self.closure_captures = previous_captures;
-            let bindings = bindings.iter().map(|binding| &binding.tokens);
-            let branch = match guard {
-                Some(guard) => quote! {{ #(#bindings)* if #guard { #body } else { #output } }},
-                None => quote! {{ #(#bindings)* #body }},
-            };
-            output = quote! {
-                if #condition {
-                    #branch
-                } else {
-                    #output
-                }
-            };
         }
         Ok(quote! {{
             let #subject_name = #subject;
             #output
         }})
+    }
+
+    fn emit_nonvariant_case_branch(
+        &mut self,
+        pattern: &Pattern,
+        guard: Option<&Expr>,
+        body: &Expr,
+        expected: Option<&Type>,
+        condition_fallback: TokenStream,
+        guard_fallback: TokenStream,
+        subject: TokenStream,
+    ) -> Result<TokenStream, CodegenError> {
+        let PatternEmission {
+            condition,
+            bindings,
+        } = emit_pattern(pattern, subject)?;
+        ensure_unique_rust_idents(
+            bindings.iter().map(|binding| binding.name.as_str()),
+            "case binding",
+        )?;
+        let mut previous_locals = Vec::new();
+        let previous_captures = self.closure_captures.clone();
+        for binding in &bindings {
+            previous_locals.push((
+                binding.name.clone(),
+                self.locals.insert(binding.name.clone(), None),
+            ));
+            self.closure_captures.remove(&binding.name);
+        }
+        let guard = guard
+            .as_ref()
+            .map(|guard| self.emit_expr(guard, Some(&Type::Bool)))
+            .transpose()?;
+        let body = self.emit_expr(body, expected)?;
+        for (name, previous) in previous_locals.into_iter().rev() {
+            if let Some(previous) = previous {
+                self.locals.insert(name, previous);
+            } else {
+                self.locals.remove(&name);
+            }
+        }
+        self.closure_captures = previous_captures;
+        let bindings = bindings.iter().map(|binding| &binding.tokens);
+        let branch = match guard {
+            Some(guard) => quote! {{ #(#bindings)* if #guard { #body } else { #guard_fallback } }},
+            None => quote! {{ #(#bindings)* #body }},
+        };
+        Ok(quote! {
+            if #condition {
+                #branch
+            } else {
+                #condition_fallback
+            }
+        })
     }
 
     fn emit_variant_case(
