@@ -232,10 +232,12 @@ impl Lowerer {
             Some("str.lines") => self.lower_string_template(span, true, &items[1..]),
             Some("case") => self.lower_case(span, items),
             Some("use") => self.lower_use(span, items),
-            Some("component" | "ui.app") => Err(error(span, "this form is only valid at top level")),
-            Some("text" | "attr" | "prop" | "class" | "class-if" | "on" | "emit" | "key" | "for") => {
-                Err(error(span, "UI syntax is only valid inside a component"))
+            Some("component" | "ui.app") => {
+                Err(error(span, "this form is only valid at top level"))
             }
+            Some(
+                "text" | "attr" | "prop" | "class" | "class-if" | "on" | "emit" | "key" | "for",
+            ) => Err(error(span, "UI syntax is only valid inside a component")),
             Some(name) if ui_element(name).is_some() => Err(error(
                 span,
                 format!("UI element `{name}` is only valid inside a component"),

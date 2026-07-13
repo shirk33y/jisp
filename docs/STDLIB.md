@@ -167,6 +167,7 @@ from it. `option` deliberately has only its constructors; consume it with
 | Function | Signature | Description | Example |
 | --- | --- | --- | --- |
 | `ui.html` | `(A) -> str` | Static HTML renderer for a UI node; escapes text and attributes, flattens child lists, and ignores event/key metadata. See [UI.md](UI.md). | `(ui.html (save-button))` |
+| `ui.node` | `(A) -> ui.node` | Internal identity marker emitted by the UI lowerer so heterogeneous UI children share one renderer-neutral type. UI source should use explicit elements and `text`, not call this directly. | `(button (text "Save"))` |
 | `io.println` | `(A) -> null` | Writes a display value followed by a newline. | `(io.println "Hello")` |
 
 ## Runnable examples

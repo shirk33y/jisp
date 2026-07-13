@@ -15,10 +15,11 @@ Repository-root files remain deliberately small and operational:
 - [Standard library](STDLIB.md): every public prelude function, its signature,
   behaviour, and example.
 - [Declarative UI](UI.md): default component/host-element syntax, lowering
-  contract, static HTML behavior, and deferred interactive-runtime work.
+  contract, static HTML behavior, and the reducer-driven interactive host.
 - [UI playground](../playground/index.html): a GitHub Pages preview with
   editable examples that runs the real interpreter in WebAssembly; its host is
-  intentionally limited to static HTML rendering.
+  intentionally limited to full-tree reducer rendering and browser event
+  forwarding.
 - [Architecture](ARCHITECTURE.md): crate boundaries and non-negotiable design
   invariants.
 - [Diagnostics](DIAGNOSTICS.md): source ranges, expansion origins, and

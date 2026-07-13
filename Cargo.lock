@@ -360,7 +360,9 @@ dependencies = [
 name = "jisp-wasm"
 version = "0.0.1"
 dependencies = [
+ "indexmap",
  "jisp",
+ "serde_json",
  "wasm-bindgen",
 ]
 

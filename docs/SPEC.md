@@ -259,8 +259,11 @@ the directive grammar are defined in [UI.md](UI.md). Lowering creates a
 renderer-neutral structural node with `tag`, optional `attrs`, `props`,
 `classes`, `events`, `key`, and `children`; text becomes `{tag: "text", value:
 "..."}`. The prototype `ui.html` builtin renders escaped static HTML and
-intentionally ignores events and keys. Reactive state, reconciliation, and
-event dispatch are deferred runtime contracts.
+intentionally ignores events and keys. An interactive host can instead use
+`(ui.app init reduce view)` and `(on event (emit action))`: it invokes the
+handler with an event value, reduces `(state, action)` to next state, and asks
+`view` for a fresh node tree. Reconciliation, effects, subscriptions, and
+native widget contracts remain deferred. See [UI.md](UI.md).
 
 `[., object, key]` is field/map lookup only. Jisp has no method syntax or
 implicit receiver. A function stored in a field is called normally.

@@ -2,8 +2,8 @@
 
 Jisp's default UI source syntax is a component tree with explicit host
 elements. It lowers to renderer-neutral structural data, so the same program
-can target the interpreter's static HTML renderer today and a future native or
-interactive host runtime without changing its source form.
+can target the interpreter's static HTML renderer and a host-managed
+interactive runtime without changing its source form.
 
 ```lisp test=ui.component-syntax mode=run
 (component todo-row (title)
@@ -54,13 +54,62 @@ turn a name into a class: `aria-label`, `data-id`, and `http-equiv` belong in
 | `(prop name value)` | Renderer property. The static HTML renderer currently serializes scalar props as attributes. |
 | `(class name...)` | Enables each named utility class. |
 | `(class-if name condition)` | Enables the named utility class only when the boolean condition is true. |
-| `(on event handler)` | Stores a named event handler for an interactive host. Static HTML deliberately does not serialize it. |
+| `(on event (emit action))` | Creates a delayed handler. The interactive host supplies `event`, evaluates `action`, then passes that value to the app reducer. Static HTML deliberately does not serialize it. |
+| `(on event handler)` | Stores an explicit function handler for an interactive host. Use this when the handler needs more than one expression. |
 | `(key value)` | Stores an identity key for reconciliation. Static HTML deliberately ignores it. |
 | `(for binding collection child)` | Maps `child` over `collection`; nested result lists are flattened as children. |
 
 Each directive belongs directly inside a host element. Names must be unique
 within their own directive category; a duplicate `attr`, `prop`, `class`, or
 `on` name is a lowering error. There can be only one `key` directive.
+
+`emit` is only valid as the handler argument of `on`. It introduces an implicit
+single `event` argument, so input values can be turned into actions without
+browser state leaking into the reducer:
+
+```lisp
+(input
+  (prop value (. state "draft"))
+  (on input (emit (Draft (. event "value")))))
+```
+
+## Reducer applications
+
+An interactive module declares its three host entry points with:
+
+```lisp
+(ui.app init reduce view)
+```
+
+`init` is an immutable initial value, `reduce` has the shape
+`(state action) -> state`, and `view` has the shape `(state) -> ui.node`.
+The declaration does not create a JavaScript store or an effect system: it is
+metadata that lets each host keep the same execution contract.
+
+```lisp test=ui.reducer-example mode=check
+(type Action (Increment))
+
+(def init (obj "count" 0))
+
+(defn reduce (state action)
+  (case action
+    ((Increment) (obj.set state "count" (+ (. state "count") 1)))))
+
+(component counter (state)
+  (button
+    (on click (emit Increment))
+    (text (str "Count: " ,(str.from (. state "count"))))))
+
+(def view counter)
+(ui.app init reduce view)
+```
+
+The browser playground currently uses this contract. On each event it calls
+the selected Jisp handler with a small JSON-shaped event object, calls
+`reduce(state, action)`, then calls `view(next-state)` and replaces the preview
+tree. This is deliberately a simple full-render host: keyed reconciliation,
+effects, subscriptions, async commands, persistence, and native widget
+adapters are not defined yet.
 
 ## Lowered contract and host status
 
@@ -70,14 +119,14 @@ implementation contract for renderers, not the recommended source syntax.
 `ui.html` renders the tag, attributes, properties, classes, text, and flattened
 children with HTML escaping. It purposefully ignores `events` and `key`.
 
-This is a declarative UI language and a static-rendering proof, not yet a
-React-equivalent runtime. State cells, update scheduling, lifecycle/effect
-semantics, event dispatch, a reconciler, native widget registries, and
-Tailwind-style token validation remain future runtime work. Until those
-contracts exist, handlers and keys are preserved as data for a host rather than
-executed by Jisp itself.
+This is a declarative UI language with a deliberately small interactive host
+contract, not yet a React-equivalent runtime. Effect/lifecycle semantics,
+subscriptions, async commands, keyed reconciliation, native widget registries,
+and Tailwind-style token validation remain future runtime work. The static
+`ui.html` renderer still preserves neither event handlers nor keys.
 
 The GitHub Pages playground runs this same interpreter through the
-`jisp-wasm` WebAssembly entry point; JavaScript loads the module and isolates
-the resulting static HTML preview, but does not parse or evaluate a second UI
-language.
+`jisp-wasm` WebAssembly entry point. JavaScript loads the module, renders the
+returned structural tree in an isolated preview, and forwards browser events;
+it does not parse or evaluate a second UI language, and it does not implement
+the reducer.

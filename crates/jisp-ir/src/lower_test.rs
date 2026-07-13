@@ -193,7 +193,14 @@ fn component_lowers_explicit_elements_directives_and_component_children() {
     assert_eq!(params, &["title"]);
     assert!(rest.is_none());
 
-    let ExprKind::Object(fields) = &body.kind else {
+    let ExprKind::Call { callee, arguments } = &body.kind else {
+        panic!("component body should lower through ui.node");
+    };
+    assert!(matches!(callee.kind, ExprKind::Name(ref name) if name == "ui.node"));
+    let [node] = arguments.as_slice() else {
+        panic!("ui.node should receive one structural node");
+    };
+    let ExprKind::Object(fields) = &node.kind else {
         panic!("component body should lower to a structural UI object");
     };
     assert_eq!(
@@ -231,7 +238,14 @@ fn component_lowers_explicit_elements_directives_and_component_children() {
     let ExprKind::Lambda { body, .. } = &module.definitions[1].value.kind else {
         panic!("component should lower to a function");
     };
-    let ExprKind::Object(list_fields) = &body.kind else {
+    let ExprKind::Call { callee, arguments } = &body.kind else {
+        panic!("component body should lower through ui.node");
+    };
+    assert!(matches!(callee.kind, ExprKind::Name(ref name) if name == "ui.node"));
+    let [node] = arguments.as_slice() else {
+        panic!("ui.node should receive one structural node");
+    };
+    let ExprKind::Object(list_fields) = &node.kind else {
         panic!("todo-list should lower to a structural UI object");
     };
     let ExprKind::Call { callee, arguments } = &object_field(list_fields, "children").unwrap().kind
@@ -262,6 +276,34 @@ fn component_rejects_reserved_element_names_and_duplicate_directives() {
     assert_eq!(
         duplicate.diagnostics[0].message,
         "duplicate UI directive name `aria-label`"
+    );
+}
+
+#[test]
+fn ui_app_requires_local_bindings_and_emit_is_scoped_to_event_handlers() {
+    let module = lower_lisp(
+        r#"
+(def init 0)
+(defn reduce (state action) state)
+(component view (state) (button (on click (emit action)) (text "ok")))
+(ui.app init reduce view)
+"#,
+    )
+    .unwrap();
+    let app = module.ui_app.expect("ui.app metadata");
+    assert_eq!(app.init, "init");
+    assert_eq!(app.reduce, "reduce");
+    assert_eq!(app.view, "view");
+
+    let unknown = lower_lisp("(ui.app init reduce view)").unwrap_err();
+    assert!(unknown.diagnostics[0]
+        .message
+        .contains("does not name a module definition"));
+
+    let emit = lower_lisp("(def value (emit action))").unwrap_err();
+    assert_eq!(
+        emit.diagnostics[0].message,
+        "UI syntax is only valid inside a component"
     );
 }
 

@@ -85,6 +85,7 @@ pub fn install_builtins(evaluator: &mut Evaluator) {
         ("map.values", obj_values),
         ("map.cat", obj_cat),
         ("ui.html", ui_html),
+        ("ui.node", ui_node),
         ("result.try", result_try),
         ("result.map", result_map),
         ("result.map-err", result_map_err),
@@ -834,6 +835,11 @@ fn map(_: &mut Evaluator, args: &[Value], span: Span) -> Result<Value, RuntimeEr
 fn ui_html(_: &mut Evaluator, args: &[Value], span: Span) -> Result<Value, RuntimeError> {
     arity(args, 1, span)?;
     Ok(Value::string(ui::render_html(&args[0], span)?))
+}
+
+fn ui_node(_: &mut Evaluator, args: &[Value], span: Span) -> Result<Value, RuntimeError> {
+    arity(args, 1, span)?;
+    Ok(args[0].clone())
 }
 
 fn result_try(eval: &mut Evaluator, args: &[Value], span: Span) -> Result<Value, RuntimeError> {

@@ -38,6 +38,7 @@ fn main() {
         ("README.md", root.join("README.md")),
         ("docs/SPEC.md", root.join("docs/SPEC.md")),
         ("docs/STDLIB.md", root.join("docs/STDLIB.md")),
+        ("docs/UI.md", root.join("docs/UI.md")),
     ];
     let mut names = HashSet::new();
     let mut examples = vec![];

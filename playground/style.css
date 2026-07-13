@@ -7,10 +7,16 @@ body {
   min-width: 320px;
 }
 
-textarea {
+.cm-editor {
   min-height: 34rem;
-  resize: vertical;
   tab-size: 2;
+}
+
+.cm-editor .cm-scroller {
+  min-height: 34rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.875rem;
+  line-height: 1.5rem;
 }
 
 .editor-shell,
@@ -26,7 +32,8 @@ textarea {
 }
 
 @media (max-width: 1023px) {
-  textarea {
+  .cm-editor,
+  .cm-editor .cm-scroller {
     min-height: 24rem;
   }
 

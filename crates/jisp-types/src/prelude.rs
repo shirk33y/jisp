@@ -322,6 +322,11 @@ pub fn environment() -> BTreeMap<String, Scheme> {
         "ui.html",
         scheme(vec![0], fun(vec![var(0)], Type::Str)),
     );
+    add(
+        &mut env,
+        "ui.node",
+        scheme(vec![0], fun(vec![var(0)], ui_node())),
+    );
 
     add(
         &mut env,
@@ -515,6 +520,13 @@ fn option(item: Type) -> Type {
     Type::Named {
         name: "option".to_owned(),
         arguments: vec![item],
+    }
+}
+
+fn ui_node() -> Type {
+    Type::Named {
+        name: "ui.node".to_owned(),
+        arguments: vec![],
     }
 }
 

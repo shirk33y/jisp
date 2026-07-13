@@ -53,7 +53,7 @@ pub(crate) fn lower_ui_expr(lowerer: &Lowerer, node: &Node) -> Result<Expr, Lowe
 
 fn lower_text(lowerer: &Lowerer, span: Span, items: &[Node]) -> Result<Expr, LowerError> {
     expect_arity(items, 2, 2, span, "text")?;
-    Ok(Expr::new(
+    Ok(ui_node(Expr::new(
         ExprKind::Object(vec![
             (string_literal("tag", span), string_literal("text", span)),
             (
@@ -62,7 +62,7 @@ fn lower_text(lowerer: &Lowerer, span: Span, items: &[Node]) -> Result<Expr, Low
             ),
         ]),
         span,
-    ))
+    )))
 }
 
 fn lower_ui_element(
@@ -106,7 +106,18 @@ fn lower_ui_element(
             lower_children(span, parts.children),
         ));
     }
-    Ok(Expr::new(ExprKind::Object(fields), span))
+    Ok(ui_node(Expr::new(ExprKind::Object(fields), span)))
+}
+
+fn ui_node(value: Expr) -> Expr {
+    let span = value.span;
+    Expr::new(
+        ExprKind::Call {
+            callee: Box::new(Expr::new(ExprKind::Name("ui.node".to_owned()), span)),
+            arguments: vec![value],
+        },
+        span,
+    )
 }
 
 fn lower_children(span: Span, children: Vec<UiChild>) -> Expr {

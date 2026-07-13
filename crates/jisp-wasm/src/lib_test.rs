@@ -1,4 +1,5 @@
-use super::render_html_source;
+use super::{render_html_source, PlaygroundSession};
+use serde_json::Value;
 
 #[test]
 fn renders_a_component_program_with_the_real_interpreter() {
@@ -26,15 +27,122 @@ fn renders_a_component_program_with_the_real_interpreter() {
 }
 
 #[test]
-fn all_playground_examples_are_valid_interpreter_programs() {
+fn reducer_session_rebuilds_the_view_after_an_emitted_action() {
+    let mut session = PlaygroundSession::new();
+    let first: Value = serde_json::from_str(
+        &session
+            .load_source(
+                r#"
+(def init (obj "count" 0))
+
+(defn reduce (state next-count)
+  (obj.set state "count" next-count))
+
+(component counter (state)
+  (button
+    (on click (emit (+ (. state "count") 1)))
+    (text (str "Count: " ,(str.from (. state "count"))))))
+
+(def view counter)
+(ui.app init reduce view)
+"#,
+            )
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(first["children"][0]["value"], "Count: 0");
+    assert_eq!(first["events"]["click"], 0);
+
+    let second: Value =
+        serde_json::from_str(&session.dispatch_event(0, r#"{"type":"click"}"#).unwrap()).unwrap();
+    assert_eq!(second["children"][0]["value"], "Count: 1");
+}
+
+#[test]
+fn reducer_todo_example_type_checks_and_renders() {
+    let mut session = PlaygroundSession::new();
+    let tree: Value = serde_json::from_str(
+        &session
+            .load_source(include_str!("../../../playground/examples/todos.lisp"))
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(tree["kind"], "element");
+    assert_eq!(tree["tag"], "main");
+}
+
+#[test]
+fn reducer_todo_example_updates_draft_then_adds_a_task() {
+    let mut session = PlaygroundSession::new();
+    let first: Value = serde_json::from_str(
+        &session
+            .load_source(include_str!("../../../playground/examples/todos.lisp"))
+            .unwrap(),
+    )
+    .unwrap();
+    let input = handler_for(&first, "input").expect("todo input handler");
+    let draft: Value = serde_json::from_str(
+        &session
+            .dispatch_event(
+                usize::try_from(input).unwrap(),
+                r#"{"type":"input","value":"Review docs"}"#,
+            )
+            .unwrap(),
+    )
+    .unwrap();
+    assert!(contains_prop_value(&draft, "value", "Review docs"));
+
+    let add = handler_for(&draft, "click").expect("add button handler");
+    let added: Value = serde_json::from_str(
+        &session
+            .dispatch_event(usize::try_from(add).unwrap(), r#"{"type":"click"}"#)
+            .unwrap(),
+    )
+    .unwrap();
+    assert!(contains_text(&added, "Review docs"));
+}
+
+fn handler_for(tree: &Value, event: &str) -> Option<u64> {
+    tree.get("events")
+        .and_then(|events| events.get(event))
+        .and_then(Value::as_u64)
+        .or_else(|| {
+            tree.get("children")
+                .and_then(Value::as_array)
+                .and_then(|children| children.iter().find_map(|child| handler_for(child, event)))
+        })
+}
+
+fn contains_text(tree: &Value, text: &str) -> bool {
+    tree.get("kind").and_then(Value::as_str) == Some("text")
+        && tree.get("value").and_then(Value::as_str) == Some(text)
+        || tree
+            .get("children")
+            .and_then(Value::as_array)
+            .is_some_and(|children| children.iter().any(|child| contains_text(child, text)))
+}
+
+fn contains_prop_value(tree: &Value, property: &str, value: &str) -> bool {
+    tree.get("props")
+        .and_then(|props| props.get(property))
+        .and_then(Value::as_str)
+        == Some(value)
+        || tree
+            .get("children")
+            .and_then(Value::as_array)
+            .is_some_and(|children| {
+                children
+                    .iter()
+                    .any(|child| contains_prop_value(child, property, value))
+            })
+}
+
+#[test]
+fn static_playground_examples_are_valid_interpreter_programs() {
     let examples = [
         (
             "welcome",
             include_str!("../../../playground/examples/welcome.lisp"),
-        ),
-        (
-            "todos",
-            include_str!("../../../playground/examples/todos.lisp"),
         ),
         (
             "profile",

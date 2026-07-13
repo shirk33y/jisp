@@ -1,16 +1,11 @@
-import init, { render_html } from "./pkg/jisp_wasm.js";
+import init, { PlaygroundSession } from "./pkg/jisp_wasm.js";
+import { basicSetup, EditorView } from "https://esm.sh/codemirror@6.0.1";
+import { EditorState } from "https://esm.sh/@codemirror/state@6.5.2";
+import { clojure } from "https://esm.sh/@codemirror/lang-clojure@6.0.2";
+import { oneDark } from "https://esm.sh/@codemirror/theme-one-dark@6.1.2";
 
 const examples = [
-  ["Welcome card", "examples/welcome.lisp"],
-  ["Todo list", "examples/todos.lisp"],
-  ["Profile", "examples/profile.lisp"],
-  ["Notifications", "examples/notifications.lisp"],
-  ["Dashboard", "examples/dashboard.lisp"],
-  ["Settings", "examples/settings.lisp"],
-  ["Product card", "examples/product.lisp"],
-  ["Navigation", "examples/navigation.lisp"],
-  ["Empty state", "examples/empty-state.lisp"],
-  ["Project board", "examples/projects.lisp"],
+  ["Reducer todo list", "examples/todos.lisp"],
 ];
 
 const app = document.getElementById("app");
@@ -30,9 +25,9 @@ app.innerHTML = `
   </header>
   <main class="mx-auto max-w-[1600px] px-5 py-6">
     <p class="mb-5 max-w-4xl text-sm leading-6 text-slate-400">
-      This page runs the real Jisp interpreter compiled to WebAssembly. JavaScript only loads the module,
-      edits source, and places the escaped HTML result in an isolated preview frame. Tailwind styles the
-      preview; it is not part of Jisp semantics.
+      Jisp compiles and evaluates in WebAssembly. Browser events become plain values, Jisp turns them
+      into actions, and the reducer returns the next immutable state. The preview only renders the
+      structural tree and forwards events; it never evaluates Jisp or owns application state.
     </p>
     <div class="grid gap-6 lg:grid-cols-2">
       <section class="editor-shell overflow-hidden rounded-2xl border border-slate-800 bg-slate-900 shadow-2xl">
@@ -40,7 +35,7 @@ app.innerHTML = `
           <h2 class="font-semibold text-white">Jisp UI</h2>
           <button id="reset" class="rounded-md px-2 py-1 text-xs font-semibold text-cyan-300 hover:bg-slate-800">Reset</button>
         </div>
-        <textarea id="source" class="block w-full bg-slate-900 p-5 font-mono text-sm leading-6 text-slate-100 outline-none" spellcheck="false" aria-label="Jisp UI source"></textarea>
+        <div id="editor" aria-label="Jisp UI source"></div>
       </section>
       <section class="preview-shell overflow-hidden rounded-2xl border border-slate-800 bg-white shadow-2xl">
         <div class="flex items-center justify-between border-b border-slate-200 bg-white px-4 py-3">
@@ -55,14 +50,17 @@ app.innerHTML = `
 `;
 
 const select = document.getElementById("example");
-const source = document.getElementById("source");
 const reset = document.getElementById("reset");
 const preview = document.getElementById("preview");
 const error = document.getElementById("error");
 const status = document.getElementById("status");
+let editor;
 let initialSource = "";
 let ready = false;
 let renderTimer;
+let frameReady = false;
+let latestTree = null;
+let session = null;
 
 for (const [name, path] of examples) {
   const option = document.createElement("option");
@@ -76,22 +74,83 @@ function setStatus(kind, text) {
   status.textContent = text;
 }
 
-function previewDocument(html) {
-  return `<!doctype html><html><head><meta charset="utf-8"><script src="https://cdn.tailwindcss.com"><\/script></head><body class="min-h-screen bg-slate-50 p-4 md:p-8">${html}</body></html>`;
+function previewDocument() {
+  return `<!doctype html><html><head><meta charset="utf-8"><script src="https://cdn.tailwindcss.com"><\/script></head><body class="min-h-screen bg-slate-50 p-4 md:p-8"><div id="root"></div><script>
+const allowedTags = new Set(["a", "article", "aside", "button", "div", "footer", "form", "h1", "h2", "h3", "header", "img", "input", "label", "li", "main", "nav", "ol", "option", "p", "section", "select", "span", "strong", "textarea", "ul"]);
+const allowedEvents = new Set(["blur", "change", "click", "focus", "input", "keydown", "keyup", "submit"]);
+const root = document.getElementById("root");
+
+function safeAttribute(element, name, value) {
+  if (name.startsWith("on") || value === null || value === false) return;
+  if ((name === "href" || name === "src") && typeof value === "string" && /^javascript:/i.test(value)) return;
+  if (value === true) element.setAttribute(name, "");
+  else element.setAttribute(name, String(value));
+}
+
+function browserEvent(event) {
+  const target = event.target;
+  return {
+    type: event.type,
+    value: target && "value" in target ? target.value : null,
+    checked: target && "checked" in target ? target.checked : null,
+    key: event.key || null,
+  };
+}
+
+function node(tree) {
+  if (tree.kind === "text") return document.createTextNode(String(tree.value ?? ""));
+  if (tree.kind !== "element" || !allowedTags.has(tree.tag)) return document.createComment("invalid Jisp UI node");
+  const element = document.createElement(tree.tag);
+  for (const [name, value] of Object.entries(tree.attrs || {})) safeAttribute(element, name, value);
+  for (const [name, value] of Object.entries(tree.props || {})) {
+    if (!name.startsWith("on") && name in element) element[name] = value;
+  }
+  for (const name of tree.classes || []) element.classList.add(name);
+  for (const [name, handler] of Object.entries(tree.events || {})) {
+    if (!allowedEvents.has(name) || !Number.isInteger(handler)) continue;
+    element.addEventListener(name, (event) => {
+      if (name === "submit") event.preventDefault();
+      parent.postMessage({ type: "jisp-event", handler, event: browserEvent(event) }, "*");
+    });
+  }
+  for (const child of tree.children || []) element.append(node(child));
+  return element;
+}
+
+addEventListener("message", (message) => {
+  if (message.source !== parent || message.data?.type !== "jisp-render") return;
+  root.replaceChildren(node(message.data.tree));
+});
+<\/script></body></html>`;
+}
+
+function postTree(tree) {
+  latestTree = tree;
+  if (frameReady) preview.contentWindow.postMessage({ type: "jisp-render", tree }, "*");
+}
+
+function sourceText() {
+  return editor.state.doc.toString();
 }
 
 function renderPreview() {
   if (!ready) return;
   try {
-    preview.srcdoc = previewDocument(render_html(source.value));
+    session = new PlaygroundSession();
+    postTree(JSON.parse(session.load(sourceText())));
     error.classList.add("hidden");
-    setStatus("bg-emerald-100 text-emerald-700", "Rendered by Wasm");
+    setStatus("bg-emerald-100 text-emerald-700", "Reducer ready");
   } catch (reason) {
-    preview.srcdoc = "";
+    session = null;
+    postTree({ kind: "text", value: "" });
     error.textContent = String(reason);
     error.classList.remove("hidden");
     setStatus("bg-rose-100 text-rose-700", "Jisp error");
   }
+}
+
+function setSource(text) {
+  editor.dispatch({ changes: { from: 0, to: editor.state.doc.length, insert: text } });
 }
 
 async function loadExample(path) {
@@ -100,7 +159,7 @@ async function loadExample(path) {
     const response = await fetch(path);
     if (!response.ok) throw new Error(`Could not load ${path}: ${response.status}`);
     initialSource = await response.text();
-    source.value = initialSource;
+    setSource(initialSource);
     renderPreview();
   } catch (reason) {
     error.textContent = String(reason);
@@ -109,14 +168,46 @@ async function loadExample(path) {
   }
 }
 
+preview.addEventListener("load", () => {
+  frameReady = true;
+  if (latestTree) postTree(latestTree);
+});
+preview.srcdoc = previewDocument();
+
+window.addEventListener("message", (message) => {
+  if (message.source !== preview.contentWindow || message.data?.type !== "jisp-event" || !session) return;
+  try {
+    postTree(JSON.parse(session.dispatch(message.data.handler, JSON.stringify(message.data.event))));
+    error.classList.add("hidden");
+    setStatus("bg-emerald-100 text-emerald-700", "State updated");
+  } catch (reason) {
+    error.textContent = String(reason);
+    error.classList.remove("hidden");
+    setStatus("bg-rose-100 text-rose-700", "Reducer error");
+  }
+});
+
+editor = new EditorView({
+  state: EditorState.create({
+    doc: "",
+    extensions: [
+      basicSetup,
+      clojure(),
+      oneDark,
+      EditorView.updateListener.of((update) => {
+        if (!update.docChanged) return;
+        clearTimeout(renderTimer);
+        renderTimer = setTimeout(renderPreview, 220);
+      }),
+    ],
+  }),
+  parent: document.getElementById("editor"),
+});
+
 select.addEventListener("change", () => loadExample(select.value));
 reset.addEventListener("click", () => {
-  source.value = initialSource;
+  setSource(initialSource);
   renderPreview();
-});
-source.addEventListener("input", () => {
-  clearTimeout(renderTimer);
-  renderTimer = setTimeout(renderPreview, 180);
 });
 
 try {
