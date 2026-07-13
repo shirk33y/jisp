@@ -193,6 +193,19 @@ fn remapped_cargo_errors(
         .collect()
 }
 
+fn read(path: &PathBuf) -> Result<String> {
+    fs::read_to_string(path).with_context(|| format!("read {}", path.display()))
+}
+
+fn report_jisp_module_error(error: &jisp::ModuleError) -> ! {
+    if let Some(rendered) = error.render_diagnostics() {
+        eprintln!("{rendered}");
+    } else {
+        eprintln!("{}", error.error);
+    }
+    process::exit(1);
+}
+
 #[cfg(test)]
 mod tests {
     use std::path::Path;
@@ -222,17 +235,4 @@ mod tests {
         );
         assert!(rendered[0].contains("main.lisp:1:1"), "{}", rendered[0]);
     }
-}
-
-fn read(path: &PathBuf) -> Result<String> {
-    fs::read_to_string(path).with_context(|| format!("read {}", path.display()))
-}
-
-fn report_jisp_module_error(error: &jisp::ModuleError) -> ! {
-    if let Some(rendered) = error.render_diagnostics() {
-        eprintln!("{rendered}");
-    } else {
-        eprintln!("{}", error.error);
-    }
-    process::exit(1);
 }
