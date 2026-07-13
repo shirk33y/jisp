@@ -961,23 +961,38 @@ fn remapped_cargo_errors(
         .filter_map(|message| {
             let diagnostic = &message["message"];
             let span = diagnostic["spans"].as_array()?.iter().find(|span| {
-                span["is_primary"] == true
-                    && (Path::new(span["file_name"].as_str().unwrap_or_default()) == generated_path
-                        || Path::new(span["file_name"].as_str().unwrap_or_default())
-                            == Path::new("src/lib.rs"))
+                span["is_primary"] == true && is_generated_cargo_span(span, generated_path)
             })?;
             let offset = span["byte_start"].as_u64()? as usize;
             let item = generated.source_map.item_at(offset)?;
-            Some(
-                Diagnostic::error(
-                    item.source_span,
-                    diagnostic["message"].as_str().unwrap_or("rustc error"),
-                )
-                .with_code("JISP-RUST")
-                .render(&generated.sources),
+            let mut remapped = Diagnostic::error(
+                item.source_span,
+                diagnostic["message"].as_str().unwrap_or("rustc error"),
             )
+            .with_code("JISP-RUST");
+            for secondary in diagnostic["spans"].as_array()?.iter().filter(|span| {
+                span["is_primary"] != true && is_generated_cargo_span(span, generated_path)
+            }) {
+                let Some(offset) = secondary["byte_start"].as_u64() else {
+                    continue;
+                };
+                let Some(item) = generated.source_map.item_at(offset as usize) else {
+                    continue;
+                };
+                let label = secondary["label"]
+                    .as_str()
+                    .filter(|label| !label.is_empty())
+                    .unwrap_or("related generated Rust expression");
+                remapped = remapped.with_secondary(item.source_span, label);
+            }
+            Some(remapped.render(&generated.sources))
         })
         .collect()
+}
+
+fn is_generated_cargo_span(span: &serde_json::Value, generated_path: &Path) -> bool {
+    let path = Path::new(span["file_name"].as_str().unwrap_or_default());
+    path == generated_path || path == Path::new("src/lib.rs")
 }
 
 fn read(path: &PathBuf) -> Result<String> {
@@ -1025,6 +1040,35 @@ mod tests {
             rendered[0]
         );
         assert!(rendered[0].contains("main.lisp:1:1"), "{}", rendered[0]);
+    }
+
+    #[test]
+    fn remaps_secondary_cargo_spans_to_jisp_labels() {
+        let generated = jisp::emit_rust_detailed("main.lisp", "(export main (fn () 42))").unwrap();
+        let primary = generated
+            .source_map
+            .items
+            .iter()
+            .find(|item| item.kind == jisp::RustItemKind::Expression)
+            .unwrap();
+        let secondary = generated
+            .source_map
+            .item(jisp::RustItemKind::Function, "main")
+            .unwrap();
+        let primary_offset = primary.generated_range.as_ref().unwrap().start;
+        let secondary_offset = secondary.generated_range.as_ref().unwrap().start;
+        let json = format!(
+            r#"{{"reason":"compiler-message","message":{{"level":"error","message":"synthetic rust error","spans":[{{"is_primary":true,"file_name":"src/lib.rs","byte_start":{primary_offset}}},{{"is_primary":false,"file_name":"src/lib.rs","byte_start":{secondary_offset},"label":"required by this generated function"}}]}}}}"#
+        );
+
+        let rendered = remapped_cargo_errors(&json, &generated, Path::new("/tmp/src/lib.rs"));
+
+        assert_eq!(rendered.len(), 1);
+        assert!(
+            rendered[0].contains("required by this generated function"),
+            "{}",
+            rendered[0]
+        );
     }
 
     #[test]
