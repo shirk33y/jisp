@@ -33,7 +33,7 @@ or FFI direction.
 
 ## Guardrails
 
-- Preserve the one-Core-IR rule across Lisp, JSON, and YAML-like source.
+- Preserve the one-Core-IR rule across Lisp, `ws`, JSON, and YAML-like source.
 - Never introduce a universal evaluator `Value` as the ABI for ordinary native
   program values; emit concrete layouts or reject unsupported shapes.
 - Do not implement raw `{}` metadata, FFI, or host globals opportunistically.

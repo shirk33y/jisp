@@ -221,6 +221,7 @@ dependencies = [
  "jisp-ir",
  "jisp-syntax-json",
  "jisp-syntax-lisp",
+ "jisp-syntax-ws",
  "jisp-syntax-yaml",
  "jisp-types",
  "proc-macro2",
@@ -335,6 +336,15 @@ name = "jisp-syntax-lisp"
 version = "0.0.1"
 dependencies = [
  "jisp-core",
+ "serde_json",
+]
+
+[[package]]
+name = "jisp-syntax-ws"
+version = "0.0.1"
+dependencies = [
+ "jisp-core",
+ "jisp-syntax-lisp",
  "serde_json",
 ]
 

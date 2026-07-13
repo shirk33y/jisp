@@ -1,0 +1,12 @@
+[package]
+name = "jisp-syntax-ws"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+jisp-core.workspace = true
+jisp-syntax-lisp.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true

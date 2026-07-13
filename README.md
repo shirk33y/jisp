@@ -1,9 +1,9 @@
 # Jisp
 
 Jisp is an experimental, statically oriented Lisp for JSON-shaped programs.
-Lisp, canonical JSON, and a restricted YAML-like syntax share one source-aware
-frontend, type checker, interpreter, and deliberately bounded Rust code
-generator.
+Lisp, indentation-based `ws`, canonical JSON, and a restricted YAML-like syntax
+share one source-aware frontend, type checker, interpreter, and deliberately
+bounded Rust code generator.
 
 Rust is the implementation backend, not the language surface. Native emission
 uses concrete typed layouts and rejects unsupported programs instead of falling
@@ -31,7 +31,15 @@ tokens for the supported native subset.
     (str "Hello from " ,"Jisp" "!")))
 ```
 
-The same program can be written as canonical JSON:
+The same program can be written in `ws`:
+
+```ws
+export main
+  fn ()
+    str "Hello from " ,"Jisp" "!"
+```
+
+Or as canonical JSON:
 
 ```json test=readme.hello-json mode=run
 [
@@ -52,12 +60,47 @@ Or in the restricted YAML-like flow syntax:
 ```
 
 In JSON, ordinary strings are symbols. Use `["str", "..."]` for a string
-literal. In Lisp and YAML-like source, quoted values are strings.
+literal. In Lisp, `ws`, and YAML-like source, quoted values are strings.
+
+`ws` uses indentation for nested forms and a line-leading `...` marker for flat
+argument continuation:
+
+```ws
+def profile-summary
+  fn (user scores)
+    obj
+      ... "name" (. user "name")
+      ... "slug"
+      str.replace
+        str.lower (. user "name")
+        " "
+        "-"
+      ... "score"
+      list.fold
+        fn (total value)
+          + total value
+        0
+        scores
+```
+
+This has the same shape as:
+
+```lisp
+(def profile-summary
+  (fn (user scores)
+    (obj
+      "name" (. user "name")
+      "slug" (str.replace (str.lower (. user "name")) " " "-")
+      "score" (list.fold
+        (fn (total value) (+ total value))
+        0
+        scores))))
+```
 
 ## What works today
 
 - Source-aware parsing, quote/template-macro expansion, lowering, type
-  inference, imports, and diagnostics across all three source formats.
+  inference, imports, and diagnostics across all supported source formats.
 - Immutable values: integers, bigints, floats, booleans, null, strings, lists,
   structural objects, closures, and algebraic-data constructors.
 - Pattern matching with current exhaustiveness checks for finite enum, boolean,
