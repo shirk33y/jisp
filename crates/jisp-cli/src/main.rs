@@ -8,6 +8,7 @@ use std::{
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use jisp_core::{Diagnostic, Node, NodeKind, SourceId, SyntaxParser};
+use jisp_syntax_json::JsonParser;
 use jisp_syntax_lisp::LispParser;
 
 #[derive(Parser)]
@@ -117,27 +118,32 @@ fn main() -> Result<()> {
             println!("{}", generated.tokens);
         }
         Command::NativeCheck { path } => native_check(&path)?,
-        Command::Fmt { path, check, write } => format_lisp_file(&path, check, write)?,
+        Command::Fmt { path, check, write } => format_file(&path, check, write)?,
     }
     Ok(())
 }
 
-fn format_lisp_file(path: &Path, check: bool, write: bool) -> Result<()> {
-    if path
-        .extension()
-        .and_then(|extension| extension.to_str())
-        .is_none_or(|extension| !matches!(extension, "lisp" | "jisp"))
-    {
-        anyhow::bail!("jisp fmt currently supports .lisp and .jisp files");
-    }
+fn format_file(path: &Path, check: bool, write: bool) -> Result<()> {
     if check && write {
         anyhow::bail!("jisp fmt accepts either --check or --write, not both");
     }
     let original = fs::read_to_string(path).with_context(|| format!("read {}", path.display()))?;
-    let nodes = LispParser
-        .parse_module(SourceId(0), &original)
-        .map_err(|error| anyhow::anyhow!(error.to_string()))?;
-    let formatted = format_lisp_module(&nodes);
+    let extension = path.extension().and_then(|extension| extension.to_str());
+    let formatted = match extension {
+        Some("lisp" | "jisp") => {
+            let nodes = LispParser
+                .parse_module(SourceId(0), &original)
+                .map_err(|error| anyhow::anyhow!(error.to_string()))?;
+            format_lisp_module(&nodes)
+        }
+        Some("json") => {
+            let nodes = JsonParser
+                .parse_module(SourceId(0), &original)
+                .map_err(|error| anyhow::anyhow!(error.to_string()))?;
+            format_json_module(&nodes)?
+        }
+        _ => anyhow::bail!("jisp fmt currently supports .lisp, .jisp, and .json files"),
+    };
     if check {
         if formatted != original {
             anyhow::bail!("{} is not formatted", path.display());
@@ -149,6 +155,42 @@ fn format_lisp_file(path: &Path, check: bool, write: bool) -> Result<()> {
         print!("{formatted}");
     }
     Ok(())
+}
+
+fn format_json_module(nodes: &[Node]) -> Result<String> {
+    let root = serde_json::Value::Array(nodes.iter().map(json_node).collect());
+    Ok(format!("{}\n", serde_json::to_string_pretty(&root)?))
+}
+
+fn json_node(node: &Node) -> serde_json::Value {
+    match &node.kind {
+        NodeKind::Null => serde_json::Value::Null,
+        NodeKind::Bool(value) => serde_json::Value::Bool(*value),
+        NodeKind::Int(value) => serde_json::json!(value),
+        NodeKind::Float(value) => serde_json::json!(value),
+        NodeKind::Symbol(value) => serde_json::json!(value.as_str()),
+        NodeKind::String(value) => serde_json::json!(["str", value]),
+        NodeKind::Form(items) => {
+            let string_template = matches!(
+                items.first().and_then(Node::as_symbol),
+                Some("str" | "str.lines")
+            );
+            serde_json::Value::Array(
+                items
+                    .iter()
+                    .enumerate()
+                    .map(|(index, item)| {
+                        if string_template && index > 0 {
+                            if let NodeKind::String(value) = &item.kind {
+                                return serde_json::json!(value);
+                            }
+                        }
+                        json_node(item)
+                    })
+                    .collect(),
+            )
+        }
+    }
 }
 
 fn format_lisp_module(nodes: &[Node]) -> String {
@@ -291,7 +333,10 @@ fn report_jisp_module_error(error: &jisp::ModuleError) -> ! {
 mod tests {
     use std::path::Path;
 
-    use super::{format_lisp_module, remapped_cargo_errors, LispParser, SourceId, SyntaxParser};
+    use super::{
+        format_json_module, format_lisp_module, remapped_cargo_errors, JsonParser, LispParser,
+        SourceId, SyntaxParser,
+    };
 
     #[test]
     fn remaps_a_primary_cargo_span_to_the_containing_jisp_item() {
@@ -325,7 +370,50 @@ mod tests {
         let formatted = format_lisp_module(&nodes);
         let reparsed = parser.parse_module(SourceId(0), &formatted).unwrap();
 
-        assert_eq!(nodes, reparsed);
+        assert!(nodes
+            .iter()
+            .zip(&reparsed)
+            .all(|(left, right)| same_kind(left, right)));
         assert_eq!(formatted, format_lisp_module(&reparsed));
+    }
+
+    #[test]
+    fn json_formatter_preserves_string_template_literals() {
+        let original =
+            r#"[["export", "main", ["fn", [], ["str", "hello", [",", ["str", " world"]]]]] ]"#;
+        let parser = JsonParser;
+        let nodes = parser.parse_module(SourceId(0), original).unwrap();
+        let formatted = format_json_module(&nodes).unwrap();
+        let reparsed = parser.parse_module(SourceId(0), &formatted).unwrap();
+
+        assert!(nodes
+            .iter()
+            .zip(&reparsed)
+            .all(|(left, right)| same_kind(left, right)));
+        assert!(formatted.contains("\"hello\""));
+        assert!(formatted.contains("\" world\""));
+    }
+
+    fn same_kind(left: &jisp_core::Node, right: &jisp_core::Node) -> bool {
+        match (&left.kind, &right.kind) {
+            (jisp_core::NodeKind::Null, jisp_core::NodeKind::Null) => true,
+            (jisp_core::NodeKind::Bool(left), jisp_core::NodeKind::Bool(right)) => left == right,
+            (jisp_core::NodeKind::Int(left), jisp_core::NodeKind::Int(right)) => left == right,
+            (jisp_core::NodeKind::Float(left), jisp_core::NodeKind::Float(right)) => left == right,
+            (jisp_core::NodeKind::Symbol(left), jisp_core::NodeKind::Symbol(right)) => {
+                left == right
+            }
+            (jisp_core::NodeKind::String(left), jisp_core::NodeKind::String(right)) => {
+                left == right
+            }
+            (jisp_core::NodeKind::Form(left), jisp_core::NodeKind::Form(right)) => {
+                left.len() == right.len()
+                    && left
+                        .iter()
+                        .zip(right)
+                        .all(|(left, right)| same_kind(left, right))
+            }
+            _ => false,
+        }
     }
 }
