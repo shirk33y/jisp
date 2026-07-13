@@ -702,6 +702,65 @@ fn accepts_refined_exhaustive_nested_bool_field_object_case() {
 }
 
 #[test]
+fn accepts_exhaustive_list_case_with_nested_bool_alternative() {
+    let mut inferencer = Inferencer::default();
+    let expression = expr(ExprKind::Case {
+        subject: Box::new(expr(ExprKind::List(vec![bool_(true)]))),
+        branches: vec![
+            branch(
+                Pattern::List {
+                    prefix: vec![],
+                    rest: None,
+                },
+                int(0),
+            ),
+            branch(
+                Pattern::List {
+                    prefix: vec![Pattern::Or(vec![
+                        Pattern::Literal(Literal::Bool(true)),
+                        Pattern::Literal(Literal::Bool(false)),
+                    ])],
+                    rest: None,
+                },
+                int(1),
+            ),
+            branch(
+                Pattern::List {
+                    prefix: vec![Pattern::Wildcard, Pattern::Wildcard],
+                    rest: Some("tail".to_owned()),
+                },
+                int(2),
+            ),
+        ],
+    });
+
+    assert_eq!(inferencer.infer_expr(&expression).unwrap(), Type::Int);
+}
+
+#[test]
+fn accepts_exhaustive_object_case_with_nested_bool_alternative() {
+    let mut inferencer = Inferencer::default();
+    let expression = expr(ExprKind::Case {
+        subject: Box::new(expr(ExprKind::Object(vec![
+            (string("active"), bool_(true)),
+            (string("name"), string("Ada")),
+        ]))),
+        branches: vec![branch(
+            Pattern::Object(vec![(
+                "active".to_owned(),
+                Pattern::Or(vec![
+                    Pattern::Literal(Literal::Bool(true)),
+                    Pattern::Literal(Literal::Bool(false)),
+                ]),
+            )]),
+            int(1),
+        )],
+    });
+
+    assert_eq!(inferencer.infer_expr(&expression).unwrap(), Type::Int);
+}
+
+#[test]
 fn rejects_redundant_refined_object_case_pattern() {
     let mut inferencer = Inferencer::default();
     let expression = expr(ExprKind::Case {

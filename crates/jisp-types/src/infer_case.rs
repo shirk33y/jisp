@@ -146,65 +146,69 @@ impl Inferencer {
                 )));
             }
 
-            match strip_alias(&branch.pattern) {
-                Pattern::Wildcard | Pattern::Bind(_) => has_catch_all = true,
-                Pattern::List { prefix, rest } => {
-                    let irrefutable_prefix = prefix
-                        .iter()
-                        .all(|pattern| self.pattern_is_irrefutable_for_type(pattern, item));
-                    let length = prefix.len();
-                    if rest_lengths.iter().any(|covered| *covered <= length) {
-                        return Err(InferError::RedundantCasePattern(pattern_name(
-                            &branch.pattern,
-                        )));
-                    }
+            for pattern in coverage_patterns(&branch.pattern) {
+                if has_catch_all {
+                    return Err(InferError::RedundantCasePattern(pattern_name(pattern)));
+                }
+                match strip_alias(pattern) {
+                    Pattern::Wildcard | Pattern::Bind(_) => has_catch_all = true,
+                    Pattern::List { prefix, rest } => {
+                        let irrefutable_prefix = prefix
+                            .iter()
+                            .all(|pattern| self.pattern_is_irrefutable_for_type(pattern, item));
+                        let length = prefix.len();
+                        if rest_lengths.iter().any(|covered| *covered <= length) {
+                            return Err(InferError::RedundantCasePattern(pattern_name(
+                                &branch.pattern,
+                            )));
+                        }
 
-                    if rest.is_some() {
-                        if !irrefutable_prefix {
-                            continue;
+                        if rest.is_some() {
+                            if !irrefutable_prefix {
+                                continue;
+                            }
+                            rest_lengths.insert(length);
+                            if length == 0 {
+                                has_catch_all = true;
+                            }
+                        } else if irrefutable_prefix {
+                            if refined_list_length_is_exhaustive(
+                                length,
+                                &refined_exact_lengths,
+                                &refined_exact_expected,
+                            ) {
+                                return Err(InferError::RedundantCasePattern(pattern_name(
+                                    &branch.pattern,
+                                )));
+                            }
+                            if !exact_lengths.insert(length) {
+                                return Err(InferError::RedundantCasePattern(pattern_name(
+                                    &branch.pattern,
+                                )));
+                            }
+                        } else if let Some((covered, expected)) =
+                            self.list_pattern_refined_coverage(prefix, item)
+                        {
+                            if exact_lengths.contains(&length) {
+                                return Err(InferError::RedundantCasePattern(pattern_name(
+                                    &branch.pattern,
+                                )));
+                            }
+                            let refined = refined_exact_lengths.entry(length).or_default();
+                            if covered.iter().all(|item| refined.contains(item)) {
+                                return Err(InferError::RedundantCasePattern(pattern_name(
+                                    &branch.pattern,
+                                )));
+                            }
+                            refined.extend(covered);
+                            refined_exact_expected.insert(length, expected);
                         }
-                        rest_lengths.insert(length);
-                        if length == 0 {
-                            has_catch_all = true;
-                        }
-                    } else if irrefutable_prefix {
-                        if refined_list_length_is_exhaustive(
-                            length,
-                            &refined_exact_lengths,
-                            &refined_exact_expected,
-                        ) {
-                            return Err(InferError::RedundantCasePattern(pattern_name(
-                                &branch.pattern,
-                            )));
-                        }
-                        if !exact_lengths.insert(length) {
-                            return Err(InferError::RedundantCasePattern(pattern_name(
-                                &branch.pattern,
-                            )));
-                        }
-                    } else if let Some((covered, expected)) =
-                        self.list_pattern_refined_coverage(prefix, item)
-                    {
-                        if exact_lengths.contains(&length) {
-                            return Err(InferError::RedundantCasePattern(pattern_name(
-                                &branch.pattern,
-                            )));
-                        }
-                        let refined = refined_exact_lengths.entry(length).or_default();
-                        if covered.iter().all(|item| refined.contains(item)) {
-                            return Err(InferError::RedundantCasePattern(pattern_name(
-                                &branch.pattern,
-                            )));
-                        }
-                        refined.extend(covered);
-                        refined_exact_expected.insert(length, expected);
+                    }
+                    Pattern::Literal(_) | Pattern::Variant { .. } | Pattern::Object(_) => {}
+                    Pattern::Or(_) | Pattern::Alias { .. } => {
+                        unreachable!("patterns are flattened or aliases are stripped above")
                     }
                 }
-                Pattern::Literal(_)
-                | Pattern::Variant { .. }
-                | Pattern::Object(_)
-                | Pattern::Or(_) => {}
-                Pattern::Alias { .. } => unreachable!("aliases are stripped above"),
             }
         }
 
@@ -248,20 +252,23 @@ impl Inferencer {
                     &branch.pattern,
                 )));
             }
-            if self.pattern_is_irrefutable_for_type(&branch.pattern, subject_ty) {
-                has_catch_all = true;
-            } else if let Some(coverage) =
-                self.pattern_finite_refinement_coverage(&branch.pattern, subject_ty)
-            {
-                let entry = refined_fields
-                    .entry(coverage.key)
-                    .or_insert_with(|| (coverage.domain, BTreeSet::new()));
-                if coverage.labels.iter().all(|label| entry.1.contains(label)) {
-                    return Err(InferError::RedundantCasePattern(pattern_name(
-                        &branch.pattern,
-                    )));
+            for pattern in coverage_patterns(&branch.pattern) {
+                if has_catch_all || object_refinements_are_exhaustive(&refined_fields) {
+                    return Err(InferError::RedundantCasePattern(pattern_name(pattern)));
                 }
-                entry.1.extend(coverage.labels);
+                if self.pattern_is_irrefutable_for_type(pattern, subject_ty) {
+                    has_catch_all = true;
+                } else if let Some(coverage) =
+                    self.pattern_finite_refinement_coverage(pattern, subject_ty)
+                {
+                    let entry = refined_fields
+                        .entry(coverage.key)
+                        .or_insert_with(|| (coverage.domain, BTreeSet::new()));
+                    if coverage.labels.iter().all(|label| entry.1.contains(label)) {
+                        return Err(InferError::RedundantCasePattern(pattern_name(pattern)));
+                    }
+                    entry.1.extend(coverage.labels);
+                }
             }
         }
 
@@ -402,6 +409,13 @@ impl Inferencer {
         domain: &BTreeSet<String>,
     ) -> Option<BTreeSet<String>> {
         match strip_alias(pattern) {
+            Pattern::Or(alternatives) => {
+                let mut labels = BTreeSet::new();
+                for alternative in alternatives {
+                    labels.extend(self.pattern_labels_for_domain(alternative, ty, domain)?);
+                }
+                Some(labels)
+            }
             Pattern::Wildcard | Pattern::Bind(_) => Some(domain.clone()),
             Pattern::Literal(Literal::Bool(value)) if matches!(self.apply(ty), Type::Bool) => {
                 let label = value.to_string();
