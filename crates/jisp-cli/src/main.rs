@@ -1,5 +1,6 @@
 use std::{
     fs,
+    io::{self, BufRead, Write},
     path::{Path, PathBuf},
     process,
     time::{SystemTime, UNIX_EPOCH},
@@ -52,6 +53,7 @@ enum Command {
         #[arg(long)]
         write: bool,
     },
+    Repl,
 }
 
 fn main() -> Result<()> {
@@ -120,8 +122,63 @@ fn main() -> Result<()> {
         }
         Command::NativeCheck { path } => native_check(&path)?,
         Command::Fmt { path, check, write } => format_file(&path, check, write)?,
+        Command::Repl => repl()?,
     }
     Ok(())
+}
+
+fn repl() -> Result<()> {
+    let stdin = io::stdin();
+    let mut state = String::new();
+    let mut stdout = io::stdout();
+    eprintln!("Jisp REPL — :help for commands");
+    loop {
+        write!(stdout, "jisp> ")?;
+        stdout.flush()?;
+        let mut line = String::new();
+        if stdin.lock().read_line(&mut line)? == 0 {
+            break;
+        }
+        let line = line.trim();
+        match line {
+            "" => continue,
+            ":quit" | ":q" => break,
+            ":reset" => {
+                state.clear();
+                println!("session reset");
+            }
+            ":help" => println!(":help, :reset, :quit; definitions persist, other forms evaluate"),
+            form => match repl_step(&state, form) {
+                Ok((next_state, value)) => {
+                    state = next_state;
+                    if let Some(value) = value {
+                        println!("{value}");
+                    }
+                }
+                Err(error) => eprintln!("{error}"),
+            },
+        }
+    }
+    Ok(())
+}
+
+fn repl_step(state: &str, form: &str) -> Result<(String, Option<String>)> {
+    let candidate = format!("{state}\n{form}\n");
+    if is_repl_definition(form) {
+        jisp::check("repl.lisp", &candidate).map_err(|error| anyhow::anyhow!(error.to_string()))?;
+        return Ok((candidate, None));
+    }
+    let program = format!("{state}\n(export main (fn () {form}))\n");
+    let value = jisp::run_main("repl.lisp", &program)
+        .map_err(|error| anyhow::anyhow!(error.to_string()))?;
+    Ok((state.to_owned(), Some(value.display_string())))
+}
+
+fn is_repl_definition(form: &str) -> bool {
+    matches!(
+        form.split_whitespace().next(),
+        Some("(def" | "(type" | "(import")
+    )
 }
 
 fn format_file(path: &Path, check: bool, write: bool) -> Result<()> {
@@ -376,7 +433,7 @@ mod tests {
 
     use super::{
         format_json_module, format_lisp_module, format_yaml_module, remapped_cargo_errors,
-        JsonParser, LispParser, SourceId, SyntaxParser, YamlParser,
+        repl_step, JsonParser, LispParser, SourceId, SyntaxParser, YamlParser,
     };
 
     #[test]
@@ -449,6 +506,16 @@ mod tests {
             .all(|(left, right)| same_kind(left, right)));
         assert!(formatted.contains("export"));
         assert!(formatted.contains("\"hello\""));
+    }
+
+    #[test]
+    fn repl_keeps_definitions_between_expression_steps() {
+        let (state, value) = repl_step("", "(def answer 41)").unwrap();
+        assert!(value.is_none());
+
+        let (next_state, value) = repl_step(&state, "(+ answer 1)").unwrap();
+        assert_eq!(next_state, state);
+        assert_eq!(value.as_deref(), Some("42"));
     }
 
     fn same_kind(left: &jisp_core::Node, right: &jisp_core::Node) -> bool {
