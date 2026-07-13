@@ -3,8 +3,11 @@ use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use jisp_core::{Node, SourceId, SyntaxParser};
+use jisp_core::{detect_syntax, Node, SourceId, Syntax, SyntaxParser};
+use jisp_syntax_json::JsonParser;
 use jisp_syntax_lisp::LispParser;
+use jisp_syntax_ws::WsParser;
+use jisp_syntax_yaml::YamlParser;
 
 struct FixtureTest {
     index: usize,
@@ -20,12 +23,14 @@ fn main() {
 
 fn generate_tests() -> Result<(), String> {
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").map_err(|error| {
-        format!("failed to read CARGO_MANIFEST_DIR for portable Lisp tests: {error}")
+        format!("failed to read CARGO_MANIFEST_DIR for portable language tests: {error}")
     })?);
-    let fixtures_dir = manifest_dir.join("../../tests/language");
-    println!("cargo:rerun-if-changed={}", fixtures_dir.display());
+    let canonical_dir = manifest_dir.join("../../tests/language");
+    let generated_dir = manifest_dir.join("../../tests/generated-language");
+    println!("cargo:rerun-if-changed={}", canonical_dir.display());
+    println!("cargo:rerun-if-changed={}", generated_dir.display());
 
-    let mut fixtures = fixture_files(&fixtures_dir)?;
+    let mut fixtures = fixture_files(&canonical_dir, &generated_dir)?;
     fixtures.sort();
 
     let mut output = String::new();
@@ -33,7 +38,7 @@ fn generate_tests() -> Result<(), String> {
 
     if fixtures.is_empty() {
         output.push_str(
-            "#[test]\nfn portable_lisp_fixtures_exist() {\n    panic!(\"no portable Lisp fixtures found in tests/language\");\n}\n",
+            "#[test]\nfn portable_language_fixtures_exist() {\n    panic!(\"no portable language fixtures found\");\n}\n",
         );
     }
 
@@ -43,15 +48,8 @@ fn generate_tests() -> Result<(), String> {
         let source = fs::read_to_string(&path)
             .map_err(|error| format!("failed to read {}: {error}", path.display()))?;
         let tests = discover_tests(&path, &source)?;
-        let module = unique_ident(
-            &mut module_names,
-            &sanitize_ident(
-                path.file_stem()
-                    .and_then(|stem| stem.to_str())
-                    .unwrap_or("fixture"),
-            ),
-        );
         let fixture_path = fixture_path(&path)?;
+        let module = unique_ident(&mut module_names, &sanitize_ident(&fixture_path));
 
         output.push_str(&format!("mod {module} {{\n"));
         output.push_str(&format!(
@@ -69,7 +67,7 @@ fn generate_tests() -> Result<(), String> {
             output.push_str("    #[test]\n");
             output.push_str(&format!("    fn {function}() {{\n"));
             output.push_str(&format!(
-                "        crate::portable_lisp_support::run_lisp_test(FILE, SOURCE, {}, \"{}\");\n",
+                "        crate::portable_support::run_portable_test(FILE, SOURCE, {}, \"{}\");\n",
                 test.index,
                 escape_rust_string(&test.name)
             ));
@@ -79,39 +77,61 @@ fn generate_tests() -> Result<(), String> {
         output.push_str("}\n\n");
     }
 
-    let out_dir = PathBuf::from(
-        env::var("OUT_DIR")
-            .map_err(|error| format!("failed to read OUT_DIR for portable Lisp tests: {error}"))?,
-    );
-    fs::write(out_dir.join("portable_lisp_tests.rs"), output)
-        .map_err(|error| format!("failed to write generated portable Lisp tests: {error}"))?;
+    let out_dir =
+        PathBuf::from(env::var("OUT_DIR").map_err(|error| {
+            format!("failed to read OUT_DIR for portable language tests: {error}")
+        })?);
+    fs::write(out_dir.join("portable_language_tests.rs"), output)
+        .map_err(|error| format!("failed to write generated portable language tests: {error}"))?;
 
     Ok(())
 }
 
-fn fixture_files(fixtures_dir: &Path) -> Result<Vec<PathBuf>, String> {
-    if !fixtures_dir.exists() {
-        return Ok(vec![]);
+fn fixture_files(canonical_dir: &Path, generated_dir: &Path) -> Result<Vec<PathBuf>, String> {
+    let mut files = vec![];
+    collect_fixture_files(canonical_dir, &mut files, false, &[Syntax::Lisp])?;
+    collect_fixture_files(
+        generated_dir,
+        &mut files,
+        true,
+        &[Syntax::Json, Syntax::Yaml, Syntax::Ws],
+    )?;
+    Ok(files)
+}
+
+fn collect_fixture_files(
+    directory: &Path,
+    files: &mut Vec<PathBuf>,
+    recursive: bool,
+    syntaxes: &[Syntax],
+) -> Result<(), String> {
+    if !directory.exists() {
+        return Ok(());
     }
 
-    let mut files = vec![];
-    for entry in fs::read_dir(fixtures_dir)
-        .map_err(|error| format!("failed to read {}: {error}", fixtures_dir.display()))?
+    for entry in fs::read_dir(directory)
+        .map_err(|error| format!("failed to read {}: {error}", directory.display()))?
     {
         let path = entry
             .map_err(|error| format!("failed to read fixture directory entry: {error}"))?
             .path();
-        if path.extension().and_then(|extension| extension.to_str()) == Some("lisp") {
+        if path.is_dir() && recursive {
+            collect_fixture_files(&path, files, recursive, syntaxes)?;
+            continue;
+        }
+        if is_portable_fixture(&path, syntaxes) {
             files.push(path);
         }
     }
-    Ok(files)
+    Ok(())
+}
+
+fn is_portable_fixture(path: &Path, syntaxes: &[Syntax]) -> bool {
+    detect_syntax(path).is_some_and(|syntax| syntaxes.contains(&syntax))
 }
 
 fn discover_tests(path: &Path, source: &str) -> Result<Vec<FixtureTest>, String> {
-    let nodes = LispParser
-        .parse_module(SourceId(0), source)
-        .map_err(|error| format!("{}: parse failed: {error}", path.display()))?;
+    let nodes = parse_fixture(path, source)?;
     let mut tests = vec![];
 
     for node in nodes {
@@ -138,7 +158,7 @@ fn discover_tests(path: &Path, source: &str) -> Result<Vec<FixtureTest>, String>
 
     if tests.is_empty() {
         return Err(format!(
-            "{}: expected at least one top-level (test ...) form",
+            "{}: expected at least one top-level test form",
             path.display()
         ));
     }
@@ -146,9 +166,30 @@ fn discover_tests(path: &Path, source: &str) -> Result<Vec<FixtureTest>, String>
     Ok(tests)
 }
 
+fn parse_fixture(path: &Path, source: &str) -> Result<Vec<Node>, String> {
+    match detect_syntax(path) {
+        Some(Syntax::Json) => JsonParser
+            .parse_module(SourceId(0), source)
+            .map_err(|error| format!("{}: parse failed: {error}", path.display())),
+        Some(Syntax::Yaml) => YamlParser
+            .parse_module(SourceId(0), source)
+            .map_err(|error| format!("{}: parse failed: {error}", path.display())),
+        Some(Syntax::Lisp) => LispParser
+            .parse_module(SourceId(0), source)
+            .map_err(|error| format!("{}: parse failed: {error}", path.display())),
+        Some(Syntax::Ws) => WsParser
+            .parse_module(SourceId(0), source)
+            .map_err(|error| format!("{}: parse failed: {error}", path.display())),
+        None => Err(format!(
+            "{}: portable fixture has an unsupported extension",
+            path.display()
+        )),
+    }
+}
+
 fn fixture_path(path: &Path) -> Result<String, String> {
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").map_err(|error| {
-        format!("failed to read CARGO_MANIFEST_DIR for portable Lisp tests: {error}")
+        format!("failed to read CARGO_MANIFEST_DIR for portable language tests: {error}")
     })?);
     let repo_root = manifest_dir.join("../..");
     path.strip_prefix(&repo_root)

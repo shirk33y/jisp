@@ -1,0 +1,27 @@
+[
+  [type, response, [cached, int], [miss, str]],
+  [
+    def,
+    load,
+    [
+      fn,
+      [response],
+      [
+        case,
+        response,
+        [[cached, value], [ok, value]],
+        [[miss, key], [if, [str.has, key, "user"], [ok, 40], [err, "missing"]]],
+      ],
+    ],
+  ],
+  [
+    def,
+    finish,
+    [fn, [response], [result.try, [load, response], [fn, [value], [ok, [+, value, 2]]]]],
+  ],
+  [
+    test,
+    "case dispatch and result propagation",
+    [assert.equal, [ok, 43], [finish, [cached, 41]]],
+  ],
+]

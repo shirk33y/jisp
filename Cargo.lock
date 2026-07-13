@@ -278,6 +278,7 @@ dependencies = [
  "jisp-runtime",
  "jisp-syntax-json",
  "jisp-syntax-lisp",
+ "jisp-syntax-ws",
  "jisp-syntax-yaml",
  "jisp-types",
  "num-bigint",

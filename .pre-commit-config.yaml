@@ -1,6 +1,11 @@
 repos:
   - repo: local
     hooks:
+      - id: generate-portable-language-fixtures
+        name: generate portable language fixtures
+        entry: python3 .agents/scripts/0009-generate-portable-language-fixtures.py --check
+        language: system
+        pass_filenames: false
       - id: cargo-fmt
         name: cargo fmt
         entry: cargo fmt --all -- --check

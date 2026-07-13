@@ -42,10 +42,10 @@ product-level direction and ordering rationale, see [ROADMAP.md](ROADMAP.md).
      `result<T,E>` / `option<T>` helpers that can compile without a dynamic
      `Value` fallback.
   3. Done: add `use` desugaring for callback-last flows, including
-     multi-binding callbacks and portable `.lisp` coverage.
+     multi-binding callbacks and portable language coverage.
   4. Done: build a minimal UI proof prototype with Jisp structural UI data
      rendered to escaped HTML strings through `ui.html`.
-  5. Done: improve portable `.lisp` test runner UX with Cargo-visible listing,
+  5. Done: improve portable language test runner UX with Cargo-visible listing,
      filtering, and fixture/test-aware failure reporting.
   6. Done: emit non-capturing top-level function values as typed native function
      pointers, including `list.map`, `list.filter`, `list.fold`, `list.some`,

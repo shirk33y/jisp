@@ -1,7 +1,10 @@
-use jisp_core::{Node, SourceId, SyntaxParser};
+use jisp_core::{detect_syntax, Node, SourceId, Syntax, SyntaxParser};
 use jisp_eval::Evaluator;
 use jisp_ir::Lowerer;
+use jisp_syntax_json::JsonParser;
 use jisp_syntax_lisp::LispParser;
+use jisp_syntax_ws::WsParser;
+use jisp_syntax_yaml::YamlParser;
 use jisp_types::Inferencer;
 
 enum PortableTest {
@@ -16,10 +19,9 @@ enum PortableTest {
     },
 }
 
-pub fn run_lisp_test(file: &str, source: &str, test_index: usize, test_name: &str) {
+pub fn run_portable_test(file: &str, source: &str, test_index: usize, test_name: &str) {
     let generated_context = format!("{file}: {test_name}");
-    let nodes = LispParser
-        .parse_module(SourceId(0), source)
+    let nodes = parse_fixture(file, source)
         .unwrap_or_else(|error| panic!("{generated_context}: parse failed: {error}"));
     let expanded = jisp_expand::expand_module(&nodes)
         .unwrap_or_else(|error| panic!("{generated_context}: expand failed: {error}"));
@@ -34,6 +36,24 @@ pub fn run_lisp_test(file: &str, source: &str, test_index: usize, test_name: &st
         PortableTest::Error {
             expected_message, ..
         } => run_error_test(&context, &module_nodes, &expected_message),
+    }
+}
+
+fn parse_fixture(file: &str, source: &str) -> Result<Vec<Node>, String> {
+    match detect_syntax(file) {
+        Some(Syntax::Json) => JsonParser
+            .parse_module(SourceId(0), source)
+            .map_err(|error| error.to_string()),
+        Some(Syntax::Yaml) => YamlParser
+            .parse_module(SourceId(0), source)
+            .map_err(|error| error.to_string()),
+        Some(Syntax::Lisp) => LispParser
+            .parse_module(SourceId(0), source)
+            .map_err(|error| error.to_string()),
+        Some(Syntax::Ws) => WsParser
+            .parse_module(SourceId(0), source)
+            .map_err(|error| error.to_string()),
+        None => Err("portable fixture has an unsupported extension".to_owned()),
     }
 }
 

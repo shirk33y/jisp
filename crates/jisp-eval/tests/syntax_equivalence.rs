@@ -3,6 +3,7 @@ use jisp_eval::Evaluator;
 use jisp_ir::Lowerer;
 use jisp_syntax_json::JsonParser;
 use jisp_syntax_lisp::LispParser;
+use jisp_syntax_ws::WsParser;
 use jisp_syntax_yaml::YamlParser;
 
 fn result(parser: &dyn SyntaxParser, source: &str) -> String {
@@ -12,7 +13,7 @@ fn result(parser: &dyn SyntaxParser, source: &str) -> String {
 }
 
 #[test]
-fn all_three_syntaxes_share_semantics() {
+fn supported_syntaxes_share_semantics() {
     let json = r#"[
       ["export","main",["fn",[],["str.upper",["str","hello"]]]]
     ]"#;
@@ -22,8 +23,14 @@ fn all_three_syntaxes_share_semantics() {
     let lisp = r#"
       (export main (fn () (str.upper "hello")))
     "#;
+    let ws = r#"
+export main
+  fn ()
+    str.upper "hello"
+    "#;
 
     assert_eq!(result(&JsonParser, json), "HELLO");
     assert_eq!(result(&YamlParser, yaml), "HELLO");
     assert_eq!(result(&LispParser, lisp), "HELLO");
+    assert_eq!(result(&WsParser, ws), "HELLO");
 }
