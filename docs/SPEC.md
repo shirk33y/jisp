@@ -252,10 +252,28 @@ Field lookup is explicit and works on structural objects.
     (. (obj "name" "Ada") "name")))
 ```
 
+## Maps
+
+`obj` describes structural objects whose known keys are part of the inferred
+row. Use `map` for runtime-sized homogeneous dictionaries:
+
+```lisp test=spec.map mode=run
+(export main
+  (fn ()
+    (case (map.get (map "primary" 40 "secondary" 2) "secondary")
+      ((ok value) value)
+      ((err _) 0))))
+```
+
+The source type is `(map str A)`. Native Rust uses
+`indexmap::IndexMap<String, A>` for this shape. A heterogeneous dynamic JSON
+value is not implicit in map or object lookup; if the language needs that, it
+must be a future source-visible sum type consumed with `case`.
+
 ## Equality and mutability
 
 Equality is structural for data values. Functions and opaque native handles are
-not comparable. Values are semantically immutable: every list/object update
+not comparable. Values are semantically immutable: every list/object/map update
 returns a new value and leaves aliases to the input unchanged. The interpreter
 currently copies the affected container; evaluators may later use COW and native
 code may reuse unique allocations when observably equivalent.

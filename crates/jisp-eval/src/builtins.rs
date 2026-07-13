@@ -74,6 +74,15 @@ pub fn install_builtins(evaluator: &mut Evaluator) {
         ("obj.keys", obj_keys),
         ("obj.values", obj_values),
         ("obj.cat", obj_cat),
+        ("map", map),
+        ("map.len", obj_len),
+        ("map.has", obj_has),
+        ("map.get", obj_get),
+        ("map.set", obj_set),
+        ("map.del", obj_del),
+        ("map.keys", obj_keys),
+        ("map.values", obj_values),
+        ("map.cat", obj_cat),
         ("ui.html", ui_html),
         ("result.try", result_try),
         ("result.map", result_map),
@@ -801,6 +810,20 @@ fn obj_cat(_: &mut Evaluator, args: &[Value], span: Span) -> Result<Value, Runti
         .map(|value| expect_obj(value, span).cloned())
         .collect::<Result<Vec<_>, _>>()?;
     Ok(Value::Obj(jisp_runtime::object::concat(objects)))
+}
+
+fn map(_: &mut Evaluator, args: &[Value], span: Span) -> Result<Value, RuntimeError> {
+    if !args.len().is_multiple_of(2) {
+        return Err(RuntimeError::at(
+            span,
+            "map expects alternating key and value expressions",
+        ));
+    }
+    let mut output = IndexMap::new();
+    for pair in args.chunks_exact(2) {
+        output.insert(expect_str(&pair[0], span)?.to_owned(), pair[1].clone());
+    }
+    Ok(Value::Obj(output))
 }
 
 fn ui_html(_: &mut Evaluator, args: &[Value], span: Span) -> Result<Value, RuntimeError> {

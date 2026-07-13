@@ -918,7 +918,7 @@ fn native_check(path: &Path) -> Result<()> {
     let generated_path = source_dir.join("lib.rs");
     fs::write(
         directory.join("Cargo.toml"),
-        "[package]\nname = \"jisp_native_check\"\nversion = \"0.0.0\"\nedition = \"2021\"\n\n[dependencies]\nnum-bigint = \"0.4\"\n",
+        "[package]\nname = \"jisp_native_check\"\nversion = \"0.0.0\"\nedition = \"2021\"\n\n[dependencies]\nindexmap = \"2\"\nnum-bigint = \"0.4\"\n",
     )?;
     fs::write(&generated_path, generated.tokens.to_string())?;
 

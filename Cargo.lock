@@ -243,6 +243,7 @@ dependencies = [
 name = "jisp-macros"
 version = "0.0.1"
 dependencies = [
+ "indexmap",
  "jisp",
  "num-bigint",
  "proc-macro2",

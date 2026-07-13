@@ -385,6 +385,7 @@ impl PrefixRewriter<'_> {
             Type::Float => Type::Float,
             Type::Str => Type::Str,
             Type::List(item) => Type::List(Box::new(self.ty(item))),
+            Type::Map(value) => Type::Map(Box::new(self.ty(value))),
             Type::Object(row) => Type::Object(ObjectRow {
                 fields: row
                     .fields

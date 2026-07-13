@@ -162,6 +162,7 @@ fn enum_shape(
 fn collect_prelude_instances(ty: &Type, enums: &mut BTreeMap<String, EnumShape>) {
     match ty {
         Type::List(item) => collect_prelude_instances(item, enums),
+        Type::Map(value) => collect_prelude_instances(value, enums),
         Type::Object(row) => {
             for ty in row.fields.values() {
                 collect_prelude_instances(ty, enums);

@@ -971,6 +971,10 @@ fn emit_type(
             let item = emit_type(item, object_types, enum_types)?;
             Ok(quote! { Vec<#item> })
         }
+        Type::Map(value) => {
+            let value = emit_type(value, object_types, enum_types)?;
+            Ok(quote! { ::indexmap::IndexMap<String, #value> })
+        }
         Type::Object(row) => object_types
             .ident_for_row(row)
             .map(|ident| quote! { #ident }),

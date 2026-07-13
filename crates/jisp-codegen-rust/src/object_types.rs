@@ -78,6 +78,7 @@ fn collect_object_shapes(
                 });
         }
         Type::List(item) => collect_object_shapes(item, source_span, shapes, reject_open_rows)?,
+        Type::Map(value) => collect_object_shapes(value, source_span, shapes, reject_open_rows)?,
         Type::Function {
             parameters,
             rest,
@@ -130,6 +131,7 @@ fn type_signature(ty: &Type) -> Result<String, CodegenError> {
         Type::Float => "float".to_owned(),
         Type::Str => "str".to_owned(),
         Type::List(item) => format!("list<{}>", type_signature(item)?),
+        Type::Map(value) => format!("map<str,{}>", type_signature(value)?),
         Type::Object(row) => object_signature(row)?,
         Type::Function { .. } => return Err(CodegenError::Unsupported("function value types")),
         Type::Never => return Err(CodegenError::Unsupported("never type emission")),

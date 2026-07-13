@@ -62,6 +62,15 @@ impl<'a> EmitContext<'a> {
             "obj.del" => self.emit_obj_del_intrinsic(arguments, expected),
             "obj.values" => self.emit_obj_values_intrinsic(arguments),
             "obj.cat" => self.emit_obj_cat_intrinsic(arguments, expected),
+            "map" => self.emit_map_intrinsic(arguments, expected),
+            "map.len" => self.emit_map_len_intrinsic(arguments),
+            "map.has" => self.emit_map_has_intrinsic(arguments),
+            "map.get" => self.emit_map_get_intrinsic(arguments, expected),
+            "map.keys" => self.emit_map_keys_intrinsic(arguments),
+            "map.set" => self.emit_map_set_intrinsic(arguments, expected),
+            "map.del" => self.emit_map_del_intrinsic(arguments, expected),
+            "map.values" => self.emit_map_values_intrinsic(arguments),
+            "map.cat" => self.emit_map_cat_intrinsic(arguments, expected),
             "result.try" => self.emit_result_try_intrinsic(arguments, expected),
             "result.map" => self.emit_result_map_intrinsic(arguments, expected),
             "result.map-err" => self.emit_result_map_err_intrinsic(arguments, expected),
@@ -960,6 +969,181 @@ impl<'a> EmitContext<'a> {
         Ok(quote! {{
             #(#bindings)*
             #ident { #(#fields),* }
+        }})
+    }
+
+    fn emit_map_intrinsic(
+        &mut self,
+        arguments: &[Expr],
+        expected: Option<&Type>,
+    ) -> Result<TokenStream, CodegenError> {
+        if !arguments.len().is_multiple_of(2) {
+            return Err(CodegenError::Unsupported("non-paired native map"));
+        }
+        let Some(Type::Map(value_type)) = expected else {
+            return Err(CodegenError::Unsupported(
+                "map without expected native type",
+            ));
+        };
+        let pairs = arguments
+            .chunks_exact(2)
+            .map(|pair| {
+                let key = self.emit_expr(&pair[0], Some(&Type::Str))?;
+                let value = self.emit_expr(&pair[1], Some(value_type))?;
+                Ok(quote! { __jisp_map.insert(#key, #value); })
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(quote! {{
+            let mut __jisp_map = ::indexmap::IndexMap::new();
+            #(#pairs)*
+            __jisp_map
+        }})
+    }
+
+    fn emit_map_len_intrinsic(&mut self, arguments: &[Expr]) -> Result<TokenStream, CodegenError> {
+        let [map] = arguments else {
+            return Err(CodegenError::Unsupported("non-unary native map.len"));
+        };
+        let map = self.emit_expr(map, None)?;
+        Ok(quote! { (#map).len() as i64 })
+    }
+
+    fn emit_map_has_intrinsic(&mut self, arguments: &[Expr]) -> Result<TokenStream, CodegenError> {
+        let [map, key] = arguments else {
+            return Err(CodegenError::Unsupported("non-binary native map.has"));
+        };
+        let map = self.emit_expr(map, None)?;
+        let key = self.emit_expr(key, Some(&Type::Str))?;
+        Ok(quote! {{
+            let __jisp_map = #map;
+            let __jisp_key = #key;
+            __jisp_map.contains_key(&__jisp_key)
+        }})
+    }
+
+    fn emit_map_get_intrinsic(
+        &mut self,
+        arguments: &[Expr],
+        expected: Option<&Type>,
+    ) -> Result<TokenStream, CodegenError> {
+        let [map, key] = arguments else {
+            return Err(CodegenError::Unsupported("non-binary native map.get"));
+        };
+        let Some((_, err_type)) = result_arguments(expected) else {
+            return Err(CodegenError::Unsupported(
+                "native map.get without expected result type",
+            ));
+        };
+        if err_type != &Type::Str {
+            return Err(CodegenError::Unsupported("native map.get error type"));
+        }
+        let ok = self
+            .enum_types
+            .prelude_constructor("ok", expected)?
+            .ok_or(CodegenError::Unsupported("native map.get result type"))?;
+        let err = self
+            .enum_types
+            .prelude_constructor("err", expected)?
+            .ok_or(CodegenError::Unsupported("native map.get result type"))?;
+        let map = self.emit_expr(map, None)?;
+        let key = self.emit_expr(key, Some(&Type::Str))?;
+        let ok_enum = &ok.enum_ident;
+        let ok_variant = &ok.ident;
+        let err_enum = &err.enum_ident;
+        let err_variant = &err.ident;
+        Ok(quote! {{
+            let __jisp_map = #map;
+            let __jisp_key = #key;
+            match __jisp_map.get(&__jisp_key) {
+                Some(__jisp_value) => #ok_enum::#ok_variant(__jisp_value.clone()),
+                None => #err_enum::#err_variant(format!("map has no key `{}`", __jisp_key)),
+            }
+        }})
+    }
+
+    fn emit_map_keys_intrinsic(&mut self, arguments: &[Expr]) -> Result<TokenStream, CodegenError> {
+        let [map] = arguments else {
+            return Err(CodegenError::Unsupported("non-unary native map.keys"));
+        };
+        let map = self.emit_expr(map, None)?;
+        Ok(quote! { (#map).keys().cloned().collect::<Vec<_>>() })
+    }
+
+    fn emit_map_set_intrinsic(
+        &mut self,
+        arguments: &[Expr],
+        expected: Option<&Type>,
+    ) -> Result<TokenStream, CodegenError> {
+        let [map, key, value] = arguments else {
+            return Err(CodegenError::Unsupported("non-ternary native map.set"));
+        };
+        let Some(Type::Map(value_type)) = expected else {
+            return Err(CodegenError::Unsupported(
+                "map.set without expected map type",
+            ));
+        };
+        let map = self.emit_expr(map, None)?;
+        let key = self.emit_expr(key, Some(&Type::Str))?;
+        let value = self.emit_expr(value, Some(value_type))?;
+        Ok(quote! {{
+            let mut __jisp_map = #map;
+            __jisp_map.insert(#key, #value);
+            __jisp_map
+        }})
+    }
+
+    fn emit_map_del_intrinsic(
+        &mut self,
+        arguments: &[Expr],
+        expected: Option<&Type>,
+    ) -> Result<TokenStream, CodegenError> {
+        let [map, key] = arguments else {
+            return Err(CodegenError::Unsupported("non-binary native map.del"));
+        };
+        let Some(Type::Map(_)) = expected else {
+            return Err(CodegenError::Unsupported(
+                "map.del without expected map type",
+            ));
+        };
+        let map = self.emit_expr(map, None)?;
+        let key = self.emit_expr(key, Some(&Type::Str))?;
+        Ok(quote! {{
+            let mut __jisp_map = #map;
+            let __jisp_key = #key;
+            __jisp_map.shift_remove(&__jisp_key);
+            __jisp_map
+        }})
+    }
+
+    fn emit_map_values_intrinsic(
+        &mut self,
+        arguments: &[Expr],
+    ) -> Result<TokenStream, CodegenError> {
+        let [map] = arguments else {
+            return Err(CodegenError::Unsupported("non-unary native map.values"));
+        };
+        let map = self.emit_expr(map, None)?;
+        Ok(quote! { (#map).values().cloned().collect::<Vec<_>>() })
+    }
+
+    fn emit_map_cat_intrinsic(
+        &mut self,
+        arguments: &[Expr],
+        expected: Option<&Type>,
+    ) -> Result<TokenStream, CodegenError> {
+        let Some(Type::Map(_)) = expected else {
+            return Err(CodegenError::Unsupported(
+                "map.cat without expected map type",
+            ));
+        };
+        let maps = arguments
+            .iter()
+            .map(|argument| self.emit_expr(argument, expected))
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(quote! {{
+            let mut __jisp_map = ::indexmap::IndexMap::new();
+            #(__jisp_map.extend(#maps);)*
+            __jisp_map
         }})
     }
 }

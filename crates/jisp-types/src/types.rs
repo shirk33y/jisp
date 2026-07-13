@@ -18,6 +18,7 @@ pub enum Type {
     Float,
     Str,
     List(Box<Type>),
+    Map(Box<Type>),
     Object(ObjectRow),
     Function {
         parameters: Vec<Type>,
@@ -70,6 +71,7 @@ impl fmt::Display for Type {
             Type::Float => f.write_str("float"),
             Type::Str => f.write_str("str"),
             Type::List(item) => write!(f, "(list {item})"),
+            Type::Map(value) => write!(f, "(map str {value})"),
             Type::Object(row) => {
                 f.write_str("{")?;
                 for (index, (name, ty)) in row.fields.iter().enumerate() {

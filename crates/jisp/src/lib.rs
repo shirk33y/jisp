@@ -516,6 +516,10 @@ impl<'a> JsonSchemaBuilder<'a> {
             Type::List(item) => {
                 Ok(json!({ "type": "array", "items": self.schema_for_type(item)? }))
             }
+            Type::Map(value) => Ok(json!({
+                "type": "object",
+                "additionalProperties": self.schema_for_type(value)?,
+            })),
             Type::Object(row) if row.rest.is_none() => {
                 let mut properties = serde_json::Map::new();
                 for (name, field) in &row.fields {

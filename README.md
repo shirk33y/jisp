@@ -67,7 +67,8 @@ literal. In Lisp and YAML-like source, quoted values are strings.
   objects, lists, bigints, typed function values, capturing closures, and
   variadic user functions, supported `case` patterns, imports, and selected
   helpers including `list.map`, `list.filter`, `list.fold`, `list.some`,
-  `list.every`, static and dynamic reads on closed homogeneous objects, and
+  `list.every`, homogeneous `map<str, A>` dictionaries, static and dynamic reads
+  on closed homogeneous objects, and
   concrete `result.try`, `result.map`, `result.map-err`, and `result.recover`.
 - Proc-macro integration that compiles supported Jisp files into native Rust
   items while tracking imported source dependencies.
@@ -77,7 +78,8 @@ captured values, and native emission intentionally does not yet support open
 object rows, dynamic object mutation, or dynamic reads on heterogeneous object
 rows. A proc-macro consumer whose generated module uses bigints must declare
 `num-bigint = "0.4"` directly; generated Rust uses its concrete
-`num_bigint::BigInt` type.
+`num_bigint::BigInt` type. A generated module that uses native maps must also
+declare `indexmap = "2"` directly.
 
 For expression-position Rust integration, `jisp_macros::lisp_expr!("path")`
 expands a Jisp file with exported zero-argument `main` into a typed Rust

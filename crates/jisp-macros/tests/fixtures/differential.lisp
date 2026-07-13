@@ -355,3 +355,32 @@
       (+
         (+ (str.len text) (str.len upper))
         (+ (list.len numbers) (+ (list.len mapped) (str.len name)))))))
+
+(export dict-map-entry
+  (fn ()
+    (case (map.get (map "primary" 40 "secondary" 2) "primary")
+      ((ok value) (+ value 2))
+      ((err _) 0))))
+
+(export dict-map-missing-entry
+  (fn ()
+    (case (map.get (map "primary" 40) "missing")
+      ((ok _) 0)
+      ((err _) 42))))
+
+(export dict-map-update-entry
+  (fn ()
+    (let (original (map "first" 40)
+          updated (map.set original "second" 2)
+          deleted (map.del updated "first"))
+      (+
+        (+ (map.len original) (map.len updated))
+        (+
+          (map.len deleted)
+          (case (map.get updated "second")
+            ((ok value) value)
+            ((err _) 0)))))))
+
+(export dict-map-values-entry
+  (fn ()
+    (list.fold sum 0 (map.values (map.cat (map "a" 40) (map "b" 2))))))

@@ -37,19 +37,24 @@ complete. Keep the existing closed, homogeneous dispatch ABI and make new
 runtime-shaped object values explicit in both types and syntax before native
 emission supports them.
 
-The design has two independently shippable paths:
+The selected P2 path is the homogeneous dynamic map:
 
-1. **Homogeneous dynamic map.** Add an explicit `map<str, A>` (or an equally
-   explicit object-tail type) to the language. Its native ABI is a dedicated
-   `IndexMap<String, A>`/`BTreeMap<String, A>` value, never `Value`. This can
-   support dynamic get/set/delete, a runtime-sized key set, and immutable
-   copies. Conversion between a closed homogeneous object and this type must
-   be explicit, so a static field access never unexpectedly changes layout.
-2. **Finite heterogeneous selection.** If Jisp needs a value selected from a
-   fixed heterogeneous record, add a source-visible finite sum/selection type
-   with exhaustively matchable variants. Codegen may then emit a generated
-   enum for that documented type. It must not manufacture an unnameable enum
-   behind ordinary `.` or `obj.get`.
+- **Homogeneous dynamic map.** `map<str, A>` is a source-visible type written as
+  `(map str A)` in declared type positions and built with `(map "key" value
+  ...)`. Its native ABI is `IndexMap<String, A>`, never `Value`. It supports
+  dynamic get/set/delete, a runtime-sized key set, and immutable value
+  semantics. Conversion between a closed homogeneous object and this type must
+  remain explicit, so a static field access never unexpectedly changes layout.
+
+The deferred alternative is a separate language proposal:
+
+- **Finite heterogeneous selection / dynamic JSON value.** If Jisp needs a
+  value selected from a fixed heterogeneous record, or a recursive JSON-like
+  value, add a source-visible finite sum type with exhaustively matchable
+  variants. Codegen may then emit a generated enum for that documented type. It
+  must not manufacture an unnameable enum behind ordinary `.` or `obj.get`, and
+  must not use `jisp_eval::Value`, `serde_json::Value`, or `Box<dyn Any>` as
+  the ordinary native ABI.
 
 Open rows in function signatures are a separate compilation concern. They are
 currently polymorphic and `jisp-codegen-rust` rejects all polymorphic
@@ -61,19 +66,19 @@ heterogeneous dynamic result by itself.
 
 ## Required sequence
 
-1. Specify the public type and surface syntax for the homogeneous map path in
-   `docs/SPEC.md` and `docs/STDLIB.md`, including conversion, duplicate-key
-   order, missing-key errors, and copy-on-write semantics.
-2. Extend `Type`, unification, expression inference, runtime values, JSON
-   schema, and portable syntax tests. In particular, do not overload the
-   existing row-tail variable with a value type.
-3. Define a small native runtime module for `map<str, A>` and differential
-   tests for dynamic get/set/delete, unknown keys, insertion order, and input
-   immutability. Add native emission only after the frontend contract passes.
-4. Design and implement monomorphisation before accepting native open-row
+1. Done: specify `map<str, A>` as `(map str A)` in declared type positions and
+   document `map`/`map.*` in `docs/SPEC.md` and `docs/STDLIB.md`.
+2. Done: extend `Type`, unification, expression inference, interpreter
+   builtins, JSON schema, and native emission for homogeneous maps. The
+   existing row-tail variable remains a row variable, not a map value type.
+3. Done: add native differential tests for dynamic get/set/delete, unknown
+   keys, map concatenation, values, and input immutability.
+4. Design explicit conversion helpers between closed homogeneous objects and
+   maps only if real use cases need them.
+5. Design and implement monomorphisation before accepting native open-row
    function definitions. Generated specializations must have stable names and
    map diagnostics back to the original generic definition and call site.
-5. Treat the heterogeneous finite-selection type as a separate language
+6. Treat the heterogeneous finite-selection type as a separate language
    proposal. Its parser, exhaustiveness, schema, evaluator, and codegen must
    land together.
 

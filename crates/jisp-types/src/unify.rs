@@ -26,6 +26,7 @@ impl Substitution {
                 .map(|bound| self.apply(bound))
                 .unwrap_or(Type::Var(*var)),
             Type::List(item) => Type::List(Box::new(self.apply(item))),
+            Type::Map(value) => Type::Map(Box::new(self.apply(value))),
             Type::Object(row) => Type::Object(ObjectRow {
                 fields: row
                     .fields
@@ -88,6 +89,7 @@ impl Unifier {
             (Type::Float, Type::Float) => Ok(Type::Float),
             (Type::Str, Type::Str) => Ok(Type::Str),
             (Type::List(a), Type::List(b)) => Ok(Type::List(Box::new(self.unify(*a, *b)?))),
+            (Type::Map(a), Type::Map(b)) => Ok(Type::Map(Box::new(self.unify(*a, *b)?))),
             (
                 Type::Function {
                     parameters: left_parameters,
@@ -208,6 +210,7 @@ fn occurs(var: TypeVar, ty: &Type, substitution: &Substitution) -> bool {
     match substitution.apply(ty) {
         Type::Var(other) => var == other,
         Type::List(item) => occurs(var, &item, substitution),
+        Type::Map(value) => occurs(var, &value, substitution),
         Type::Object(row) => {
             row.rest == Some(var) || row.fields.values().any(|ty| occurs(var, ty, substitution))
         }

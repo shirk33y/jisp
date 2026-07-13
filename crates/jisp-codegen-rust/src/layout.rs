@@ -17,6 +17,7 @@ pub(crate) enum Layout {
     Float,
     Str,
     List(Box<Layout>),
+    Map(Box<Layout>),
     ClosedObject(ClosedObjectLayout),
     Function {
         parameters: Vec<Layout>,
@@ -82,6 +83,7 @@ pub(crate) fn classify_type(ty: &Type) -> Result<Layout, LayoutError> {
         Type::Float => Ok(Layout::Float),
         Type::Str => Ok(Layout::Str),
         Type::List(item) => Ok(Layout::List(Box::new(classify_type(item)?))),
+        Type::Map(value) => Ok(Layout::Map(Box::new(classify_type(value)?))),
         Type::Object(row) => classify_object(row),
         Type::Function {
             parameters,

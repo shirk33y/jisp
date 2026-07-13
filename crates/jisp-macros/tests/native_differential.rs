@@ -202,6 +202,17 @@ fn native_values_remain_reusable_after_non_mutating_operations() {
     assert_matches_interpreter("reused-values-entry", Value::Int(reused_values_entry()));
 }
 
+#[test]
+fn native_homogeneous_maps_match_the_interpreter() {
+    assert_matches_interpreter("dict-map-entry", Value::Int(dict_map_entry()));
+    assert_matches_interpreter(
+        "dict-map-missing-entry",
+        Value::Int(dict_map_missing_entry()),
+    );
+    assert_matches_interpreter("dict-map-update-entry", Value::Int(dict_map_update_entry()));
+    assert_matches_interpreter("dict-map-values-entry", Value::Int(dict_map_values_entry()));
+}
+
 fn assert_matches_interpreter(export: &str, native: Value) {
     let interpreted = interpreter_export(export);
     assert!(

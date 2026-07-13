@@ -74,10 +74,12 @@ product-level direction and ordering rationale, see [ROADMAP.md](ROADMAP.md).
       boolean guards, interpreter execution, conservative exhaustiveness, and
       native Rust case emission.
 - Add native backend support for dynamic object mutation, heterogeneous dynamic
-  reads, and open rows with an explicitly designed concrete ABI. Dynamic
-  `obj.set` on closed homogeneous rows is now supported without a dynamic
-  runtime representation; dynamic deletion still changes the concrete shape.
-  The required type/ABI split is recorded in
+  reads, and open rows with an explicitly designed concrete ABI. Homogeneous
+  runtime-sized dictionaries are now explicit `map<str, A>` values backed by
+  `IndexMap<String, A>` in native Rust, and dynamic `obj.set` on closed
+  homogeneous rows is supported without a dynamic runtime representation.
+  Dynamic deletion still changes a closed object's concrete shape. The required
+  remaining type/ABI split is recorded in
   [`.agents/plans/0016-native-open-object-abi.md`](.agents/plans/0016-native-open-object-abi.md).
 - Extend the intentionally bounded macro system only after designing hygiene,
   cross-module visibility, and a general compile-time evaluator.

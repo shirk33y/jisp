@@ -770,6 +770,38 @@ fn prelude_infers_variadic_runtime_helpers() {
 }
 
 #[test]
+fn prelude_infers_homogeneous_maps() {
+    let mut inferencer = Inferencer::with_prelude();
+    let scores = expr(ExprKind::Call {
+        callee: Box::new(name("map")),
+        arguments: vec![string("primary"), int(40), string("secondary"), int(2)],
+    });
+    assert_eq!(
+        inferencer.infer_expr(&scores).unwrap(),
+        Type::Map(Box::new(Type::Int))
+    );
+
+    let mut inferencer = Inferencer::with_prelude();
+    let get = expr(ExprKind::Call {
+        callee: Box::new(name("map.get")),
+        arguments: vec![
+            expr(ExprKind::Call {
+                callee: Box::new(name("map")),
+                arguments: vec![string("primary"), int(40)],
+            }),
+            string("primary"),
+        ],
+    });
+    assert_eq!(
+        inferencer.infer_expr(&get).unwrap(),
+        Type::Named {
+            name: "result".to_owned(),
+            arguments: vec![Type::Int, Type::Str],
+        }
+    );
+}
+
+#[test]
 fn prelude_infers_result_case() {
     let mut inferencer = Inferencer::with_prelude();
     let expression = expr(ExprKind::Case {

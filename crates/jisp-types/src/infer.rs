@@ -272,7 +272,9 @@ impl Inferencer {
                 }
                 ExprKind::Call { callee, arguments } => {
                     if let ExprKind::Name(name) = &callee.kind {
-                        if let Some(overloads) = self.overloads.get(name).cloned() {
+                        if name == "map" {
+                            self.infer_map(arguments)?
+                        } else if let Some(overloads) = self.overloads.get(name).cloned() {
                             self.infer_overloaded_call(name, &overloads, arguments)?
                         } else if self.can_specialize_object_builtin(name) {
                             let mut candidate = self.clone();
@@ -432,6 +434,8 @@ impl Inferencer {
                 };
                 if *head == "list" && tail.len() == 1 {
                     Type::List(Box::new(self.declared_type(tail[0], parameters)?))
+                } else if *head == "map" && tail.len() == 2 && tail[0] == "str" {
+                    Type::Map(Box::new(self.declared_type(tail[1], parameters)?))
                 } else {
                     Type::Named {
                         name: (*head).to_owned(),
@@ -517,6 +521,22 @@ impl Inferencer {
             fields: typed_fields,
             rest: dynamic.then(|| self.fresh_var()),
         }))
+    }
+
+    fn infer_map(&mut self, arguments: &[Expr]) -> Result<Type, InferError> {
+        if !arguments.len().is_multiple_of(2) {
+            return Err(InferError::NotImplemented(
+                "map expects alternating key and value expressions",
+            ));
+        }
+        let value = self.fresh_type();
+        for pair in arguments.chunks_exact(2) {
+            let key_ty = self.infer_expr_located(&pair[0])?;
+            self.unify(key_ty, Type::Str)?;
+            let value_ty = self.infer_expr_located(&pair[1])?;
+            self.unify(value.clone(), value_ty)?;
+        }
+        Ok(Type::Map(Box::new(self.apply(&value))))
     }
 
     fn infer_field(&mut self, object: &Expr, key: &Expr) -> Result<Type, InferError> {
@@ -741,6 +761,7 @@ fn replace(ty: &Type, replacements: &BTreeMap<TypeVar, Type>) -> Type {
     match ty {
         Type::Var(var) => replacements.get(var).cloned().unwrap_or(Type::Var(*var)),
         Type::List(item) => Type::List(Box::new(replace(item, replacements))),
+        Type::Map(value) => Type::Map(Box::new(replace(value, replacements))),
         Type::Object(row) => Type::Object(crate::ObjectRow {
             fields: row
                 .fields
@@ -942,6 +963,7 @@ fn collect_type_vars(ty: &Type, vars: &mut BTreeSet<TypeVar>) {
             vars.insert(*var);
         }
         Type::List(item) => collect_type_vars(item, vars),
+        Type::Map(value) => collect_type_vars(value, vars),
         Type::Object(row) => {
             if let Some(rest) = row.rest {
                 vars.insert(rest);

@@ -262,6 +262,58 @@ pub fn environment() -> BTreeMap<String, Scheme> {
     );
     add(
         &mut env,
+        "map.len",
+        scheme(vec![0], fun(vec![map_type(var(0))], Type::Int)),
+    );
+    add(
+        &mut env,
+        "map.has",
+        scheme(vec![0], fun(vec![map_type(var(0)), Type::Str], Type::Bool)),
+    );
+    add(
+        &mut env,
+        "map.get",
+        scheme(
+            vec![0],
+            fun(vec![map_type(var(0)), Type::Str], result(var(0), Type::Str)),
+        ),
+    );
+    add(
+        &mut env,
+        "map.set",
+        scheme(
+            vec![0],
+            fun(vec![map_type(var(0)), Type::Str, var(0)], map_type(var(0))),
+        ),
+    );
+    add(
+        &mut env,
+        "map.del",
+        scheme(
+            vec![0],
+            fun(vec![map_type(var(0)), Type::Str], map_type(var(0))),
+        ),
+    );
+    add(
+        &mut env,
+        "map.keys",
+        scheme(vec![0], fun(vec![map_type(var(0))], list(Type::Str))),
+    );
+    add(
+        &mut env,
+        "map.values",
+        scheme(vec![0], fun(vec![map_type(var(0))], list(var(0)))),
+    );
+    add(
+        &mut env,
+        "map.cat",
+        scheme(
+            vec![0],
+            variadic_fun(vec![], map_type(var(0)), map_type(var(0))),
+        ),
+    );
+    add(
+        &mut env,
         "ui.html",
         scheme(vec![0], fun(vec![var(0)], Type::Str)),
     );
@@ -418,6 +470,10 @@ fn var(id: u32) -> Type {
 
 fn list(item: Type) -> Type {
     Type::List(Box::new(item))
+}
+
+fn map_type(value: Type) -> Type {
+    Type::Map(Box::new(value))
 }
 
 fn object_row(rest: u32) -> Type {

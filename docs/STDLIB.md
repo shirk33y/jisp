@@ -125,6 +125,26 @@ reads, dynamic deletion, and open rows remain interpreter-only.
 | `obj.values` | `(obj) -> list<A>` | Returns values in insertion order; a closed static row must be homogeneous. | `(obj.values (obj "a" 1 "b" 2))` |
 | `obj.cat` | `(... obj) -> obj` | Merges left to right; later duplicate keys win. | `(obj.cat (obj "a" 1) (obj "b" 2))` |
 
+## `map`
+
+Maps are explicit homogeneous dictionaries with string keys and values of one
+type `A`. They use the source type `(map str A)` and native Rust emits
+`indexmap::IndexMap<String, A>`, not a dynamic `Value`. Duplicate keys keep the
+last value. Updates return a new map value semantically; generated native code
+may reuse an owned temporary when aliases cannot observe mutation.
+
+| Function | Signature | Description | Example |
+| --- | --- | --- | --- |
+| `map` | `(... str A) -> map<str, A>` | Builds a map from alternating key/value expressions. | `(map "a" 1 "b" 2)` |
+| `map.len` | `(map<str, A>) -> int` | Counts keys. | `(map.len (map "a" 1))` |
+| `map.has` | `(map<str, A>, str) -> bool` | Tests whether a key exists. | `(map.has (map "a" 1) "a")` |
+| `map.get` | `(map<str, A>, str) -> result<A, str>` | Looks up a key, returning `err` when absent. | `(map.get (map "a" 1) "a")` |
+| `map.set` | `(map<str, A>, str, A) -> map<str, A>` | Returns a map with a key inserted or replaced. | `(map.set (map "a" 1) "b" 2)` |
+| `map.del` | `(map<str, A>, str) -> map<str, A>` | Returns a map without a key; an absent key changes nothing. | `(map.del (map "a" 1) "a")` |
+| `map.keys` | `(map<str, A>) -> list<str>` | Returns keys in insertion order. | `(map.keys (map "a" 1 "b" 2))` |
+| `map.values` | `(map<str, A>) -> list<A>` | Returns values in insertion order. | `(map.values (map "a" 1 "b" 2))` |
+| `map.cat` | `(... map<str, A>) -> map<str, A>` | Merges left to right; later duplicate keys win. | `(map.cat (map "a" 1) (map "b" 2))` |
+
 ## `result` and `option`
 
 `result` helpers preserve an `err` unless their contract explicitly recovers
