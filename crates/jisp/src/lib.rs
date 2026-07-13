@@ -476,6 +476,7 @@ pub fn export_schema_with_type(
     }
     let schemes = parsed
         .types
+        .as_ref()
         .ok_or_else(|| Error::Schema("type information is unavailable".to_owned()))?;
     let scheme = schemes
         .get(export)
@@ -494,7 +495,8 @@ pub fn export_schema_with_type(
     } else {
         scheme.body.clone()
     };
-    let mut builder = JsonSchemaBuilder::new(&parsed.module);
+    let schema_module = schema_module(&parsed);
+    let mut builder = JsonSchemaBuilder::new(&schema_module);
     let schema = builder.schema_for_type(&ty)?;
     let mut envelope = json!({
         "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -506,6 +508,14 @@ pub fn export_schema_with_type(
         envelope["$defs"] = JsonValue::Object(builder.definitions);
     }
     Ok(envelope)
+}
+
+fn schema_module(parsed: &ParsedModule) -> Module {
+    let mut module = parsed.module.clone();
+    for imported in parsed.resolved_modules.values() {
+        module.types.extend(imported.types.clone());
+    }
+    module
 }
 
 struct JsonSchemaBuilder<'a> {
@@ -578,12 +588,7 @@ impl<'a> JsonSchemaBuilder<'a> {
         {
             return Ok(definition_name);
         }
-        let declaration = self
-            .module
-            .types
-            .iter()
-            .find(|declaration| declaration.name == name)
-            .ok_or_else(|| Error::Schema(format!("unknown named type `{name}`")))?;
+        let declaration = find_schema_type_declaration(self.module, name)?;
         let parameters = declaration_type_parameters(self.module, declaration)?;
         if parameters.len() != arguments.len() {
             return Err(Error::Schema(format!(
@@ -606,6 +611,7 @@ impl<'a> JsonSchemaBuilder<'a> {
                     .iter()
                     .map(|field| {
                         let field = parse_schema_type(self.module, field, true)?;
+                        let field = rewrite_schema_type_name(&field, &declaration.name, name);
                         let field = substitute_schema_type(&field, &substitutions);
                         self.schema_for_type(&field)
                     })
@@ -626,6 +632,29 @@ impl<'a> JsonSchemaBuilder<'a> {
         self.definitions
             .insert(definition_name.clone(), json!({ "oneOf": variants }));
         Ok(definition_name)
+    }
+}
+
+fn find_schema_type_declaration<'a>(
+    module: &'a Module,
+    name: &str,
+) -> Result<&'a jisp_ir::TypeDecl, Error> {
+    if let Some(declaration) = module
+        .types
+        .iter()
+        .find(|declaration| declaration.name == name)
+    {
+        return Ok(declaration);
+    }
+    let matches = module
+        .types
+        .iter()
+        .filter(|declaration| declaration.name.rsplit('/').next() == Some(name))
+        .collect::<Vec<_>>();
+    match matches.as_slice() {
+        [declaration] => Ok(*declaration),
+        [] => Err(Error::Schema(format!("unknown named type `{name}`"))),
+        _ => Err(Error::Schema(format!("ambiguous named type `{name}`"))),
     }
 }
 
@@ -759,6 +788,47 @@ fn substitute_schema_type(ty: &Type, substitutions: &BTreeMap<TypeVar, Type>) ->
             arguments: arguments
                 .iter()
                 .map(|ty| substitute_schema_type(ty, substitutions))
+                .collect(),
+        },
+        other => other.clone(),
+    }
+}
+
+fn rewrite_schema_type_name(ty: &Type, from: &str, to: &str) -> Type {
+    match ty {
+        Type::List(item) => Type::List(Box::new(rewrite_schema_type_name(item, from, to))),
+        Type::Map(value) => Type::Map(Box::new(rewrite_schema_type_name(value, from, to))),
+        Type::Object(row) => Type::Object(jisp_types::ObjectRow {
+            fields: row
+                .fields
+                .iter()
+                .map(|(name, ty)| (name.clone(), rewrite_schema_type_name(ty, from, to)))
+                .collect(),
+            rest: row.rest,
+        }),
+        Type::Function {
+            parameters,
+            rest,
+            result,
+        } => Type::Function {
+            parameters: parameters
+                .iter()
+                .map(|ty| rewrite_schema_type_name(ty, from, to))
+                .collect(),
+            rest: rest
+                .as_ref()
+                .map(|ty| Box::new(rewrite_schema_type_name(ty, from, to))),
+            result: Box::new(rewrite_schema_type_name(result, from, to)),
+        },
+        Type::Named { name, arguments } => Type::Named {
+            name: if name == from {
+                to.to_owned()
+            } else {
+                name.clone()
+            },
+            arguments: arguments
+                .iter()
+                .map(|ty| rewrite_schema_type_name(ty, from, to))
                 .collect(),
         },
         other => other.clone(),

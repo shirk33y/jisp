@@ -1,3 +1,6 @@
+use std::fs;
+use std::path::PathBuf;
+
 #[test]
 fn export_schema_describes_closed_json_native_values() {
     let schema = jisp::export_schema(
@@ -87,4 +90,91 @@ fn export_schema_instantiates_generic_named_variants() {
     let variants = schema["$defs"]["box_int"]["oneOf"].as_array().unwrap();
     assert_eq!(variants[0]["prefixItems"][0]["const"], "boxed");
     assert_eq!(variants[0]["prefixItems"][1]["type"], "integer");
+}
+
+#[test]
+fn export_schema_describes_recursive_named_variants() {
+    let schema = jisp::export_schema(
+        "tree.lisp",
+        r#"
+(type tree
+  (leaf int)
+  (node tree tree))
+(export value (leaf 1))
+"#,
+        "value",
+    )
+    .unwrap();
+
+    assert_eq!(schema["schema"]["$ref"], "#/$defs/tree");
+    let variants = schema["$defs"]["tree"]["oneOf"].as_array().unwrap();
+    assert_eq!(variants[1]["prefixItems"][0]["const"], "node");
+    assert_eq!(variants[1]["prefixItems"][1]["$ref"], "#/$defs/tree");
+    assert_eq!(variants[1]["prefixItems"][2]["$ref"], "#/$defs/tree");
+}
+
+#[test]
+fn export_schema_describes_recursive_generic_variants() {
+    let schema = jisp::export_schema_with_type(
+        "tree.lisp",
+        r#"
+(type tree
+  (leaf a)
+  (node (tree a) (tree a)))
+(export value (leaf 1))
+"#,
+        "value",
+        Some("(tree int)"),
+    )
+    .unwrap();
+
+    assert_eq!(schema["schema"]["$ref"], "#/$defs/tree_int");
+    let variants = schema["$defs"]["tree_int"]["oneOf"].as_array().unwrap();
+    assert_eq!(variants[0]["prefixItems"][1]["type"], "integer");
+    assert_eq!(variants[1]["prefixItems"][1]["$ref"], "#/$defs/tree_int");
+    assert_eq!(variants[1]["prefixItems"][2]["$ref"], "#/$defs/tree_int");
+}
+
+#[test]
+fn export_schema_describes_imported_recursive_generic_variants() {
+    let dir = fixture_dir("imported-recursive-schema");
+    let tree = dir.join("tree.lisp");
+    let main = dir.join("main.lisp");
+    fs::write(
+        &tree,
+        r#"
+(type tree
+  (leaf a)
+  (node (tree a) (tree a)))
+(export sample (leaf 1))
+"#,
+    )
+    .unwrap();
+    fs::write(
+        &main,
+        r#"
+(import tree "tree.lisp")
+(export value tree.sample)
+"#,
+    )
+    .unwrap();
+    let text = fs::read_to_string(&main).unwrap();
+
+    let schema = jisp::export_schema_with_type(&main, &text, "value", Some("(tree int)")).unwrap();
+
+    assert_eq!(schema["schema"]["$ref"], "#/$defs/tree_int");
+    let variants = schema["$defs"]["tree_int"]["oneOf"].as_array().unwrap();
+    assert_eq!(variants[0]["prefixItems"][1]["type"], "integer");
+    assert_eq!(variants[1]["prefixItems"][1]["$ref"], "#/$defs/tree_int");
+}
+
+fn fixture_dir(name: &str) -> PathBuf {
+    let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../target/jisp-schema-fixtures")
+        .join(format!("{}-{}", name, std::process::id()));
+    if dir.exists() {
+        fs::remove_dir_all(&dir).unwrap();
+    }
+    fs::create_dir_all(&dir).unwrap();
+    dir
 }

@@ -446,6 +446,10 @@ impl Inferencer {
                     }
                 }
             }
+            _ if is_type_name(text) && self.type_variants.contains_key(text) => Type::Named {
+                name: text.to_owned(),
+                arguments: vec![],
+            },
             _ if is_type_parameter_name(text) => {
                 Type::Var(parameters.get_or_insert(text, || self.fresh_var()))
             }

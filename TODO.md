@@ -99,10 +99,9 @@ product-level direction and ordering rationale, see [ROADMAP.md](ROADMAP.md).
   `list.prepend`/`list.append`/`list.cat` and `obj.set`/`obj.del`/`obj.cat`
   now preserve reusable inputs; the native emitter gives every local Jisp value
   an owned snapshot before it participates in a generated expression.
-- Extend project-aware export schemas to richer recursive type annotations.
-  Monomorphic JSON-native exports and explicit generic instantiations through
-  `jisp export-schema --type <type>` now resolve imports, support concrete
-  generic tagged variants, and expose their dependency graph.
+- Project-aware export schemas cover recursive named variants, concrete generic
+  instantiations through `jisp export-schema --type <type>`, imported recursive
+  generic type declarations, and dependency graph output.
 - Add package registry tooling. `jisp init` creates a minimal manifest and `jisp run` reads its
   entry point; `jisp lsp` provides stdio initialization, core-form completion
   and hover, go-to-definition for top-level/imported names and `fn`/`let`/`case` bindings, and live frontend diagnostics;
