@@ -160,9 +160,27 @@ impl Inferencer {
                     &branch.pattern,
                 )));
             }
+            if list_coverage_is_exhaustive(
+                &exact_lengths,
+                &refined_exact_lengths,
+                &refined_exact_expected,
+                &rest_lengths,
+            ) {
+                return Err(InferError::RedundantCasePattern(pattern_name(
+                    &branch.pattern,
+                )));
+            }
 
             for pattern in coverage_patterns(&branch.pattern) {
                 if has_catch_all {
+                    return Err(InferError::RedundantCasePattern(pattern_name(pattern)));
+                }
+                if list_coverage_is_exhaustive(
+                    &exact_lengths,
+                    &refined_exact_lengths,
+                    &refined_exact_expected,
+                    &rest_lengths,
+                ) {
                     return Err(InferError::RedundantCasePattern(pattern_name(pattern)));
                 }
                 match strip_alias(pattern) {

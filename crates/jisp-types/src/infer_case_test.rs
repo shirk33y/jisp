@@ -375,6 +375,36 @@ fn accepts_exhaustive_list_case_with_empty_and_rest_patterns() {
 }
 
 #[test]
+fn rejects_list_case_branch_after_full_list_coverage() {
+    let mut inferencer = Inferencer::default();
+    let expression = expr(ExprKind::Case {
+        subject: Box::new(expr(ExprKind::List(vec![int(1), int(2)]))),
+        branches: vec![
+            branch(
+                Pattern::List {
+                    prefix: vec![],
+                    rest: None,
+                },
+                int(0),
+            ),
+            branch(
+                Pattern::List {
+                    prefix: vec![Pattern::Bind("head".to_owned())],
+                    rest: Some("tail".to_owned()),
+                },
+                name("head"),
+            ),
+            branch(Pattern::Wildcard, int(2)),
+        ],
+    });
+
+    assert!(matches!(
+        inferencer.infer_expr(&expression),
+        Err(InferError::RedundantCasePattern(pattern)) if pattern == "_"
+    ));
+}
+
+#[test]
 fn infers_nested_list_case_pattern_bindings() {
     let mut inferencer = Inferencer::default();
     let expression = expr(ExprKind::Case {
