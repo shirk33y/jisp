@@ -62,6 +62,41 @@ fn generate_file_emits_native_tokens_without_value_fallback() {
 }
 
 #[test]
+fn generate_file_tracks_macro_import_dependencies() {
+    let dir = fixture_dir("macro-import-tracking");
+    let main = dir.join("main.lisp");
+    let macros = dir.join("macros.lisp");
+    fs::write(
+        &macros,
+        r#"
+(def wrap
+  (~ (fn (value)
+       `(list 99 ,value))))
+"#,
+    )
+    .unwrap();
+    fs::write(
+        &main,
+        r#"
+(macro-import m "macros.lisp")
+(export entry (fn () (list.len (m.wrap 7))))
+"#,
+    )
+    .unwrap();
+
+    let generated = generate_file(&main).unwrap();
+
+    assert_eq!(
+        dependency_set(generated.dependencies),
+        BTreeSet::from([canonical(&macros)])
+    );
+    assert!(generated
+        .tokens
+        .to_string()
+        .contains("pub fn entry () -> i64"));
+}
+
+#[test]
 fn expression_expansion_requires_exported_zero_argument_main() {
     let dir = fixture_dir("macro-expression-main");
     let missing = dir.join("missing.lisp");

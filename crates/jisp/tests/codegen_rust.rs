@@ -697,6 +697,39 @@ fn emit_rust_detailed_emits_native_transitive_imports() {
     assert!(!tokens.contains("jisp_eval"));
 }
 
+#[test]
+fn emit_rust_detailed_tracks_macro_import_files() {
+    let dir = fixture_dir("native-macro-import-dependencies");
+    let main = dir.join("main.lisp");
+    let macros = dir.join("macros.lisp");
+    fs::write(
+        &macros,
+        r#"
+(def wrap
+  (~ (fn (value)
+       `(list 99 ,value))))
+"#,
+    )
+    .unwrap();
+    fs::write(
+        &main,
+        r#"
+(macro-import m "macros.lisp")
+(export main (fn () (list.len (m.wrap 7))))
+"#,
+    )
+    .unwrap();
+
+    let text = fs::read_to_string(&main).unwrap();
+    let generated = jisp::emit_rust_detailed(&main, &text).unwrap();
+    let tokens = generated.tokens.to_string();
+
+    assert_eq!(generated.dependencies, vec![macros.canonicalize().unwrap()]);
+    assert!(tokens.contains("pub fn main () -> i64"));
+    assert!(!tokens.contains("Value"));
+    assert!(!tokens.contains("jisp_eval"));
+}
+
 fn fixture_dir(name: &str) -> PathBuf {
     let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("../../target/jisp-codegen-fixtures")

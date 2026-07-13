@@ -213,10 +213,7 @@ pub fn parse_with_options(
     text: &str,
     options: ParseOptions,
 ) -> Result<ParsedModule, Error> {
-    let path = path.as_ref();
-    let syntax =
-        detect_syntax(path).ok_or_else(|| Error::UnknownSyntax(path.display().to_string()))?;
-    parse_as_with_options(path.display().to_string(), syntax, text, options)
+    parse_with_options_detailed(path, text, options).map_err(|error| error.error)
 }
 
 pub fn parse_as(
@@ -279,6 +276,7 @@ fn parsed_from_lowered(
         nodes,
         module,
         expansion_map,
+        macro_dependencies,
     } = lowered;
     let mut dependencies = vec![];
     let mut resolved_modules = BTreeMap::new();
@@ -295,10 +293,11 @@ fn parsed_from_lowered(
                 ));
             }
         };
-        dependencies = resolved_dependencies;
+        dependencies = merge_dependencies(macro_dependencies, resolved_dependencies);
         resolved_modules = imported_modules;
         Some(inferred)
     } else {
+        dependencies = macro_dependencies;
         None
     };
     Ok(ParsedModule {
@@ -330,7 +329,9 @@ pub fn emit_rust_detailed(
             Error::UnknownSyntax(path.display().to_string()),
         )
     })?;
-    emit_rust_as_detailed(path.display().to_string(), syntax, text)
+    let name = path.display().to_string();
+    let lowered = lower_path_detailed(path, syntax, text)?;
+    generated_rust_from_lowered(name, lowered)
 }
 
 pub fn emit_rust_as_detailed(
@@ -339,12 +340,21 @@ pub fn emit_rust_as_detailed(
     text: &str,
 ) -> Result<GeneratedRustModule, ModuleError> {
     let name = name.into();
+    let lowered = lower_as_detailed(name.clone(), syntax, text)?;
+    generated_rust_from_lowered(name, lowered)
+}
+
+fn generated_rust_from_lowered(
+    name: String,
+    lowered: LoweredModule,
+) -> Result<GeneratedRustModule, ModuleError> {
     let LoweredModule {
         mut sources,
         nodes: _,
         module,
         expansion_map,
-    } = lower_as_detailed(name.clone(), syntax, text)?;
+        macro_dependencies,
+    } = lowered;
     let path = Path::new(&name);
     let codegen_result = generate_rust_module(&mut sources, path, module);
     let (generated, dependencies) = match codegen_result {
@@ -362,7 +372,7 @@ pub fn emit_rust_as_detailed(
         expansion_map,
         tokens: generated.tokens,
         source_map: generated.source_map,
-        dependencies,
+        dependencies: merge_dependencies(macro_dependencies, dependencies),
     })
 }
 
@@ -371,6 +381,7 @@ struct LoweredModule {
     nodes: Vec<Node>,
     module: Module,
     expansion_map: ExpansionMap,
+    macro_dependencies: Vec<PathBuf>,
 }
 
 fn lower_as_detailed(
@@ -420,6 +431,7 @@ fn lower_as_detailed(
         nodes,
         module,
         expansion_map: expanded.expansion_map,
+        macro_dependencies: vec![],
     })
 }
 
@@ -434,11 +446,12 @@ fn lower_path_detailed(
         Ok(nodes) => nodes,
         Err(error) => return Err(ModuleError::new(sources, ExpansionMap::default(), error)),
     };
-    let imported_macros = match load_macro_imports(&mut sources, path, &nodes) {
-        Ok(imported_macros) => imported_macros,
+    let macro_load = match load_macro_imports(&mut sources, path, &nodes) {
+        Ok(macro_load) => macro_load,
         Err(error) => return Err(ModuleError::new(sources, ExpansionMap::default(), error)),
     };
-    let expanded = match jisp_expand::expand_module_with_imported_macros(&nodes, &imported_macros) {
+    let expanded = match jisp_expand::expand_module_with_imported_macros(&nodes, &macro_load.macros)
+    {
         Ok(expanded) => expanded,
         Err(error) => {
             return Err(ModuleError::new(
@@ -464,7 +477,16 @@ fn lower_path_detailed(
         nodes,
         module,
         expansion_map: expanded.expansion_map,
+        macro_dependencies: macro_load.dependencies,
     })
+}
+
+fn merge_dependencies(left: Vec<PathBuf>, right: Vec<PathBuf>) -> Vec<PathBuf> {
+    left.into_iter()
+        .chain(right)
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect()
 }
 
 fn infer_module_types(
@@ -1495,26 +1517,36 @@ fn load_module(sources: &mut SourceMap, path: &Path) -> Result<Module, Error> {
     for file in module_source_files(path)? {
         nodes.extend(parse_file(sources, &file)?);
     }
-    let imported_macros = load_macro_imports(sources, path, &nodes)?;
-    let expanded = jisp_expand::expand_module_with_imported_macros(&nodes, &imported_macros)?;
+    let macro_load = load_macro_imports(sources, path, &nodes)?;
+    let expanded = jisp_expand::expand_module_with_imported_macros(&nodes, &macro_load.macros)?;
     Ok(Lowerer.lower_module(&expanded.nodes)?)
+}
+
+struct MacroImportLoad {
+    macros: Vec<(String, Vec<Node>)>,
+    dependencies: Vec<PathBuf>,
 }
 
 fn load_macro_imports(
     sources: &mut SourceMap,
     importer: &Path,
     nodes: &[Node],
-) -> Result<Vec<(String, Vec<Node>)>, Error> {
-    let mut imports = vec![];
+) -> Result<MacroImportLoad, Error> {
+    let mut macros = vec![];
+    let mut dependencies = BTreeSet::new();
     for import in macro_imports(nodes)? {
         let path = resolve_import(importer, &import.path)?;
         let mut definitions = vec![];
         for file in module_source_files(&path)? {
+            dependencies.insert(canonicalize(&file)?);
             definitions.extend(parse_file(sources, &file)?);
         }
-        imports.push((import.alias, definitions));
+        macros.push((import.alias, definitions));
     }
-    Ok(imports)
+    Ok(MacroImportLoad {
+        macros,
+        dependencies: dependencies.into_iter().collect(),
+    })
 }
 
 fn macro_imports(nodes: &[Node]) -> Result<Vec<Import>, Error> {
