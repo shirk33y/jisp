@@ -57,6 +57,7 @@ enum Command {
         #[arg(long)]
         state: Option<PathBuf>,
     },
+    Lsp,
 }
 
 fn main() -> Result<()> {
@@ -126,8 +127,135 @@ fn main() -> Result<()> {
         Command::NativeCheck { path } => native_check(&path)?,
         Command::Fmt { path, check, write } => format_file(&path, check, write)?,
         Command::Repl { state } => repl(state.as_deref())?,
+        Command::Lsp => lsp()?,
     }
     Ok(())
+}
+
+fn lsp() -> Result<()> {
+    let stdin = io::stdin();
+    let mut input = stdin.lock();
+    let stdout = io::stdout();
+    let mut output = stdout.lock();
+    while let Some(message) = read_lsp_message(&mut input)? {
+        let method = message["method"].as_str();
+        match method {
+            Some("initialize") => write_lsp_message(
+                &mut output,
+                &serde_json::json!({
+                    "jsonrpc": "2.0",
+                    "id": message["id"],
+                    "result": { "capabilities": { "textDocumentSync": 1 } }
+                }),
+            )?,
+            Some("textDocument/didOpen") | Some("textDocument/didChange") => {
+                let document = if method == Some("textDocument/didOpen") {
+                    &message["params"]["textDocument"]
+                } else {
+                    &message["params"]["textDocument"]
+                };
+                let uri = document["uri"].as_str().unwrap_or("untitled.lisp");
+                let text = if method == Some("textDocument/didOpen") {
+                    document["text"].as_str().unwrap_or("")
+                } else {
+                    message["params"]["contentChanges"]
+                        .as_array()
+                        .and_then(|changes| changes.last())
+                        .and_then(|change| change["text"].as_str())
+                        .unwrap_or("")
+                };
+                write_lsp_message(
+                    &mut output,
+                    &serde_json::json!({
+                        "jsonrpc": "2.0",
+                        "method": "textDocument/publishDiagnostics",
+                        "params": { "uri": uri, "diagnostics": lsp_diagnostics(uri, text) }
+                    }),
+                )?;
+            }
+            Some("shutdown") => write_lsp_message(
+                &mut output,
+                &serde_json::json!({ "jsonrpc": "2.0", "id": message["id"], "result": null }),
+            )?,
+            Some("exit") => break,
+            _ => {}
+        }
+    }
+    Ok(())
+}
+
+fn read_lsp_message(input: &mut impl BufRead) -> Result<Option<serde_json::Value>> {
+    let mut length = None;
+    loop {
+        let mut line = String::new();
+        if input.read_line(&mut line)? == 0 {
+            return Ok(None);
+        }
+        let line = line.trim_end_matches(['\r', '\n']);
+        if line.is_empty() {
+            break;
+        }
+        if let Some(value) = line.strip_prefix("Content-Length:") {
+            length = Some(
+                value
+                    .trim()
+                    .parse::<usize>()
+                    .context("parse LSP Content-Length")?,
+            );
+        }
+    }
+    let length = length.context("missing LSP Content-Length")?;
+    let mut bytes = vec![0; length];
+    input.read_exact(&mut bytes)?;
+    Ok(Some(
+        serde_json::from_slice(&bytes).context("parse LSP JSON")?,
+    ))
+}
+
+fn write_lsp_message(output: &mut impl Write, message: &serde_json::Value) -> Result<()> {
+    let body = serde_json::to_vec(message)?;
+    write!(output, "Content-Length: {}\r\n\r\n", body.len())?;
+    output.write_all(&body)?;
+    output.flush()?;
+    Ok(())
+}
+
+fn lsp_diagnostics(uri: &str, text: &str) -> Vec<serde_json::Value> {
+    let path = uri.strip_prefix("file://").unwrap_or(uri);
+    let Err(error) = jisp::check_detailed(path, text) else {
+        return vec![];
+    };
+    let Some(diagnostics) = error.diagnostics() else {
+        return vec![];
+    };
+    diagnostics
+        .iter()
+        .filter_map(|diagnostic| {
+            let file = error.sources.get(diagnostic.primary.span.source)?;
+            let start = lsp_position(file, diagnostic.primary.span.start);
+            let end = lsp_position(file, diagnostic.primary.span.end);
+            Some(serde_json::json!({
+                "range": { "start": start, "end": end },
+                "severity": 1,
+                "code": diagnostic.code,
+                "source": "jisp",
+                "message": diagnostic.message,
+            }))
+        })
+        .collect()
+}
+
+fn lsp_position(file: &jisp_core::SourceFile, offset: usize) -> serde_json::Value {
+    let offset = offset.min(file.text().len());
+    let before = &file.text()[..offset];
+    let line = before.bytes().filter(|byte| *byte == b'\n').count();
+    let character = before
+        .rsplit('\n')
+        .next()
+        .unwrap_or_default()
+        .encode_utf16()
+        .count();
+    serde_json::json!({ "line": line, "character": character })
 }
 
 fn repl(state_path: Option<&Path>) -> Result<()> {
@@ -451,8 +579,9 @@ mod tests {
     use std::path::Path;
 
     use super::{
-        format_json_module, format_lisp_module, format_yaml_module, remapped_cargo_errors,
-        repl_step, JsonParser, LispParser, SourceId, SyntaxParser, YamlParser,
+        format_json_module, format_lisp_module, format_yaml_module, lsp_diagnostics,
+        remapped_cargo_errors, repl_step, JsonParser, LispParser, SourceId, SyntaxParser,
+        YamlParser,
     };
 
     #[test]
@@ -535,6 +664,20 @@ mod tests {
         let (next_state, value) = repl_step(&state, "(+ answer 1)").unwrap();
         assert_eq!(next_state, state);
         assert_eq!(value.as_deref(), Some("42"));
+    }
+
+    #[test]
+    fn lsp_publishes_frontend_diagnostics_with_lsp_positions() {
+        let diagnostics = lsp_diagnostics("file:///main.lisp", "(export main (fn () (+ 1 true)))");
+
+        assert_eq!(diagnostics.len(), 1);
+        assert_eq!(diagnostics[0]["source"], "jisp");
+        assert_eq!(diagnostics[0]["severity"], 1);
+        assert_eq!(diagnostics[0]["range"]["start"]["line"], 0);
+        assert!(diagnostics[0]["message"]
+            .as_str()
+            .unwrap()
+            .contains("no overload"));
     }
 
     fn same_kind(left: &jisp_core::Node, right: &jisp_core::Node) -> bool {
