@@ -573,6 +573,50 @@ fn emit_rust_detailed_rejects_dynamic_reads_on_heterogeneous_objects() {
 }
 
 #[test]
+fn emit_rust_detailed_converts_homogeneous_objects_to_maps() {
+    let generated = jisp::emit_rust_as_detailed(
+        "main.lisp",
+        Syntax::Lisp,
+        r#"
+(export main
+  (fn ()
+    (let (scores (obj.to-map (obj "primary" 40 "secondary" 2)))
+      (case (map.get (map.del scores "missing") "secondary")
+        ((ok value) value)
+        ((err _) 0)))))
+"#,
+    )
+    .unwrap();
+    let tokens = generated.tokens.to_string();
+
+    assert!(tokens.contains(":: indexmap :: IndexMap :: new"));
+    assert!(tokens.contains("__jisp_map . insert"));
+    assert!(tokens.contains("String :: from (\"primary\")"));
+    assert!(tokens.contains("String :: from (\"secondary\")"));
+    assert!(!tokens.contains("Value"));
+    assert!(!tokens.contains("jisp_eval"));
+}
+
+#[test]
+fn emit_rust_detailed_rejects_heterogeneous_object_to_map() {
+    let error = match jisp::emit_rust_as_detailed(
+        "main.lisp",
+        Syntax::Lisp,
+        r#"
+(export main
+  (fn ()
+    (map.len (obj.to-map (obj "count" 1 "enabled" true)))))
+"#,
+    ) {
+        Ok(_) => panic!("expected heterogeneous obj.to-map to be rejected"),
+        Err(error) => error.error,
+    };
+
+    assert!(matches!(error, jisp::Error::Type(_)), "{error}");
+    assert!(error.to_string().contains("no overload"), "{error}");
+}
+
+#[test]
 fn emit_rust_detailed_emits_native_file_imports() {
     let dir = fixture_dir("native-file-imports");
     let main = dir.join("main.lisp");

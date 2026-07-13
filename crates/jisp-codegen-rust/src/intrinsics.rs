@@ -61,6 +61,7 @@ impl<'a> EmitContext<'a> {
             "obj.set" => self.emit_obj_set_intrinsic(arguments, expected),
             "obj.del" => self.emit_obj_del_intrinsic(arguments, expected),
             "obj.values" => self.emit_obj_values_intrinsic(arguments),
+            "obj.to-map" => self.emit_obj_to_map_intrinsic(arguments, expected),
             "obj.cat" => self.emit_obj_cat_intrinsic(arguments, expected),
             "map" => self.emit_map_intrinsic(arguments, expected),
             "map.len" => self.emit_map_len_intrinsic(arguments),
@@ -924,6 +925,40 @@ impl<'a> EmitContext<'a> {
         Ok(quote! {{
             let __jisp_object = #object;
             vec![#(#fields),*]
+        }})
+    }
+
+    fn emit_obj_to_map_intrinsic(
+        &mut self,
+        arguments: &[Expr],
+        expected: Option<&Type>,
+    ) -> Result<TokenStream, CodegenError> {
+        let [object] = arguments else {
+            return Err(CodegenError::Unsupported("non-unary native obj.to-map"));
+        };
+        let Some(Type::Map(value_type)) = expected else {
+            return Err(CodegenError::Unsupported(
+                "obj.to-map without expected map type",
+            ));
+        };
+        let row = self.native_closed_object_row(object)?;
+        for field_type in row.fields.values() {
+            if field_type != value_type.as_ref() {
+                return Err(CodegenError::Unsupported(
+                    "obj.to-map on heterogeneous object",
+                ));
+            }
+        }
+        let object = self.emit_expr(object, None)?;
+        let fields = row.fields.keys().map(|name| {
+            let field = super::rust_ident(name);
+            quote! { __jisp_map.insert(String::from(#name), __jisp_object.#field.clone()); }
+        });
+        Ok(quote! {{
+            let __jisp_object = #object;
+            let mut __jisp_map = ::indexmap::IndexMap::new();
+            #(#fields)*
+            __jisp_map
         }})
     }
 

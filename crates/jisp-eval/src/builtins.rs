@@ -73,6 +73,7 @@ pub fn install_builtins(evaluator: &mut Evaluator) {
         ("obj.del", obj_del),
         ("obj.keys", obj_keys),
         ("obj.values", obj_values),
+        ("obj.to-map", obj_to_map),
         ("obj.cat", obj_cat),
         ("map", map),
         ("map.len", obj_len),
@@ -803,6 +804,10 @@ fn obj_values(_: &mut Evaluator, args: &[Value], span: Span) -> Result<Value, Ru
     Ok(Value::List(
         expect_obj(&args[0], span)?.values().cloned().collect(),
     ))
+}
+fn obj_to_map(_: &mut Evaluator, args: &[Value], span: Span) -> Result<Value, RuntimeError> {
+    arity(args, 1, span)?;
+    Ok(Value::Obj(expect_obj(&args[0], span)?.clone()))
 }
 fn obj_cat(_: &mut Evaluator, args: &[Value], span: Span) -> Result<Value, RuntimeError> {
     let objects = args

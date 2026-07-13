@@ -110,8 +110,10 @@ The lookup and slice functions return `result` values rather than trapping.
 Objects have string keys and immutable updates. In the interpreter, dynamic
 keys are valid for all object helpers. Native Rust generation currently needs a
 closed object shape. Dynamic `.`/`obj.get`/`obj.has` reads and `obj.set` are
-supported when every field has the same concrete type; heterogeneous dynamic
-reads, dynamic deletion, and open rows remain interpreter-only.
+supported when every field has the same concrete type. Convert a homogeneous
+closed object with `obj.to-map` when runtime-sized updates such as dynamic
+delete should use the explicit map ABI. Heterogeneous dynamic reads, direct
+dynamic object deletion, and open rows remain interpreter-only.
 
 | Function | Signature | Description | Example |
 | --- | --- | --- | --- |
@@ -123,6 +125,7 @@ reads, dynamic deletion, and open rows remain interpreter-only.
 | `obj.del` | `(obj, str) -> obj` | Returns a copy without a key; an absent key changes nothing. | `(obj.del (obj "name" "Ada") "name")` |
 | `obj.keys` | `(obj) -> list<str>` | Returns keys in insertion order. | `(obj.keys (obj "name" "Ada" "age" 42))` |
 | `obj.values` | `(obj) -> list<A>` | Returns values in insertion order; a closed static row must be homogeneous. | `(obj.values (obj "a" 1 "b" 2))` |
+| `obj.to-map` | `(obj) -> map<str, A>` | Converts a homogeneous closed object to an explicit runtime-sized map. | `(obj.to-map (obj "a" 1 "b" 2))` |
 | `obj.cat` | `(... obj) -> obj` | Merges left to right; later duplicate keys win. | `(obj.cat (obj "a" 1) (obj "b" 2))` |
 
 ## `map`

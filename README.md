@@ -68,7 +68,7 @@ literal. In Lisp and YAML-like source, quoted values are strings.
   variadic user functions, supported `case` patterns, imports, and selected
   helpers including `list.map`, `list.filter`, `list.fold`, `list.some`,
   `list.every`, homogeneous `map<str, A>` dictionaries, static and dynamic reads
-  on closed homogeneous objects, and
+  on closed homogeneous objects, explicit `obj.to-map` conversion, and
   concrete `result.try`, `result.map`, `result.map-err`, and `result.recover`.
 - Proc-macro integration that compiles supported Jisp files into native Rust
   items while tracking imported source dependencies.

@@ -579,6 +579,7 @@ impl Inferencer {
             "obj.set" => self.infer_obj_set(arguments),
             "obj.del" => self.infer_obj_del(arguments),
             "obj.values" => self.infer_obj_values(arguments),
+            "obj.to-map" => self.infer_obj_to_map(arguments),
             "obj.cat" => self.infer_obj_cat(arguments),
             _ => Ok(None),
         }
@@ -656,6 +657,27 @@ impl Inferencer {
         Ok(Some(Type::List(Box::new(self.apply(&item)))))
     }
 
+    fn infer_obj_to_map(&mut self, arguments: &[Expr]) -> Result<Option<Type>, InferError> {
+        require_arity(arguments, 1)?;
+        let ty = self.infer_expr_located(&arguments[0])?;
+        let Type::Object(row) = self.apply(&ty) else {
+            return Ok(None);
+        };
+        if row.rest.is_some() {
+            return Err(InferError::NoMatchingOverload {
+                name: "obj.to-map".to_owned(),
+                expected: "homogeneous closed object".to_owned(),
+            });
+        }
+        let Some(field) = homogeneous_closed_field_type(&row) else {
+            return Err(InferError::NoMatchingOverload {
+                name: "obj.to-map".to_owned(),
+                expected: "homogeneous closed object".to_owned(),
+            });
+        };
+        Ok(Some(Type::Map(Box::new(field))))
+    }
+
     fn infer_obj_cat(&mut self, arguments: &[Expr]) -> Result<Option<Type>, InferError> {
         let mut fields = BTreeMap::new();
         for argument in arguments {
@@ -681,7 +703,7 @@ impl Inferencer {
     fn can_specialize_object_builtin(&self, name: &str) -> bool {
         matches!(
             name,
-            "obj.get" | "obj.set" | "obj.del" | "obj.values" | "obj.cat"
+            "obj.get" | "obj.set" | "obj.del" | "obj.values" | "obj.to-map" | "obj.cat"
         ) && crate::prelude::environment()
             .get(name)
             .is_some_and(|scheme| self.environment.get(name) == Some(scheme))

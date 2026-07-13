@@ -73,8 +73,9 @@ heterogeneous dynamic result by itself.
    existing row-tail variable remains a row variable, not a map value type.
 3. Done: add native differential tests for dynamic get/set/delete, unknown
    keys, map concatenation, values, and input immutability.
-4. Design explicit conversion helpers between closed homogeneous objects and
-   maps only if real use cases need them.
+4. Done: add explicit `obj.to-map` conversion from homogeneous closed objects
+   to `map<str, A>`, so dynamic deletion/update can use the map ABI without
+   changing closed object layout.
 5. Design and implement monomorphisation before accepting native open-row
    function definitions. Generated specializations must have stable names and
    map diagnostics back to the original generic definition and call site.

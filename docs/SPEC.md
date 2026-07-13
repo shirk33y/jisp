@@ -306,6 +306,18 @@ The source type is `(map str A)`. Native Rust uses
 value is not implicit in map or object lookup; if the language needs that, it
 must be a future source-visible sum type consumed with `case`.
 
+Homogeneous closed objects can be converted explicitly to maps with
+`obj.to-map` before using runtime-sized helpers such as `map.del`:
+
+```lisp test=spec.obj-to-map mode=run
+(export main
+  (fn ()
+    (let (scores (obj.to-map (obj "primary" 40 "secondary" 2)))
+      (case (map.get (map.del scores "primary") "secondary")
+        ((ok value) value)
+        ((err _) 0)))))
+```
+
 ## Equality and mutability
 
 Equality is structural for data values. Functions and opaque native handles are

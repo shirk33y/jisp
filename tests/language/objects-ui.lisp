@@ -75,6 +75,15 @@
     (let (value (obj "first" 1 "second" 2 "third" 3))
       (obj "keys" (obj.keys value) "values" (obj.values value)))))
 
+(test "homogeneous objects convert explicitly to dynamic maps"
+  (assert.equal
+    (obj "has-primary" false "secondary" (ok 2))
+    (let (scores (obj.to-map (obj "primary" 1 "secondary" 2))
+          without-primary (map.del scores "primary"))
+      (obj
+        "has-primary" (map.has without-primary "primary")
+        "secondary" (map.get without-primary "secondary")))))
+
 (test "object patterns refine boolean fields"
   (assert.equal
     (list "Ada:41:active" "Lin:inactive")

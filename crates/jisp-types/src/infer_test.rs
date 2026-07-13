@@ -719,6 +719,46 @@ fn prelude_refines_dynamic_reads_on_homogeneous_closed_objects() {
 }
 
 #[test]
+fn prelude_converts_homogeneous_closed_objects_to_maps() {
+    let mut inferencer = Inferencer::with_prelude();
+    let converted = expr(ExprKind::Call {
+        callee: Box::new(name("obj.to-map")),
+        arguments: vec![expr(ExprKind::Object(vec![
+            (string("primary"), int(40)),
+            (string("secondary"), int(41)),
+        ]))],
+    });
+
+    assert_eq!(
+        inferencer.infer_expr(&converted).unwrap(),
+        Type::Map(Box::new(Type::Int))
+    );
+
+    let mut inferencer = Inferencer::with_prelude();
+    let dynamic_delete = expr(ExprKind::Call {
+        callee: Box::new(name("map.del")),
+        arguments: vec![
+            expr(ExprKind::Call {
+                callee: Box::new(name("obj.to-map")),
+                arguments: vec![expr(ExprKind::Object(vec![
+                    (string("primary"), int(40)),
+                    (string("secondary"), int(41)),
+                ]))],
+            }),
+            expr(ExprKind::Call {
+                callee: Box::new(name("str.cat")),
+                arguments: vec![string("pri"), string("mary")],
+            }),
+        ],
+    });
+
+    assert_eq!(
+        inferencer.infer_expr(&dynamic_delete).unwrap(),
+        Type::Map(Box::new(Type::Int))
+    );
+}
+
+#[test]
 fn prelude_infers_variadic_runtime_helpers() {
     let mut inferencer = Inferencer::with_prelude();
 

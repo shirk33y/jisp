@@ -257,6 +257,11 @@ pub fn environment() -> BTreeMap<String, Scheme> {
     );
     add(
         &mut env,
+        "obj.to-map",
+        scheme(vec![0, 1], fun(vec![object_row(1)], map_type(var(0)))),
+    );
+    add(
+        &mut env,
         "obj.cat",
         scheme(vec![0], variadic_fun(vec![], object_row(0), object_row(0))),
     );
