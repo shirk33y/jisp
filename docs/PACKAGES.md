@@ -45,7 +45,8 @@ math = {
 The parser recognizes `version`-based registry dependency specs, but resolution
 does not fetch from the network. A registry dependency resolves only when
 `jisp.lock` contains a matching `[registry.<name>]` entry with a local cached
-source path and a SHA-256 checksum:
+source path and a SHA-256 checksum, or when `jisp lock` can populate that cache
+from a local file index:
 
 ```toml
 version = 1
@@ -111,5 +112,7 @@ the resolver:
   `native-check`, or proc-macro expansion.
 
 The local cache-hit, lockfile preservation, and local file-index cache
-population paths above exist now. Remote registry index lookup and archive
-download remain deferred.
+population paths above exist now. `http://` and `https://` registry URLs are
+rejected by `jisp lock` with an explicit unsupported-remote-registry error.
+Remote registry index lookup and archive download remain deferred until the
+network, checksum, and trust policy is implemented end to end.

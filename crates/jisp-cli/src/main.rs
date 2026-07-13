@@ -279,9 +279,25 @@ fn registry_lock_entries_for_manifest(
         }
         if let Some(entry) = registry_lock_entry_from_local_index(project, dependency)? {
             entries.push(entry);
+            continue;
+        }
+        if dependency
+            .registry
+            .as_deref()
+            .is_some_and(registry_is_remote_url)
+        {
+            anyhow::bail!(
+                "registry dependency `{}` uses remote registry `{}`; remote registry lookup and downloads are not implemented yet",
+                dependency.name,
+                dependency.registry.as_deref().unwrap()
+            );
         }
     }
     Ok(entries)
+}
+
+fn registry_is_remote_url(registry: &str) -> bool {
+    registry.starts_with("https://") || registry.starts_with("http://")
 }
 
 fn registry_lock_entry_from_local_index(
@@ -1797,6 +1813,32 @@ mod tests {
         );
         let entry = std::fs::read_to_string(project.join("main.lisp")).unwrap();
         assert!(jisp::check_detailed(project.join("main.lisp"), &entry).is_ok());
+        let _ = std::fs::remove_dir_all(&directory);
+    }
+
+    #[test]
+    fn lock_project_rejects_remote_registry_dependencies() {
+        let directory = std::env::temp_dir().join(format!(
+            "jisp-lock-remote-registry-test-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&directory);
+        std::fs::create_dir_all(&directory).unwrap();
+        std::fs::write(
+            directory.join("jisp.toml"),
+            "[package]\nname = \"app\"\nentry = \"main.lisp\"\n\n[dependencies]\nmath = {\n  registry = \"https://packages.example.test/jisp\",\n  package = \"math\",\n  version = \"1.2.3\"\n}\n",
+        )
+        .unwrap();
+        std::fs::write(
+            directory.join("main.lisp"),
+            "(import math \"math\")\n(export main (fn () (math.inc 41)))",
+        )
+        .unwrap();
+
+        let error = lock_project(&directory).unwrap_err().to_string();
+
+        assert!(error.contains("remote registry lookup and downloads are not implemented yet"));
+        assert!(error.contains("https://packages.example.test/jisp"));
         let _ = std::fs::remove_dir_all(&directory);
     }
 
