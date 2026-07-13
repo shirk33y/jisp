@@ -4,6 +4,8 @@ use jisp_ir::{CaseBranch, Expr, Literal, Pattern};
 
 use super::{InferError, Inferencer, ObjectRow, Scheme, Type, UnifyError};
 
+const MAX_OBJECT_COVERAGE_COMBINATIONS: usize = 256;
+
 impl Inferencer {
     pub(super) fn infer_case(
         &mut self,
@@ -242,6 +244,8 @@ impl Inferencer {
         let mut has_catch_all = false;
         let mut refined_fields: BTreeMap<String, (BTreeSet<String>, BTreeSet<String>)> =
             BTreeMap::new();
+        let mut product_coverage = BTreeSet::new();
+        let mut product_expected = None;
 
         for branch in branches {
             if branch.guard.is_some() {
@@ -258,8 +262,20 @@ impl Inferencer {
                 }
                 if self.pattern_is_irrefutable_for_type(pattern, subject_ty) {
                     has_catch_all = true;
-                } else if let Some(coverage) =
-                    self.pattern_finite_refinement_coverage(pattern, subject_ty)
+                    continue;
+                }
+                if let Some((covered, expected)) = self.object_product_coverage(pattern, subject_ty)
+                {
+                    if covered
+                        .iter()
+                        .all(|labels| product_coverage.contains(labels))
+                    {
+                        return Err(InferError::RedundantCasePattern(pattern_name(pattern)));
+                    }
+                    product_coverage.extend(covered);
+                    product_expected = Some(expected);
+                }
+                if let Some(coverage) = self.pattern_finite_refinement_coverage(pattern, subject_ty)
                 {
                     let entry = refined_fields
                         .entry(coverage.key)
@@ -272,7 +288,10 @@ impl Inferencer {
             }
         }
 
-        if has_catch_all || object_refinements_are_exhaustive(&refined_fields) {
+        if has_catch_all
+            || object_refinements_are_exhaustive(&refined_fields)
+            || product_expected.is_some_and(|expected| product_coverage.len() == expected)
+        {
             Ok(())
         } else {
             Err(InferError::NonExhaustiveCase {
@@ -391,6 +410,59 @@ impl Inferencer {
         }
 
         None
+    }
+
+    fn object_product_coverage(
+        &self,
+        pattern: &Pattern,
+        ty: &Type,
+    ) -> Option<(BTreeSet<Vec<String>>, usize)> {
+        let Pattern::Object(pattern_fields) = strip_alias(pattern) else {
+            return None;
+        };
+        let Type::Object(row) = self.apply(ty) else {
+            return None;
+        };
+        let patterns = pattern_fields
+            .iter()
+            .map(|(name, pattern)| (name, pattern))
+            .collect::<BTreeMap<_, _>>();
+        let mut combinations = BTreeSet::from([Vec::new()]);
+        let mut expected = 1usize;
+        let mut has_finite_field = false;
+
+        for (name, field_ty) in &row.fields {
+            match self.finite_domain_for_type(field_ty) {
+                Some(domain) => {
+                    has_finite_field = true;
+                    expected = expected.checked_mul(domain.len())?;
+                    let labels = patterns.get(name).map_or_else(
+                        || Some(domain.clone()),
+                        |pattern| self.pattern_labels_for_domain(pattern, field_ty, &domain),
+                    )?;
+                    let mut next = BTreeSet::new();
+                    for prefix in &combinations {
+                        for label in &labels {
+                            let mut labels = prefix.clone();
+                            labels.push(label.clone());
+                            next.insert(labels);
+                            if next.len() > MAX_OBJECT_COVERAGE_COMBINATIONS {
+                                return None;
+                            }
+                        }
+                    }
+                    combinations = next;
+                }
+                None => {
+                    if patterns.get(name).is_some_and(|pattern| {
+                        !self.pattern_is_irrefutable_for_type(pattern, field_ty)
+                    }) {
+                        return None;
+                    }
+                }
+            }
+        }
+        has_finite_field.then_some((combinations, expected))
     }
 
     fn finite_domain_for_type(&self, ty: &Type) -> Option<BTreeSet<String>> {

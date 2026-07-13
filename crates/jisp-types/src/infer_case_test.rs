@@ -761,6 +761,38 @@ fn accepts_exhaustive_object_case_with_nested_bool_alternative() {
 }
 
 #[test]
+fn accepts_exhaustive_object_case_covering_two_boolean_fields() {
+    let mut inferencer = Inferencer::default();
+    let field = |name: &str, value| (name.to_owned(), Pattern::Literal(Literal::Bool(value)));
+    let expression = expr(ExprKind::Case {
+        subject: Box::new(expr(ExprKind::Object(vec![
+            (string("active"), bool_(true)),
+            (string("visible"), bool_(true)),
+        ]))),
+        branches: vec![
+            branch(
+                Pattern::Object(vec![field("active", true), field("visible", true)]),
+                int(3),
+            ),
+            branch(
+                Pattern::Object(vec![field("active", true), field("visible", false)]),
+                int(2),
+            ),
+            branch(
+                Pattern::Object(vec![field("active", false), field("visible", true)]),
+                int(1),
+            ),
+            branch(
+                Pattern::Object(vec![field("active", false), field("visible", false)]),
+                int(0),
+            ),
+        ],
+    });
+
+    assert_eq!(inferencer.infer_expr(&expression).unwrap(), Type::Int);
+}
+
+#[test]
 fn rejects_redundant_refined_object_case_pattern() {
     let mut inferencer = Inferencer::default();
     let expression = expr(ExprKind::Case {
