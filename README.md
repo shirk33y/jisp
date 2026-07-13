@@ -79,6 +79,10 @@ rows. A proc-macro consumer whose generated module uses bigints must declare
 `num-bigint = "0.4"` directly; generated Rust uses its concrete
 `num_bigint::BigInt` type.
 
+For expression-position Rust integration, `jisp_macros::lisp_expr!("path")`
+expands a Jisp file with exported zero-argument `main` into a typed Rust
+expression while tracking the source file and its Jisp imports for Cargo.
+
 ## CLI
 
 ```text

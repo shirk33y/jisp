@@ -44,7 +44,7 @@ JSON / restricted YAML / Lisp
   registered before Rust emission. It rejects unsupported shapes without
   introducing a dynamic `Value` ABI.
 - `jisp-macros`: Cargo dependency-tracking proc macros that call the facade
-  native-emission seam.
+  native-emission seam for item modules and `lisp_expr!` expression expansion.
 - `jisp`: facade API, including detailed native emission with source files,
   expansion origins, dependencies, tokens, and item-level generated Rust source
   mapping.

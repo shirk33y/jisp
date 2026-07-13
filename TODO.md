@@ -82,7 +82,8 @@ product-level direction and ordering rationale, see [ROADMAP.md](ROADMAP.md).
 - Add stronger list/object exhaustiveness analysis and native emission for
   non-enum alternative patterns. Native enum alternatives with shared bindings
   now emit Rust `|` patterns.
-- Expand `jisp-macros` beyond item-position native file emission.
+- Expand `jisp-macros` further beyond item-position emission. `lisp_expr!`
+  now compiles an exported zero-argument `main` as a typed Rust expression.
 - Broaden the current item-level generated-to-source mapping for `emit-rust`
   output into expression-level granularity needed for diagnostics. The facade
   now maps generated Rust function/struct/enum byte ranges back to Jisp

@@ -32,6 +32,34 @@ pub fn lisp_file(input: TokenStream) -> TokenStream {
     tracked_file(input)
 }
 
+/// Compile a Jisp file with an exported zero-argument `main` as a Rust
+/// expression. The file and all resolved Jisp imports remain Cargo-tracked.
+#[proc_macro]
+pub fn lisp_expr(input: TokenStream) -> TokenStream {
+    let path = parse_macro_input!(input as LitStr);
+    let source_path = resolve_path(&path.value());
+    let source_literal = LitStr::new(&source_path.display().to_string(), path.span());
+    let generated = match generate_file(&source_path) {
+        Ok(generated) => generated,
+        Err(message) => return quote! { compile_error!(#message); }.into(),
+    };
+    let dependency_literals = generated
+        .dependencies
+        .iter()
+        .map(|path| LitStr::new(&path.display().to_string(), proc_macro2::Span::call_site()));
+    let tokens = generated.tokens;
+
+    quote! {{
+        const _: &str = include_str!(#source_literal);
+        #(const _: &str = include_str!(#dependency_literals);)*
+        mod __jisp_expression {
+            #tokens
+        }
+        __jisp_expression::main()
+    }}
+    .into()
+}
+
 fn tracked_file(input: TokenStream) -> TokenStream {
     let path = parse_macro_input!(input as LitStr);
     let source_path = resolve_path(&path.value());
