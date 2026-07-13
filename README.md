@@ -98,6 +98,7 @@ jisp fmt [--check | --write] <path>
 jisp repl
 jisp lsp
 jisp init [path]
+jisp lock [path]
 ```
 
 | Command | Purpose |
@@ -112,6 +113,7 @@ jisp init [path]
 | `repl` | Start a REPL. `def`, `type`, and `import` forms persist for later expressions; `--state <file>` also persists accepted definitions across runs. Use `:help`, `:reset`, or `:quit`. |
 | `lsp` | Start a stdio Language Server Protocol endpoint with initialization, core-form completion and hover, go-to-definition for top-level/imported names plus `fn`, `let`, and `case` bindings, and live frontend diagnostics for opened or changed documents. |
 | `init` | Create a new package directory with `jisp.toml` and a runnable `main.lisp`; refuses to overwrite either file. |
+| `lock` | Resolve the package entry and local path dependencies, then write a deterministic `jisp.lock`. |
 
 `jisp.toml` may declare local package dependencies. An import matching the
 dependency name resolves to its path when no sibling module with that name
@@ -121,6 +123,10 @@ exists:
 [dependencies]
 math = { path = "../math" }
 ```
+
+`jisp lock` writes the resolved entry source and transitive dependency source
+files to `jisp.lock`; it is the current lockfile format for local path
+dependencies. External registry dependencies are not designed yet.
 
 Useful examples live in [examples](examples/): a basic hello program, a native
 codegen fixture, static object helpers, and structural UI data.

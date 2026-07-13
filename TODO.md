@@ -106,8 +106,9 @@ product-level direction and ordering rationale, see [ROADMAP.md](ROADMAP.md).
   entry point; `jisp lsp` provides stdio initialization, core-form completion
   and hover, go-to-definition for top-level/imported names and `fn`/`let`/`case` bindings, and live frontend diagnostics;
   local path dependencies from `[dependencies]` resolve during imports; `jisp repl --state <file>` persists accepted
-  definitions across process restarts; and `jisp fmt` provides idempotent Lisp,
-  canonical JSON, and flow-style YAML formatting with print/check/write modes.
+  definitions across process restarts; `jisp fmt` provides idempotent Lisp,
+  canonical JSON, and flow-style YAML formatting with print/check/write modes;
+  and `jisp lock` writes a deterministic lockfile for local path dependencies.
 
 ## Deferred by design
 
