@@ -85,8 +85,9 @@ product-level direction and ordering rationale, see [ROADMAP.md](ROADMAP.md).
   cross-module visibility and a general compile-time evaluator. Local template
   bindings introduced by macros are now hygienic, while unquoted caller syntax
   keeps its own spelling and scope. Macro exports are rejected during expansion
-  in all source syntaxes, preserving the module-local contract until an explicit
-  compile-time import form exists.
+  in all source syntaxes, and `macro-import` is reserved with a dedicated
+  diagnostic, preserving the module-local contract until the explicit
+  compile-time import form has dependency, cycle, and module-loading semantics.
 - Add stronger list/object exhaustiveness analysis. Finite list patterns and
   products of up to 256 finite object-field combinations are checked; native
   alternatives preserve branch-local bindings at top level and inside

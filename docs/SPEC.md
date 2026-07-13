@@ -62,14 +62,17 @@ final `... rest` parameter.
 ```
 
 Macros are currently module-local. They cannot be imported or exported;
-exporting a macro is an expansion error in every source syntax. Template
+exporting a macro is an expansion error in every source syntax. `macro-import`
+is reserved as the future explicit compile-time import form and currently
+lowers to a dedicated not-implemented diagnostic; ordinary runtime `import`
+does not import macro bindings. Template
 bindings introduced by `fn`, `let`, `use`, list-rest patterns, aliases, and
 ordinary `case` pattern bindings are hygienic: each expansion gives them a
 fresh internal name, while unquoted and spliced caller syntax keeps its original
 spelling and scope. The macro body is not a general compile-time Jisp
 evaluator; this keeps expansion deterministic and avoids a second prelude, IO,
-and module loading contract. Future cross-module macro visibility requires a
-separate compile-time import, dependency, cycle, and module loading contract.
+and module loading contract. Future cross-module macro visibility must fill in
+the `macro-import` dependency, cycle, and module loading contract.
 The full design and future boundaries are recorded in
 [`.agents/plans/0010-user-macros.md`](../.agents/plans/0010-user-macros.md) and
 [`.agents/plans/0018-macro-hygiene.md`](../.agents/plans/0018-macro-hygiene.md).

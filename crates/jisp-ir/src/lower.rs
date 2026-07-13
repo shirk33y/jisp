@@ -103,6 +103,10 @@ impl Lowerer {
                 });
                 Ok(())
             }
+            "macro-import" => Err(error(
+                node.span,
+                "macro-import is reserved for future cross-module macros; runtime import does not import macros",
+            )),
             "type" => {
                 if items.len() < 3 {
                     return Err(error(
@@ -125,7 +129,7 @@ impl Lowerer {
             _ => Err(error(
                 node.span,
                 format!(
-                    "top-level expression `{head}` is not allowed; use def, export, import, or type"
+                    "top-level expression `{head}` is not allowed; use def, export, import, macro-import, or type"
                 ),
             )),
         }

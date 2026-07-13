@@ -77,7 +77,7 @@ pub fn core_schema() -> Value {
                     {
                         "type": "array",
                         "minItems": 2,
-                        "prefixItems": [{ "enum": ["def", "export", "import", "type"] }]
+                        "prefixItems": [{ "enum": ["def", "export", "import", "macro-import", "type"] }]
                     }
                 ]
             }
@@ -94,6 +94,7 @@ mod tests {
         let text = serde_json::to_string(&core_schema()).unwrap();
         assert!(text.contains("\"case\""));
         assert!(text.contains("\"export\""));
+        assert!(text.contains("\"macro-import\""));
         assert!(text.contains("\"str.lines\""));
     }
 }

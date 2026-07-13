@@ -70,6 +70,16 @@ fn lower_rejects_duplicate_import_aliases() {
 }
 
 #[test]
+fn lower_reserves_macro_import_for_future_cross_module_macros() {
+    let error = lower(r#"[["macro-import","macros",["str","macros.lisp"]]]"#).unwrap_err();
+
+    assert_eq!(
+        error.diagnostics[0].message,
+        "macro-import is reserved for future cross-module macros; runtime import does not import macros"
+    );
+}
+
+#[test]
 fn lower_rejects_duplicate_type_constructors() {
     let error =
         lower(r#"[["type","first",["item"]],["type","second",["item","int"]]]"#).unwrap_err();

@@ -1624,6 +1624,7 @@ mod tests {
 
         assert!(labels.contains(&"case"));
         assert!(labels.contains(&"macro"));
+        assert!(labels.contains(&"macro-import"));
         assert!(labels.contains(&"~"));
         assert!(labels.contains(&"`"));
     }

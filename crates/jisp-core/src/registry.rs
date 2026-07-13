@@ -34,6 +34,14 @@ pub const SPECIAL_FORMS: &[SpecialFormSpec] = &[
         summary: "Import a module, optionally under an alias.",
     },
     SpecialFormSpec {
+        name: "macro-import",
+        aliases: &[],
+        min_args: 1,
+        max_args: Some(2),
+        top_level: true,
+        summary: "Reserved explicit compile-time macro import form.",
+    },
+    SpecialFormSpec {
         name: "type",
         aliases: &[],
         min_args: 2,
