@@ -796,7 +796,10 @@ fn lsp_top_level_binding(node: &Node) -> Option<(&str, Span)> {
     let [head, name, ..] = node.as_form()? else {
         return None;
     };
-    if matches!(head.as_symbol(), Some("def" | "export")) {
+    if matches!(
+        head.as_symbol(),
+        Some("def" | "defn" | "export" | "component")
+    ) {
         let value = name.as_symbol()?;
         Some((value, name.span))
     } else {
@@ -816,7 +819,7 @@ fn lsp_binding_in_node(
     let items = node.as_form()?;
     let head = items.first().and_then(Node::as_symbol);
     match head {
-        Some("fn") if items.len() == 3 => {
+        Some("fn") if items.len() >= 3 => {
             let mut scope = scope.to_vec();
             for parameter in items[1].as_form()? {
                 if let Some(name) = parameter.as_symbol().filter(|name| *name != "...") {
@@ -826,7 +829,27 @@ fn lsp_binding_in_node(
                     scope.push((name, parameter.span));
                 }
             }
-            lsp_binding_in_node(&items[2], offset, symbol, &scope)
+            items[2..]
+                .iter()
+                .find_map(|body| lsp_binding_in_node(body, offset, symbol, &scope))
+        }
+        Some("defn" | "component") if items.len() >= 4 => {
+            let name = items[1].as_symbol()?;
+            if span_contains(items[1].span, offset) && name == symbol {
+                return Some(items[1].span);
+            }
+            let mut scope = scope.to_vec();
+            for parameter in items[2].as_form()? {
+                if let Some(name) = parameter.as_symbol().filter(|name| *name != "...") {
+                    if span_contains(parameter.span, offset) && name == symbol {
+                        return Some(parameter.span);
+                    }
+                    scope.push((name, parameter.span));
+                }
+            }
+            items[3..]
+                .iter()
+                .find_map(|body| lsp_binding_in_node(body, offset, symbol, &scope))
         }
         Some("let") if items.len() == 3 => {
             let mut scope = scope.to_vec();
@@ -1204,7 +1227,7 @@ fn repl_step(state: &str, form: &str) -> Result<(String, Option<String>)> {
 fn is_repl_definition(form: &str) -> bool {
     matches!(
         form.split_whitespace().next(),
-        Some("(def" | "(type" | "(import")
+        Some("(def" | "(defn" | "(component" | "(type" | "(import")
     )
 }
 
@@ -1478,8 +1501,9 @@ mod tests {
 
     use super::{
         format_json_module, format_lisp_module, format_yaml_module, init_project, lock_project,
-        lsp_completion_items, lsp_diagnostics, lsp_hover, package_entry, remapped_cargo_errors,
-        repl_step, sha256_checksum, JsonParser, LispParser, SourceId, SyntaxParser, YamlParser,
+        lsp_completion_items, lsp_definition, lsp_diagnostics, lsp_hover, package_entry,
+        remapped_cargo_errors, repl_step, sha256_checksum, JsonParser, LispParser, SourceId,
+        SyntaxParser, YamlParser,
     };
 
     #[test]
@@ -1631,6 +1655,25 @@ mod tests {
         let (next_state, value) = repl_step(&state, "(+ answer 1)").unwrap();
         assert_eq!(next_state, state);
         assert_eq!(value.as_deref(), Some("42"));
+    }
+
+    #[test]
+    fn repl_keeps_defn_definitions_between_expression_steps() {
+        let (state, value) = repl_step("", "(defn add-one (value) (+ value 1))").unwrap();
+        assert!(value.is_none());
+
+        let (next_state, value) = repl_step(&state, "(add-one 41)").unwrap();
+        assert_eq!(next_state, state);
+        assert_eq!(value.as_deref(), Some("42"));
+    }
+
+    #[test]
+    fn lsp_definition_resolves_defn_bindings() {
+        let source = "(defn add (left right) (+ left right))\n(export main (fn () (add 1 2)))";
+        let definition = lsp_definition("file:///main.lisp", source, 1, 21).unwrap();
+
+        assert_eq!(definition["range"]["start"]["line"], 0);
+        assert_eq!(definition["range"]["start"]["character"], 6);
     }
 
     #[test]

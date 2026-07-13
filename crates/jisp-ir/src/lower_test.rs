@@ -66,6 +66,36 @@ fn export_can_define_a_public_value() {
 }
 
 #[test]
+fn defn_lowers_to_the_same_private_lambda_shape_as_def_and_fn() {
+    let module = lower_lisp(
+        r#"
+(defn add (left right)
+  (+ left right)
+  (+ left right))
+"#,
+    )
+    .unwrap();
+
+    assert_eq!(module.definitions[0].name, "add");
+    assert!(!module.definitions[0].public);
+    let ExprKind::Lambda { params, rest, body } = &module.definitions[0].value.kind else {
+        panic!("defn should lower to a lambda");
+    };
+    assert_eq!(params, &["left", "right"]);
+    assert!(rest.is_none());
+    assert!(matches!(body.kind, ExprKind::Do(_)));
+}
+
+#[test]
+fn defn_requires_a_name_parameter_list_and_body() {
+    let error = lower_lisp("(defn add (left right))").unwrap_err();
+    assert_eq!(
+        error.diagnostics[0].message,
+        "defn expects a name, parameter list, and a body"
+    );
+}
+
+#[test]
 fn lower_rejects_duplicate_module_value_names() {
     let error = lower(r#"[["def","answer",1],["export","answer",2]]"#).unwrap_err();
 

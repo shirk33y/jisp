@@ -168,6 +168,14 @@ pub const SPECIAL_FORMS: &[SpecialFormSpec] = &[
         summary: "Define a private module binding.",
     },
     SpecialFormSpec {
+        name: "defn",
+        aliases: &[],
+        min_args: 3,
+        max_args: None,
+        top_level: true,
+        summary: "Define a private module function.",
+    },
+    SpecialFormSpec {
         name: "export",
         aliases: &[],
         min_args: 1,

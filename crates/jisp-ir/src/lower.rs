@@ -67,6 +67,7 @@ impl Lowerer {
                 });
                 Ok(())
             }
+            "defn" => self.lower_defn(node.span, items, module),
             "export" => {
                 expect_arity(items, 2, 3, node.span, "export")?;
                 let name = expect_symbol(&items[1], "export name")?.to_owned();
@@ -130,7 +131,7 @@ impl Lowerer {
             _ => Err(error(
                 node.span,
                 format!(
-                    "top-level expression `{head}` is not allowed; use def, export, import, macro-import, type, or component"
+                    "top-level expression `{head}` is not allowed; use def, defn, export, import, macro-import, type, or component"
                 ),
             )),
         }
@@ -264,6 +265,37 @@ impl Lowerer {
             },
             span,
         ))
+    }
+
+    fn lower_defn(
+        &self,
+        span: Span,
+        items: &[Node],
+        module: &mut Module,
+    ) -> Result<(), LowerError> {
+        if items.len() < 4 {
+            return Err(error(
+                span,
+                "defn expects a name, parameter list, and a body",
+            ));
+        }
+        let name = expect_symbol(&items[1], "function name")?.to_owned();
+        let (params, rest) = parse_fn_params(&items[2])?;
+        let body = self.lower_body(&items[3..], span)?;
+        module.definitions.push(Definition {
+            name,
+            public: false,
+            value: Expr::new(
+                ExprKind::Lambda {
+                    params,
+                    rest,
+                    body: Box::new(body),
+                },
+                span,
+            ),
+            span,
+        });
+        Ok(())
     }
 
     fn lower_let(&self, span: Span, items: &[Node]) -> Result<Expr, LowerError> {

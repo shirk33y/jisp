@@ -77,7 +77,7 @@ pub fn core_schema() -> Value {
                     {
                         "type": "array",
                         "minItems": 2,
-                        "prefixItems": [{ "enum": ["def", "export", "import", "macro-import", "type", "component"] }]
+                        "prefixItems": [{ "enum": ["def", "defn", "export", "import", "macro-import", "type", "component"] }]
                     }
                 ]
             }
@@ -93,6 +93,7 @@ mod tests {
     fn schema_mentions_core_forms() {
         let text = serde_json::to_string(&core_schema()).unwrap();
         assert!(text.contains("\"case\""));
+        assert!(text.contains("\"defn\""));
         assert!(text.contains("\"export\""));
         assert!(text.contains("\"macro-import\""));
         assert!(text.contains("\"str.lines\""));
