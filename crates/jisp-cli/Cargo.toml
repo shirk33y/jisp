@@ -13,4 +13,5 @@ anyhow.workspace = true
 clap.workspace = true
 jisp.workspace = true
 jisp-core.workspace = true
+jisp-syntax-lisp.workspace = true
 serde_json.workspace = true

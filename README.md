@@ -92,6 +92,7 @@ jisp schema [output]
 jisp export-schema <path> <export> [output]
 jisp emit-rust <path>
 jisp native-check <path>
+jisp fmt [--check | --write] <path>
 ```
 
 | Command | Purpose |
@@ -102,6 +103,7 @@ jisp native-check <path>
 | `export-schema` | Print or write a JSON Schema for one monomorphic, JSON-native public export, including non-parameterized tagged variants. |
 | `emit-rust` | Emit Rust tokens for the supported native subset. |
 | `native-check` | Compile generated Rust in a temporary offline Cargo crate and remap item-level compiler errors to Jisp source. |
+| `fmt` | Format a `.lisp`/`.jisp` file; default prints, `--check` validates, and `--write` updates the file. |
 
 Useful examples live in [examples](examples/): a basic hello program, a native
 codegen fixture, static object helpers, and structural UI data.

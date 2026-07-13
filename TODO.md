@@ -96,7 +96,9 @@ product-level direction and ordering rationale, see [ROADMAP.md](ROADMAP.md).
   richer recursive type annotations. Monomorphic JSON-native exports, including
   non-parameterized algebraic types, now resolve imports and expose their
   dependency graph through `jisp export-schema`.
-- Add formatter, REPL persistence, LSP, and package tooling.
+- Extend the Lisp formatter with JSON/YAML writers, then add REPL persistence,
+  LSP, and package tooling. `jisp fmt` now provides idempotent Lisp formatting
+  with print/check/write modes.
 
 ## Deferred by design
 

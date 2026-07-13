@@ -7,7 +7,8 @@ use std::{
 
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
-use jisp_core::Diagnostic;
+use jisp_core::{Diagnostic, Node, NodeKind, SourceId, SyntaxParser};
+use jisp_syntax_lisp::LispParser;
 
 #[derive(Parser)]
 #[command(name = "jisp", version, about = "Jisp language toolkit")]
@@ -41,6 +42,13 @@ enum Command {
     },
     NativeCheck {
         path: PathBuf,
+    },
+    Fmt {
+        path: PathBuf,
+        #[arg(long)]
+        check: bool,
+        #[arg(long)]
+        write: bool,
     },
 }
 
@@ -109,8 +117,81 @@ fn main() -> Result<()> {
             println!("{}", generated.tokens);
         }
         Command::NativeCheck { path } => native_check(&path)?,
+        Command::Fmt { path, check, write } => format_lisp_file(&path, check, write)?,
     }
     Ok(())
+}
+
+fn format_lisp_file(path: &Path, check: bool, write: bool) -> Result<()> {
+    if path
+        .extension()
+        .and_then(|extension| extension.to_str())
+        .is_none_or(|extension| !matches!(extension, "lisp" | "jisp"))
+    {
+        anyhow::bail!("jisp fmt currently supports .lisp and .jisp files");
+    }
+    if check && write {
+        anyhow::bail!("jisp fmt accepts either --check or --write, not both");
+    }
+    let original = fs::read_to_string(path).with_context(|| format!("read {}", path.display()))?;
+    let nodes = LispParser
+        .parse_module(SourceId(0), &original)
+        .map_err(|error| anyhow::anyhow!(error.to_string()))?;
+    let formatted = format_lisp_module(&nodes);
+    if check {
+        if formatted != original {
+            anyhow::bail!("{} is not formatted", path.display());
+        }
+        println!("ok: {}", path.display());
+    } else if write {
+        fs::write(path, formatted).with_context(|| format!("write {}", path.display()))?;
+    } else {
+        print!("{formatted}");
+    }
+    Ok(())
+}
+
+fn format_lisp_module(nodes: &[Node]) -> String {
+    let mut output = nodes
+        .iter()
+        .map(format_lisp_node)
+        .collect::<Vec<_>>()
+        .join("\n");
+    output.push('\n');
+    output
+}
+
+fn format_lisp_node(node: &Node) -> String {
+    match &node.kind {
+        NodeKind::Null => "null".to_owned(),
+        NodeKind::Bool(value) => value.to_string(),
+        NodeKind::Int(value) => value.to_string(),
+        NodeKind::Float(value) => value.to_string(),
+        NodeKind::Symbol(value) => value.to_string(),
+        NodeKind::String(value) => {
+            serde_json::to_string(value.as_ref()).expect("string serialization")
+        }
+        NodeKind::Form(items)
+            if matches!(
+                items.first().and_then(Node::as_symbol),
+                Some("`" | "," | ",@")
+            ) && items.len() == 2 =>
+        {
+            format!(
+                "{}{}",
+                items[0].as_symbol().unwrap(),
+                format_lisp_node(&items[1])
+            )
+        }
+        NodeKind::Form(items) => format!(
+            "({})",
+            items
+                .iter()
+                .map(format_lisp_node)
+                .collect::<Vec<_>>()
+                .join(" ")
+        ),
+    }
 }
 
 fn native_check(path: &Path) -> Result<()> {
@@ -210,7 +291,7 @@ fn report_jisp_module_error(error: &jisp::ModuleError) -> ! {
 mod tests {
     use std::path::Path;
 
-    use super::remapped_cargo_errors;
+    use super::{format_lisp_module, remapped_cargo_errors, LispParser, SourceId, SyntaxParser};
 
     #[test]
     fn remaps_a_primary_cargo_span_to_the_containing_jisp_item() {
@@ -234,5 +315,17 @@ mod tests {
             rendered[0]
         );
         assert!(rendered[0].contains("main.lisp:1:1"), "{}", rendered[0]);
+    }
+
+    #[test]
+    fn lisp_formatter_round_trips_the_normalized_ast() {
+        let original = "(export main (fn () (str \"x\" ,\"y\")))";
+        let parser = LispParser;
+        let nodes = parser.parse_module(SourceId(0), original).unwrap();
+        let formatted = format_lisp_module(&nodes);
+        let reparsed = parser.parse_module(SourceId(0), &formatted).unwrap();
+
+        assert_eq!(nodes, reparsed);
+        assert_eq!(formatted, format_lisp_module(&reparsed));
     }
 }
