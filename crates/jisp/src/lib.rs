@@ -74,6 +74,7 @@ pub struct ParseOptions {
 
 pub struct ParsedModule {
     pub sources: SourceMap,
+    pub nodes: Vec<Node>,
     pub module: Module,
     pub expansion_map: ExpansionMap,
     pub types: Option<BTreeMap<String, Scheme>>,
@@ -236,6 +237,7 @@ pub fn parse_as_detailed(
     let name = name.into();
     let LoweredModule {
         mut sources,
+        nodes,
         module,
         expansion_map,
     } = lower_as_detailed(name.clone(), syntax, text)?;
@@ -262,6 +264,7 @@ pub fn parse_as_detailed(
     };
     Ok(ParsedModule {
         sources,
+        nodes,
         module,
         expansion_map,
         types,
@@ -299,6 +302,7 @@ pub fn emit_rust_as_detailed(
     let name = name.into();
     let LoweredModule {
         mut sources,
+        nodes: _,
         module,
         expansion_map,
     } = lower_as_detailed(name.clone(), syntax, text)?;
@@ -325,6 +329,7 @@ pub fn emit_rust_as_detailed(
 
 struct LoweredModule {
     sources: SourceMap,
+    nodes: Vec<Node>,
     module: Module,
     expansion_map: ExpansionMap,
 }
@@ -360,7 +365,8 @@ fn lower_as_detailed(
             ))
         }
     };
-    let module = match Lowerer.lower_module(&expanded.nodes) {
+    let nodes = expanded.nodes;
+    let module = match Lowerer.lower_module(&nodes) {
         Ok(module) => module,
         Err(error) => {
             return Err(ModuleError::new(
@@ -372,6 +378,7 @@ fn lower_as_detailed(
     };
     Ok(LoweredModule {
         sources,
+        nodes,
         module,
         expansion_map: expanded.expansion_map,
     })

@@ -7,7 +7,21 @@ fn definition_resolves_a_local_top_level_name() {
 
     assert_eq!(definition["uri"], "file:///main.lisp");
     assert_eq!(definition["range"]["start"]["line"], 0);
-    assert_eq!(definition["range"]["start"]["character"], 0);
+    assert_eq!(definition["range"]["start"]["character"], 5);
+}
+
+#[test]
+fn definition_resolves_lambda_and_sequential_let_bindings() {
+    let text =
+        "(export main (fn (value) (let (offset 1 total (+ value offset)) (+ total value))))\n";
+
+    let parameter = lsp_definition("file:///main.lisp", text, 0, 52).unwrap();
+    let offset = lsp_definition("file:///main.lisp", text, 0, 58).unwrap();
+    let total = lsp_definition("file:///main.lisp", text, 0, 70).unwrap();
+
+    assert_eq!(parameter["range"]["start"]["character"], 18);
+    assert_eq!(offset["range"]["start"]["character"], 31);
+    assert_eq!(total["range"]["start"]["character"], 40);
 }
 
 #[test]

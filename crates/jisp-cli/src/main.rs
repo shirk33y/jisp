@@ -318,18 +318,107 @@ fn lsp_definition(
         Ok(parsed) => parsed,
         Err(_) => jisp::parse_detailed(path, text).ok()?,
     };
-    let span = parsed
-        .module
-        .definitions
-        .iter()
-        .find(|definition| definition.name == symbol)
-        .map(|definition| definition.span)
+    let span = lsp_local_binding_span(&parsed.nodes, offset, symbol)
+        .or_else(|| {
+            parsed
+                .module
+                .definitions
+                .iter()
+                .find(|definition| definition.name == symbol)
+                .map(|definition| definition.span)
+        })
         .or_else(|| lsp_imported_definition_span(&parsed, symbol))?;
     let file = parsed.sources.get(span.source)?;
     Some(serde_json::json!({
         "uri": lsp_source_uri(uri, file.name()),
         "range": { "start": lsp_position(file, span.start), "end": lsp_position(file, span.end) }
     }))
+}
+
+fn lsp_local_binding_span(nodes: &[Node], offset: usize, symbol: &str) -> Option<Span> {
+    let top_level = nodes
+        .iter()
+        .filter_map(lsp_top_level_binding)
+        .collect::<Vec<_>>();
+    nodes
+        .iter()
+        .find_map(|node| lsp_binding_in_node(node, offset, symbol, &top_level))
+}
+
+fn lsp_top_level_binding(node: &Node) -> Option<(&str, Span)> {
+    let [head, name, ..] = node.as_form()? else {
+        return None;
+    };
+    if matches!(head.as_symbol(), Some("def" | "export")) {
+        let value = name.as_symbol()?;
+        Some((value, name.span))
+    } else {
+        None
+    }
+}
+
+fn lsp_binding_in_node(
+    node: &Node,
+    offset: usize,
+    symbol: &str,
+    scope: &[(&str, Span)],
+) -> Option<Span> {
+    if !span_contains(node.span, offset) {
+        return None;
+    }
+    let items = node.as_form()?;
+    let head = items.first().and_then(Node::as_symbol);
+    match head {
+        Some("fn") if items.len() == 3 => {
+            let mut scope = scope.to_vec();
+            for parameter in items[1].as_form()? {
+                if let Some(name) = parameter.as_symbol().filter(|name| *name != "...") {
+                    if span_contains(parameter.span, offset) && name == symbol {
+                        return Some(parameter.span);
+                    }
+                    scope.push((name, parameter.span));
+                }
+            }
+            lsp_binding_in_node(&items[2], offset, symbol, &scope)
+        }
+        Some("let") if items.len() == 3 => {
+            let mut scope = scope.to_vec();
+            let bindings = items[1].as_form()?;
+            for pair in bindings.chunks_exact(2) {
+                let name = pair[0].as_symbol()?;
+                if span_contains(pair[0].span, offset) && name == symbol {
+                    return Some(pair[0].span);
+                }
+                if let Some(binding) = lsp_binding_in_node(&pair[1], offset, symbol, &scope) {
+                    return Some(binding);
+                }
+                scope.push((name, pair[0].span));
+            }
+            lsp_binding_in_node(&items[2], offset, symbol, &scope)
+        }
+        Some("def" | "export") if items.len() == 3 => {
+            let name = items[1].as_symbol()?;
+            if span_contains(items[1].span, offset) && name == symbol {
+                return Some(items[1].span);
+            }
+            lsp_binding_in_node(&items[2], offset, symbol, scope)
+        }
+        _ => {
+            for item in items {
+                if let Some(binding) = lsp_binding_in_node(item, offset, symbol, scope) {
+                    return Some(binding);
+                }
+            }
+            scope
+                .iter()
+                .rev()
+                .find_map(|(name, span)| (*name == symbol).then_some(*span))
+        }
+    }
+}
+
+fn span_contains(span: Span, offset: usize) -> bool {
+    span.start <= offset && offset < span.end
 }
 
 fn lsp_imported_definition_span(parsed: &jisp::ParsedModule, symbol: &str) -> Option<Span> {
