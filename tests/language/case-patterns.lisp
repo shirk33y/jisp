@@ -81,3 +81,12 @@
       (literal-match 0)
       (literal-match 1)
       (literal-match 9))))
+
+(test "or patterns share payload bindings across alternatives"
+  (assert.equal
+    8
+    (case (search "ignored")
+      ((or (search value) (missing value))
+        (+ (str.len value) 1))
+      ((home) 0)
+      ((profile _ _) 0))))

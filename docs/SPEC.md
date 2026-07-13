@@ -103,6 +103,24 @@ exhaustiveness: retain an unguarded branch for the remaining values.
       (_ 2))))
 ```
 
+## Case alternatives
+
+`(or first second ...)` matches any alternative. Every alternative must bind
+the same names, so the case body is valid regardless of which one matched.
+
+```lisp test=spec.case-or mode=run
+(type response
+  (ok int)
+  (pending int)
+  (err int))
+
+(export main
+  (fn ()
+    (case (pending 7)
+      ((or (ok value) (pending value)) (+ value 1))
+      ((err _) 0))))
+```
+
 ## Definitions and modules
 
 ```yaml
