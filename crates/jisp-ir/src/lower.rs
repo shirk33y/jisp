@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use jisp_core::{Diagnostic, Node, NodeKind, Span};
+use jisp_core::{ui_element, Diagnostic, Node, NodeKind, Span};
 use thiserror::Error;
 
 use crate::{
@@ -107,7 +107,7 @@ impl Lowerer {
                 node.span,
                 "macro-import must be resolved before lowering; runtime import does not import macros",
             )),
-            "component" | "view" => self.lower_view(node.span, items, module),
+            "component" => crate::ui::lower_component(self, node.span, items, module),
             "type" => {
                 if items.len() < 3 {
                     return Err(error(
@@ -130,7 +130,7 @@ impl Lowerer {
             _ => Err(error(
                 node.span,
                 format!(
-                    "top-level expression `{head}` is not allowed; use def, export, import, macro-import, type, or view"
+                    "top-level expression `{head}` is not allowed; use def, export, import, macro-import, type, or component"
                 ),
             )),
         }
@@ -215,8 +215,6 @@ impl Lowerer {
                 span,
             )),
             Some("obj") => self.lower_obj(span, items),
-            Some("tag") => self.lower_ui_tag(span, &items[1..]),
-            Some("text") => self.lower_ui_text(span, items),
             Some(".") => {
                 expect_arity(items, 3, 3, span, ".")?;
                 Ok(Expr::new(
@@ -231,7 +229,14 @@ impl Lowerer {
             Some("str.lines") => self.lower_string_template(span, true, &items[1..]),
             Some("case") => self.lower_case(span, items),
             Some("use") => self.lower_use(span, items),
-            Some("component" | "view") => Err(error(span, "view is only valid at top level")),
+            Some("component") => Err(error(span, "component is only valid at top level")),
+            Some("text" | "attr" | "prop" | "class" | "class-if" | "on" | "key" | "for") => {
+                Err(error(span, "UI syntax is only valid inside a component"))
+            }
+            Some(name) if ui_element(name).is_some() => Err(error(
+                span,
+                format!("UI element `{name}` is only valid inside a component"),
+            )),
             Some("quote" | "quasiquote" | "`" | "macro" | "~") => Err(error(
                 span,
                 "macro-phase syntax must be expanded before lowering",
@@ -242,37 +247,6 @@ impl Lowerer {
             )),
             _ => self.lower_call(span, items),
         }
-    }
-
-    fn lower_view(
-        &self,
-        span: Span,
-        items: &[Node],
-        module: &mut Module,
-    ) -> Result<(), LowerError> {
-        if items.len() < 4 {
-            return Err(error(
-                span,
-                "view expects a name, parameter list, and UI body",
-            ));
-        }
-        let name = expect_symbol(&items[1], "view name")?.to_owned();
-        let (params, rest) = parse_fn_params(&items[2])?;
-        let body = self.lower_view_body(span, &name, &items[3..])?;
-        module.definitions.push(Definition {
-            name,
-            public: false,
-            value: Expr::new(
-                ExprKind::Lambda {
-                    params,
-                    rest,
-                    body: Box::new(body),
-                },
-                span,
-            ),
-            span,
-        });
-        Ok(())
     }
 
     fn lower_fn(&self, span: Span, items: &[Node]) -> Result<Expr, LowerError> {
@@ -398,193 +372,6 @@ impl Lowerer {
         Ok(Expr::new(ExprKind::StringTemplate { lines, parts }, span))
     }
 
-    fn lower_view_body(
-        &self,
-        span: Span,
-        default_tag: &str,
-        nodes: &[Node],
-    ) -> Result<Expr, LowerError> {
-        if nodes.is_empty() {
-            return Err(error(span, "view expects a UI body"));
-        }
-        if nodes.len() == 1 && is_explicit_ui_element(&nodes[0]) {
-            self.lower_ui_expr(&nodes[0])
-        } else {
-            self.lower_ui_element(span, default_tag, nodes)
-        }
-    }
-
-    fn lower_ui_expr(&self, node: &Node) -> Result<Expr, LowerError> {
-        match &node.kind {
-            NodeKind::String(_) => self.lower_ui_text_value(node.span, node),
-            NodeKind::Form(items) => {
-                let Some(head) = items.first().and_then(Node::as_symbol) else {
-                    return self.lower_expr(node);
-                };
-                match head {
-                    "tag" => self.lower_ui_tag(node.span, &items[1..]),
-                    "text" => self.lower_ui_text(node.span, items),
-                    tag if is_html_tag(tag) => self.lower_ui_element(node.span, tag, &items[1..]),
-                    _ => self.lower_expr(node),
-                }
-            }
-            _ => self.lower_expr(node),
-        }
-    }
-
-    fn lower_ui_tag(&self, span: Span, nodes: &[Node]) -> Result<Expr, LowerError> {
-        let Some((tag_node, args)) = nodes.split_first() else {
-            return Err(error(span, "tag expects a tag name and optional content"));
-        };
-        let tag = expect_name(tag_node, "tag name")?;
-        self.lower_ui_element(span, tag, args)
-    }
-
-    fn lower_ui_text(&self, span: Span, items: &[Node]) -> Result<Expr, LowerError> {
-        expect_arity(items, 2, 2, span, "text")?;
-        self.lower_ui_text_value(span, &items[1])
-    }
-
-    fn lower_ui_text_value(&self, span: Span, value: &Node) -> Result<Expr, LowerError> {
-        Ok(Expr::new(
-            ExprKind::Object(vec![
-                (string_literal("tag", span), string_literal("text", span)),
-                (string_literal("value", span), self.lower_expr(value)?),
-            ]),
-            span,
-        ))
-    }
-
-    fn lower_ui_element(&self, span: Span, tag: &str, nodes: &[Node]) -> Result<Expr, LowerError> {
-        let mut fields = vec![(string_literal("tag", span), string_literal(tag, span))];
-        let parts = self.lower_ui_parts(nodes)?;
-        fields.extend(parts.props);
-        if !parts.classes.is_empty() {
-            fields.push((
-                string_literal("classes", span),
-                Expr::new(ExprKind::Object(parts.classes), span),
-            ));
-        }
-        if !parts.children.is_empty() {
-            fields.push((
-                string_literal("children", span),
-                Expr::new(ExprKind::List(parts.children), span),
-            ));
-        }
-        Ok(Expr::new(ExprKind::Object(fields), span))
-    }
-
-    fn lower_ui_parts(&self, nodes: &[Node]) -> Result<UiParts, LowerError> {
-        let mut parts = UiParts::default();
-        let mut index = 0;
-        while index < nodes.len() {
-            let node = &nodes[index];
-            if let Some(form) = node.as_form() {
-                if self.lower_ui_directive(&mut parts, node.span, form)? {
-                    index += 1;
-                    continue;
-                }
-            }
-            if let Some(key) = node.as_symbol().or_else(|| node.as_string()) {
-                if let Some(value) = nodes.get(index + 1) {
-                    self.lower_ui_key_value(&mut parts, node.span, key, value)?;
-                    index += 2;
-                    continue;
-                }
-            }
-            parts.children.push(self.lower_ui_expr(node)?);
-            index += 1;
-        }
-        Ok(parts)
-    }
-
-    fn lower_ui_directive(
-        &self,
-        parts: &mut UiParts,
-        span: Span,
-        items: &[Node],
-    ) -> Result<bool, LowerError> {
-        let Some(head) = items.first().and_then(Node::as_symbol) else {
-            return Ok(false);
-        };
-
-        match head {
-            "attr" | "prop" => {
-                expect_arity(items, 3, 3, span, "attr")?;
-                let key = expect_name(&items[1], "attr key")?;
-                parts.props.push((
-                    string_literal(key, items[1].span),
-                    self.lower_expr(&items[2])?,
-                ));
-                Ok(true)
-            }
-            "class" => {
-                if !(2..=3).contains(&items.len()) {
-                    return Err(error(
-                        span,
-                        "class expects a name and optional boolean expression",
-                    ));
-                }
-                let enabled = items
-                    .get(2)
-                    .map(|node| self.lower_expr(node))
-                    .transpose()?
-                    .unwrap_or_else(|| bool_literal(true, items[1].span));
-                parts
-                    .classes
-                    .push((self.lower_class_key(&items[1])?, enabled));
-                Ok(true)
-            }
-            "classes" => {
-                if items.len() < 2 {
-                    return Err(error(span, "classes expects at least one class name"));
-                }
-                for class in &items[1..] {
-                    parts
-                        .classes
-                        .push((self.lower_class_key(class)?, bool_literal(true, class.span)));
-                }
-                Ok(true)
-            }
-            "child" => {
-                expect_arity(items, 2, 2, span, "child")?;
-                parts.children.push(self.lower_ui_expr(&items[1])?);
-                Ok(true)
-            }
-            "tag" | "text" => Ok(false),
-            tag if is_html_tag(tag) => Ok(false),
-            key if items.len() == 2 => {
-                self.lower_ui_key_value(parts, span, key, &items[1])?;
-                Ok(true)
-            }
-            _ => Ok(false),
-        }
-    }
-
-    fn lower_ui_key_value(
-        &self,
-        parts: &mut UiParts,
-        span: Span,
-        key: &str,
-        value: &Node,
-    ) -> Result<(), LowerError> {
-        let lowered = self.lower_expr(value)?;
-        if is_utility_class(key) {
-            parts.classes.push((string_literal(key, span), lowered));
-        } else {
-            parts.props.push((string_literal(key, span), lowered));
-        }
-        Ok(())
-    }
-
-    fn lower_class_key(&self, node: &Node) -> Result<Expr, LowerError> {
-        if let Some(value) = node.as_symbol().or_else(|| node.as_string()) {
-            Ok(string_literal(value, node.span))
-        } else {
-            self.lower_expr(node)
-        }
-    }
-
     fn lower_case(&self, span: Span, items: &[Node]) -> Result<Expr, LowerError> {
         if items.len() < 3 {
             return Err(error(
@@ -677,13 +464,6 @@ impl Lowerer {
             )),
         }
     }
-}
-
-#[derive(Default)]
-struct UiParts {
-    props: Vec<(Expr, Expr)>,
-    classes: Vec<(Expr, Expr)>,
-    children: Vec<Expr>,
 }
 
 fn lower_variant(node: &Node) -> Result<VariantDecl, LowerError> {
@@ -824,7 +604,7 @@ fn lower_object_pattern(span: Span, nodes: &[Node]) -> Result<Pattern, LowerErro
     Ok(Pattern::Object(fields))
 }
 
-fn parse_fn_params(node: &Node) -> Result<(Vec<String>, Option<String>), LowerError> {
+pub(crate) fn parse_fn_params(node: &Node) -> Result<(Vec<String>, Option<String>), LowerError> {
     let params_node = expect_form(node, "fn parameter list")?;
     let mut params = vec![];
     let mut rest = None;
@@ -871,7 +651,7 @@ fn expect_form<'a>(node: &'a Node, description: &str) -> Result<&'a [Node], Lowe
         .ok_or_else(|| error(node.span, format!("expected {description}")))
 }
 
-fn expect_symbol<'a>(node: &'a Node, description: &str) -> Result<&'a str, LowerError> {
+pub(crate) fn expect_symbol<'a>(node: &'a Node, description: &str) -> Result<&'a str, LowerError> {
     node.as_symbol()
         .ok_or_else(|| error(node.span, format!("expected {description}")))
 }
@@ -881,18 +661,7 @@ fn expect_string<'a>(node: &'a Node, description: &str) -> Result<&'a str, Lower
         .ok_or_else(|| error(node.span, format!("expected {description} to be a string")))
 }
 
-fn expect_name<'a>(node: &'a Node, description: &str) -> Result<&'a str, LowerError> {
-    node.as_symbol()
-        .or_else(|| node.as_string())
-        .ok_or_else(|| {
-            error(
-                node.span,
-                format!("expected {description} to be a symbol or string"),
-            )
-        })
-}
-
-fn expect_arity(
+pub(crate) fn expect_arity(
     items: &[Node],
     min: usize,
     max: usize,
@@ -963,60 +732,6 @@ fn validate_module_names(module: &Module, diagnostics: &mut Vec<Diagnostic>) {
     }
 }
 
-fn string_literal(value: impl Into<String>, span: Span) -> Expr {
-    Expr::new(ExprKind::Literal(Literal::String(value.into())), span)
-}
-
-fn bool_literal(value: bool, span: Span) -> Expr {
-    Expr::new(ExprKind::Literal(Literal::Bool(value)), span)
-}
-
-fn is_html_tag(name: &str) -> bool {
-    matches!(
-        name,
-        "a" | "article"
-            | "aside"
-            | "button"
-            | "div"
-            | "footer"
-            | "form"
-            | "h1"
-            | "h2"
-            | "h3"
-            | "header"
-            | "img"
-            | "input"
-            | "label"
-            | "li"
-            | "main"
-            | "nav"
-            | "ol"
-            | "option"
-            | "p"
-            | "section"
-            | "select"
-            | "span"
-            | "strong"
-            | "textarea"
-            | "ul"
-    )
-}
-
-fn is_utility_class(name: &str) -> bool {
-    name.contains('-')
-}
-
-fn is_explicit_ui_element(node: &Node) -> bool {
-    let Some(items) = node.as_form() else {
-        return false;
-    };
-    matches!(items.first().and_then(Node::as_symbol), Some("tag"))
-        || items
-            .first()
-            .and_then(Node::as_symbol)
-            .is_some_and(is_html_tag)
-}
-
 fn record_unique_name(
     names: &mut BTreeMap<String, Span>,
     name: &str,
@@ -1057,6 +772,6 @@ fn static_string_key(expr: &Expr) -> Option<String> {
     }
 }
 
-fn error(span: Span, message: impl Into<String>) -> LowerError {
+pub(crate) fn error(span: Span, message: impl Into<String>) -> LowerError {
     LowerError::single(Diagnostic::error(span, message).with_code("JISP-LOWER"))
 }

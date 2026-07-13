@@ -1,24 +1,19 @@
 (def saving false)
-(def active true)
 
-(def save-button
-  (obj
-    "tag" "button"
-    "id" "save-button"
-    "title" "Save <draft>"
-    "classes"
-      (obj
-        "px-4" true
-        "py-2" true
-        "opacity-50" saving
-        "bg-emerald-600" (and active (not saving)))
-    "children"
-      (list
-        (obj
-          "tag" "text"
-          "value" "Save & close"))))
+(component todo-row (title)
+  (li
+    (attr "data-id" title)
+    (class "rounded" "px-2")
+    (class-if "opacity-50" saving)
+    (span (text title))))
 
-(test "ui html renders active classes attributes and escaped text"
+(component todo-list (titles)
+  (ul
+    (attr "aria-label" "Tasks")
+    (for title titles
+      (todo-row title))))
+
+(test "ui components render explicit attributes classes and repeated children"
   (assert.equal
-    "<button class=\"px-4 py-2 bg-emerald-600\" id=\"save-button\" title=\"Save &lt;draft&gt;\">Save &amp; close</button>"
-    (ui.html save-button)))
+    "<ul aria-label=\"Tasks\"><li class=\"rounded px-2\" data-id=\"Plan\"><span>Plan</span></li><li class=\"rounded px-2\" data-id=\"Ship\"><span>Ship</span></li></ul>"
+    (ui.html (todo-list (list "Plan" "Ship")))))

@@ -26,10 +26,11 @@ product-level direction and ordering rationale, see [ROADMAP.md](ROADMAP.md).
   dynamic `Value` for ordinary program values.
 - `jisp-macros` uses the facade native file/item path and tracks imported source
   files with `include_str!`.
-- Jisp has a P1 UI-language proof-of-shape in `examples/ui_button.lisp`:
-  React-like nodes are plain structural data and Tailwind-like utility classes
-  are first-class object keys with boolean activation, not `class` or
-  `className` strings.
+- Jisp has a P1 UI-language proof-of-shape. Declarative source uses explicit
+  components, host elements, and directives; lowering retains renderer-neutral
+  structural nodes. `examples/ui_button.lisp` remains native-codegen coverage
+  for the underlying data shape, while `examples/ui_components.lisp` is the
+  default source syntax.
 
 ## P2 — complete
 

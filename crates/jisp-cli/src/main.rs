@@ -741,11 +741,14 @@ fn lsp() -> Result<()> {
 fn lsp_hover(text: &str, line: usize, character: usize) -> Option<serde_json::Value> {
     let offset = lsp_byte_offset(text, line, character)?;
     let symbol = lsp_symbol_at(text, offset)?;
-    let form = jisp_core::SPECIAL_FORMS
-        .iter()
-        .find(|form| form.name == symbol || form.aliases.contains(&symbol))?;
+    let (name, summary) = jisp_core::special_form(symbol)
+        .map(|form| (form.name, form.summary))
+        .or_else(|| jisp_core::ui_element(symbol).map(|element| (element.name, element.summary)))
+        .or_else(|| {
+            jisp_core::ui_directive(symbol).map(|directive| (directive.name, directive.summary))
+        })?;
     Some(serde_json::json!({
-        "contents": { "kind": "markdown", "value": format!("**{}** — {}", form.name, form.summary) }
+        "contents": { "kind": "markdown", "value": format!("**{}** — {}", name, summary) }
     }))
 }
 
@@ -1044,6 +1047,20 @@ fn lsp_completion_items() -> Vec<serde_json::Value> {
                 "detail": detail,
             })
         })
+        .chain(jisp_core::UI_ELEMENTS.iter().map(|element| {
+            serde_json::json!({
+                "label": element.name,
+                "kind": 7,
+                "detail": element.summary,
+            })
+        }))
+        .chain(jisp_core::UI_DIRECTIVES.iter().map(|directive| {
+            serde_json::json!({
+                "label": directive.name,
+                "kind": 3,
+                "detail": directive.summary,
+            })
+        }))
         .collect()
 }
 
@@ -1631,7 +1648,7 @@ mod tests {
     }
 
     #[test]
-    fn lsp_completion_comes_from_the_core_special_form_registry() {
+    fn lsp_completion_includes_core_and_ui_registries() {
         let items = lsp_completion_items();
         let labels = items
             .iter()
@@ -1643,10 +1660,12 @@ mod tests {
         assert!(labels.contains(&"macro-import"));
         assert!(labels.contains(&"~"));
         assert!(labels.contains(&"`"));
+        assert!(labels.contains(&"div"));
+        assert!(labels.contains(&"class-if"));
     }
 
     #[test]
-    fn lsp_hover_resolves_special_forms_and_utf16_positions() {
+    fn lsp_hover_resolves_core_and_ui_forms_at_utf16_positions() {
         let hover = lsp_hover("\u{1f642} (case value)", 0, 5).unwrap();
 
         assert_eq!(hover["contents"]["kind"], "markdown");
@@ -1654,6 +1673,16 @@ mod tests {
             .as_str()
             .unwrap()
             .contains("**case**"));
+        let ui_hover = lsp_hover("(div (class \"rounded\"))", 0, 2).unwrap();
+        assert!(ui_hover["contents"]["value"]
+            .as_str()
+            .unwrap()
+            .contains("HTML generic container"));
+        let directive_hover = lsp_hover("(div (class \"rounded\"))", 0, 7).unwrap();
+        assert!(directive_hover["contents"]["value"]
+            .as_str()
+            .unwrap()
+            .contains("utility classes"));
         assert!(lsp_hover("(unknown value)", 0, 2).is_none());
     }
 

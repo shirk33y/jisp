@@ -133,25 +133,34 @@ fn lower_rejects_duplicate_object_pattern_keys() {
 }
 
 #[test]
-fn component_lowers_to_private_function_with_ui_body() {
+fn component_lowers_explicit_elements_directives_and_component_children() {
     let module = lower_lisp(
         r#"
-(component save-button (saving)
-  (tag "button"
-    id "save-button"
-    px-2 true
-    (span (id "label") (text "Save"))))
+(component todo-row (title)
+  (li
+    (attr "data-id" "7")
+    (prop hidden false)
+    (class "rounded" "px-2")
+    (class-if "opacity-50" false)
+    (on "click" (fn (_) title))
+    (key title)
+    (span (text title))))
+
+(component todo-list (titles)
+  (ul
+    (for title titles
+      (todo-row title))))
 "#,
     )
     .unwrap();
 
-    assert_eq!(module.definitions[0].name, "save-button");
+    assert_eq!(module.definitions[0].name, "todo-row");
     assert!(!module.definitions[0].public);
 
     let ExprKind::Lambda { params, rest, body } = &module.definitions[0].value.kind else {
         panic!("component should lower to a function");
     };
-    assert_eq!(params, &["saving"]);
+    assert_eq!(params, &["title"]);
     assert!(rest.is_none());
 
     let ExprKind::Object(fields) = &body.kind else {
@@ -159,44 +168,89 @@ fn component_lowers_to_private_function_with_ui_body() {
     };
     assert_eq!(
         object_field(fields, "tag").and_then(literal_string),
-        Some("button")
+        Some("li")
     );
+
+    let ExprKind::Object(attrs) = &object_field(fields, "attrs").unwrap().kind else {
+        panic!("attrs should lower to a separate object");
+    };
     assert_eq!(
-        object_field(fields, "id").and_then(literal_string),
-        Some("save-button")
+        object_field(attrs, "data-id").and_then(literal_string),
+        Some("7")
     );
+
+    let ExprKind::Object(props) = &object_field(fields, "props").unwrap().kind else {
+        panic!("props should lower to a separate object");
+    };
+    assert!(object_field(props, "hidden").is_some());
 
     let ExprKind::Object(classes) = &object_field(fields, "classes").unwrap().kind else {
         panic!("utility classes should lower to a classes object");
     };
     assert!(object_field(classes, "px-2").is_some());
+    assert!(object_field(classes, "opacity-50").is_some());
+
+    assert!(object_field(fields, "events").is_some());
+    assert!(object_field(fields, "key").is_some());
 
     let ExprKind::List(children) = &object_field(fields, "children").unwrap().kind else {
         panic!("nested elements should lower to children");
     };
     assert_eq!(children.len(), 1);
+
+    let ExprKind::Lambda { body, .. } = &module.definitions[1].value.kind else {
+        panic!("component should lower to a function");
+    };
+    let ExprKind::Object(list_fields) = &body.kind else {
+        panic!("todo-list should lower to a structural UI object");
+    };
+    let ExprKind::Call { callee, arguments } = &object_field(list_fields, "children").unwrap().kind
+    else {
+        panic!("for should lower to a list mapping expression");
+    };
+    assert!(matches!(callee.kind, ExprKind::Name(ref name) if name == "list.map"));
+    assert_eq!(arguments.len(), 2);
 }
 
 #[test]
-fn ui_dsl_uses_explicit_class_to_escape_html_attribute_conflicts() {
-    let module = lower_lisp(
+fn component_rejects_reserved_element_names_and_duplicate_directives() {
+    let reserved = lower_lisp("(component div () (div))").unwrap_err();
+    assert_eq!(
+        reserved.diagnostics[0].message,
+        "component name `div` is reserved by the UI element registry"
+    );
+
+    let duplicate = lower_lisp(
         r#"
-(def view
-  (tag "button"
-    hidden true
-    (class hidden true)
-    (text "Save")))
+(component example ()
+  (button
+    (attr "aria-label" "first")
+    (attr "aria-label" "second")))
 "#,
     )
-    .unwrap();
+    .unwrap_err();
+    assert_eq!(
+        duplicate.diagnostics[0].message,
+        "duplicate UI directive name `aria-label`"
+    );
+}
 
-    let ExprKind::Object(fields) = &module.definitions[0].value.kind else {
-        panic!("tag should lower to a structural UI object");
-    };
-    assert!(object_field(fields, "hidden").is_some());
+#[test]
+fn ui_syntax_is_scoped_to_components_and_view_is_not_an_alias() {
+    let element = lower_lisp("(def root (div (text \"outside\")))").unwrap_err();
+    assert_eq!(
+        element.diagnostics[0].message,
+        "UI element `div` is only valid inside a component"
+    );
 
-    let ExprKind::Object(classes) = &object_field(fields, "classes").unwrap().kind else {
-        panic!("explicit class should lower to classes object");
-    };
-    assert!(object_field(classes, "hidden").is_some());
+    let directive = lower_lisp("(def attribute (attr \"id\" \"root\"))").unwrap_err();
+    assert_eq!(
+        directive.diagnostics[0].message,
+        "UI syntax is only valid inside a component"
+    );
+
+    let alias = lower_lisp("(view root () (div))").unwrap_err();
+    assert!(alias.diagnostics[0]
+        .message
+        .contains("top-level expression `view` is not allowed"));
 }

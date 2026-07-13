@@ -63,6 +63,9 @@ literal. In Lisp and YAML-like source, quoted values are strings.
 - Pattern matching with current exhaustiveness checks for finite enum, boolean,
   null, list, and structural-object cases.
 - Interpreter execution of an exported, typed, zero-argument `main`.
+- Declarative, renderer-neutral UI components with explicit host elements,
+  attributes, properties, utility classes, event metadata, keys, and repeated
+  children; `ui.html` is the current escaped static-HTML host.
 - A deliberately narrower native Rust subset: monomorphic definitions, closed
   objects, lists, bigints, typed function values, capturing closures, and
   variadic user functions, supported `case` patterns, imports, and selected
@@ -137,7 +140,8 @@ deferred. See
 [Packages](docs/PACKAGES.md) for the lock/cache contract.
 
 Useful examples live in [examples](examples/): a basic hello program, a native
-codegen fixture, static object helpers, and structural UI data.
+codegen fixture, static object helpers, legacy structural UI data for native
+codegen coverage, and declarative [UI components](examples/ui_components.lisp).
 
 ## Architecture
 
@@ -187,6 +191,7 @@ compilation of generated Rust in downstream fixtures.
 - [Documentation index](docs/README.md)
 - [Language specification](docs/SPEC.md)
 - [Standard library surface](docs/STDLIB.md)
+- [Declarative UI syntax](docs/UI.md)
 - [Roadmap](ROADMAP.md) and [implementation queue](TODO.md)
 - [Architecture and invariants](docs/ARCHITECTURE.md)
 - [Research: Gleam mapping](docs/research/GLEAM.md)

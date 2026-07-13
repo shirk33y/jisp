@@ -8,6 +8,156 @@ pub struct SpecialFormSpec {
     pub summary: &'static str,
 }
 
+#[derive(Clone, Copy, Debug)]
+pub struct UiElementSpec {
+    pub name: &'static str,
+    pub summary: &'static str,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct UiDirectiveSpec {
+    pub name: &'static str,
+    pub summary: &'static str,
+}
+
+pub const UI_ELEMENTS: &[UiElementSpec] = &[
+    UiElementSpec {
+        name: "a",
+        summary: "HTML anchor element.",
+    },
+    UiElementSpec {
+        name: "article",
+        summary: "HTML article element.",
+    },
+    UiElementSpec {
+        name: "aside",
+        summary: "HTML aside element.",
+    },
+    UiElementSpec {
+        name: "button",
+        summary: "HTML button element.",
+    },
+    UiElementSpec {
+        name: "div",
+        summary: "HTML generic container.",
+    },
+    UiElementSpec {
+        name: "footer",
+        summary: "HTML footer element.",
+    },
+    UiElementSpec {
+        name: "form",
+        summary: "HTML form element.",
+    },
+    UiElementSpec {
+        name: "h1",
+        summary: "HTML heading level 1.",
+    },
+    UiElementSpec {
+        name: "h2",
+        summary: "HTML heading level 2.",
+    },
+    UiElementSpec {
+        name: "h3",
+        summary: "HTML heading level 3.",
+    },
+    UiElementSpec {
+        name: "header",
+        summary: "HTML header element.",
+    },
+    UiElementSpec {
+        name: "img",
+        summary: "HTML image element.",
+    },
+    UiElementSpec {
+        name: "input",
+        summary: "HTML input element.",
+    },
+    UiElementSpec {
+        name: "label",
+        summary: "HTML label element.",
+    },
+    UiElementSpec {
+        name: "li",
+        summary: "HTML list item.",
+    },
+    UiElementSpec {
+        name: "main",
+        summary: "HTML main element.",
+    },
+    UiElementSpec {
+        name: "nav",
+        summary: "HTML navigation element.",
+    },
+    UiElementSpec {
+        name: "ol",
+        summary: "HTML ordered list.",
+    },
+    UiElementSpec {
+        name: "option",
+        summary: "HTML option element.",
+    },
+    UiElementSpec {
+        name: "p",
+        summary: "HTML paragraph element.",
+    },
+    UiElementSpec {
+        name: "section",
+        summary: "HTML section element.",
+    },
+    UiElementSpec {
+        name: "select",
+        summary: "HTML select element.",
+    },
+    UiElementSpec {
+        name: "span",
+        summary: "HTML inline container.",
+    },
+    UiElementSpec {
+        name: "strong",
+        summary: "HTML strong emphasis element.",
+    },
+    UiElementSpec {
+        name: "textarea",
+        summary: "HTML textarea element.",
+    },
+    UiElementSpec {
+        name: "ul",
+        summary: "HTML unordered list.",
+    },
+];
+
+pub const UI_DIRECTIVES: &[UiDirectiveSpec] = &[
+    UiDirectiveSpec {
+        name: "attr",
+        summary: "Set an explicit HTML attribute on a UI element.",
+    },
+    UiDirectiveSpec {
+        name: "prop",
+        summary: "Set a renderer property on a UI element.",
+    },
+    UiDirectiveSpec {
+        name: "class",
+        summary: "Enable one or more utility classes on a UI element.",
+    },
+    UiDirectiveSpec {
+        name: "class-if",
+        summary: "Conditionally enable a utility class on a UI element.",
+    },
+    UiDirectiveSpec {
+        name: "on",
+        summary: "Attach an event handler for an interactive UI host.",
+    },
+    UiDirectiveSpec {
+        name: "key",
+        summary: "Attach a reconciliation identity to a UI element.",
+    },
+    UiDirectiveSpec {
+        name: "for",
+        summary: "Repeat a UI child for each value in a collection.",
+    },
+];
+
 pub const SPECIAL_FORMS: &[SpecialFormSpec] = &[
     SpecialFormSpec {
         name: "def",
@@ -53,9 +203,9 @@ pub const SPECIAL_FORMS: &[SpecialFormSpec] = &[
         name: "component",
         aliases: &[],
         min_args: 3,
-        max_args: None,
+        max_args: Some(3),
         top_level: true,
-        summary: "Define an experimental UI component over structural objects.",
+        summary: "Define a UI component over renderer-neutral structural nodes.",
     },
     SpecialFormSpec {
         name: "fn",
@@ -106,20 +256,12 @@ pub const SPECIAL_FORMS: &[SpecialFormSpec] = &[
         summary: "Pass the remaining body as the final callback argument.",
     },
     SpecialFormSpec {
-        name: "tag",
-        aliases: &[],
-        min_args: 1,
-        max_args: None,
-        top_level: false,
-        summary: "Create an experimental structural UI element.",
-    },
-    SpecialFormSpec {
         name: "text",
         aliases: &[],
         min_args: 1,
         max_args: Some(1),
         top_level: false,
-        summary: "Create an experimental structural UI text node.",
+        summary: "Create a structural UI text node inside a component.",
     },
     SpecialFormSpec {
         name: "quote",
@@ -167,4 +309,14 @@ pub fn special_form(name: &str) -> Option<&'static SpecialFormSpec> {
     SPECIAL_FORMS
         .iter()
         .find(|form| form.name == name || form.aliases.contains(&name))
+}
+
+pub fn ui_element(name: &str) -> Option<&'static UiElementSpec> {
+    UI_ELEMENTS.iter().find(|element| element.name == name)
+}
+
+pub fn ui_directive(name: &str) -> Option<&'static UiDirectiveSpec> {
+    UI_DIRECTIVES
+        .iter()
+        .find(|directive| directive.name == name)
 }

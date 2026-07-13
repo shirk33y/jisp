@@ -248,11 +248,15 @@ collection where practical. `obj` is created with alternating key/value
 arguments. Repeated statically known object keys, including keys in object case
 patterns, are rejected. Raw `{}` syntax is reserved and currently rejected.
 
-The current UI proof uses ordinary objects rather than new syntax. A node has a
-string `tag`, optional scalar attributes, optional `classes` object whose keys
-are utility class names and whose values are booleans, and optional `children`
-list. Text is represented as `{tag: "text", value: "..."}` in object form. The
-prototype `ui.html` builtin renders this data shape to an escaped HTML string.
+UI source uses explicit component and host-element forms such as
+`(component row (title) (li (class "rounded") (text title)))`, not an `el`
+escape hatch or attribute-name heuristics. The canonical set of host names and
+the directive grammar are defined in [UI.md](UI.md). Lowering creates a
+renderer-neutral structural node with `tag`, optional `attrs`, `props`,
+`classes`, `events`, `key`, and `children`; text becomes `{tag: "text", value:
+"..."}`. The prototype `ui.html` builtin renders escaped static HTML and
+intentionally ignores events and keys. Reactive state, reconciliation, and
+event dispatch are deferred runtime contracts.
 
 `[., object, key]` is field/map lookup only. Jisp has no method syntax or
 implicit receiver. A function stored in a field is called normally.
