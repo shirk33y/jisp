@@ -472,12 +472,12 @@ pub fn export_schema(path: impl AsRef<Path>, text: &str, export: &str) -> Result
     Ok(json!({
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "title": format!("Jisp export `{export}`"),
-        "schema": json_schema_for_type(&scheme.body)?,
+        "schema": json_schema_for_type(&scheme.body, &parsed.module)?,
         "dependencies": parsed.dependencies,
     }))
 }
 
-fn json_schema_for_type(ty: &Type) -> Result<JsonValue, Error> {
+fn json_schema_for_type(ty: &Type, module: &Module) -> Result<JsonValue, Error> {
     match ty {
         Type::Null => Ok(json!({ "type": "null" })),
         Type::Bool => Ok(json!({ "type": "boolean" })),
@@ -485,11 +485,13 @@ fn json_schema_for_type(ty: &Type) -> Result<JsonValue, Error> {
         Type::BigInt => Ok(json!({ "type": "string", "pattern": "^-?[0-9]+$" })),
         Type::Float => Ok(json!({ "type": "number" })),
         Type::Str => Ok(json!({ "type": "string" })),
-        Type::List(item) => Ok(json!({ "type": "array", "items": json_schema_for_type(item)? })),
+        Type::List(item) => {
+            Ok(json!({ "type": "array", "items": json_schema_for_type(item, module)? }))
+        }
         Type::Object(row) if row.rest.is_none() => {
             let mut properties = serde_json::Map::new();
             for (name, field) in &row.fields {
-                properties.insert(name.clone(), json_schema_for_type(field)?);
+                properties.insert(name.clone(), json_schema_for_type(field, module)?);
             }
             Ok(json!({
                 "type": "object",
@@ -508,9 +510,60 @@ fn json_schema_for_type(ty: &Type) -> Result<JsonValue, Error> {
         Type::Function { .. } => Err(Error::Schema(
             "functions have no JSON representation".to_owned(),
         )),
+        Type::Named { name, arguments } if arguments.is_empty() => {
+            let declaration = module
+                .types
+                .iter()
+                .find(|declaration| declaration.name == *name)
+                .ok_or_else(|| Error::Schema(format!("unknown named type `{name}`")))?;
+            let variants = declaration
+                .variants
+                .iter()
+                .map(|variant| {
+                    let fields = variant
+                        .field_types
+                        .iter()
+                        .map(|field| json_schema_for_annotation(field, module))
+                        .collect::<Result<Vec<_>, _>>()?;
+                    let count = fields.len() + 1;
+                    let mut prefix_items = vec![json!({ "const": variant.name })];
+                    prefix_items.extend(fields);
+                    Ok(json!({
+                        "type": "array",
+                        "prefixItems": prefix_items,
+                        "items": false,
+                        "minItems": count,
+                        "maxItems": count,
+                    }))
+                })
+                .collect::<Result<Vec<_>, Error>>()?;
+            Ok(json!({ "oneOf": variants }))
+        }
         Type::Named { name, .. } => Err(Error::Schema(format!(
-            "named type `{name}` needs an explicit JSON representation"
+            "parameterized named type `{name}` needs an explicit instantiation"
         ))),
+    }
+}
+
+fn json_schema_for_annotation(annotation: &str, module: &Module) -> Result<JsonValue, Error> {
+    match annotation {
+        "null" => json_schema_for_type(&Type::Null, module),
+        "bool" => json_schema_for_type(&Type::Bool, module),
+        "int" => json_schema_for_type(&Type::Int, module),
+        "bigint" => json_schema_for_type(&Type::BigInt, module),
+        "float" => json_schema_for_type(&Type::Float, module),
+        "str" => json_schema_for_type(&Type::Str, module),
+        _ if annotation.starts_with("(list ") && annotation.ends_with(')') => {
+            let item = &annotation[6..annotation.len() - 1];
+            Ok(json!({ "type": "array", "items": json_schema_for_annotation(item, module)? }))
+        }
+        name => json_schema_for_type(
+            &Type::Named {
+                name: name.to_owned(),
+                arguments: vec![],
+            },
+            module,
+        ),
     }
 }
 

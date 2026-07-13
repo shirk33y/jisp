@@ -27,3 +27,24 @@ fn export_schema_rejects_functions() {
         .to_string()
         .contains("functions have no JSON representation"));
 }
+
+#[test]
+fn export_schema_describes_named_variants_as_tagged_arrays() {
+    let schema = jisp::export_schema(
+        "response.lisp",
+        r#"
+(type response
+  (ok int)
+  (err str))
+(export value (ok 42))
+"#,
+        "value",
+    )
+    .unwrap();
+
+    let variants = schema["schema"]["oneOf"].as_array().unwrap();
+    assert_eq!(variants[0]["prefixItems"][0]["const"], "ok");
+    assert_eq!(variants[0]["prefixItems"][1]["type"], "integer");
+    assert_eq!(variants[1]["prefixItems"][0]["const"], "err");
+    assert_eq!(variants[1]["prefixItems"][1]["type"], "string");
+}
