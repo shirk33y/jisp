@@ -173,10 +173,18 @@ fn check_types_resolves_directory_imports_with_mixed_syntax() {
     )
     .unwrap();
     fs::write(
+        module_dir.join("square.ws"),
+        r#"export square
+  fn (value)
+    * value value
+"#,
+    )
+    .unwrap();
+    fs::write(
         &main,
         r#"
 (import math "math")
-(export main (fn () (math.dec (math.double (math.inc 41)))))
+(export main (fn () (math.dec (math.double (math.square (math.inc 5))))))
 "#,
     )
     .unwrap();
@@ -208,10 +216,18 @@ fn run_main_resolves_directory_imports_with_mixed_syntax() {
     )
     .unwrap();
     fs::write(
+        module_dir.join("square.ws"),
+        r#"export square
+  fn (value)
+    * value value
+"#,
+    )
+    .unwrap();
+    fs::write(
         &main,
         r#"
 (import math "math")
-(export main (fn () (math.dec (math.double (math.inc 41)))))
+(export main (fn () (math.dec (math.double (math.square (math.inc 5))))))
 "#,
     )
     .unwrap();
@@ -219,7 +235,7 @@ fn run_main_resolves_directory_imports_with_mixed_syntax() {
     let text = fs::read_to_string(&main).unwrap();
     let value = jisp::run_main(&main, &text).unwrap();
 
-    assert_int(value, 83);
+    assert_int(value, 71);
 }
 
 #[test]
@@ -320,8 +336,15 @@ fn imports_expose_only_exported_names() {
 fn import_dependencies_include_extensionless_file_imports() {
     let dir = fixture_dir("file-import-dependencies");
     let main = dir.join("main.lisp");
-    let math = dir.join("math.lisp");
-    fs::write(&math, "(export inc (fn (value) (+ value 1)))").unwrap();
+    let math = dir.join("math.ws");
+    fs::write(
+        &math,
+        r#"export inc
+  fn (value)
+    + value 1
+"#,
+    )
+    .unwrap();
     fs::write(
         &main,
         r#"
@@ -419,6 +442,7 @@ fn import_dependencies_include_directory_module_source_files() {
     let inc = module_dir.join("inc.lisp");
     let dec = module_dir.join("dec.json");
     let double = module_dir.join("double.yaml");
+    let square = module_dir.join("square.ws");
     fs::write(&inc, "(export inc (fn (value) (+ value 1)))").unwrap();
     fs::write(
         &dec,
@@ -431,10 +455,18 @@ fn import_dependencies_include_directory_module_source_files() {
     )
     .unwrap();
     fs::write(
+        &square,
+        r#"export square
+  fn (value)
+    * value value
+"#,
+    )
+    .unwrap();
+    fs::write(
         &main,
         r#"
 (import math "math")
-(export main (fn () (math.dec (math.double (math.inc 41)))))
+(export main (fn () (math.dec (math.double (math.square (math.inc 5))))))
 "#,
     )
     .unwrap();
@@ -444,7 +476,12 @@ fn import_dependencies_include_directory_module_source_files() {
 
     assert_eq!(
         dependencies,
-        BTreeSet::from([canonical(&dec), canonical(&double), canonical(&inc)])
+        BTreeSet::from([
+            canonical(&dec),
+            canonical(&double),
+            canonical(&inc),
+            canonical(&square),
+        ])
     );
 }
 

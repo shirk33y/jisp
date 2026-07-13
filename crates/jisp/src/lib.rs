@@ -395,6 +395,7 @@ fn lower_as_detailed(
         Syntax::Json => jisp_syntax_json::JsonParser.parse_module(source, text),
         Syntax::Yaml => jisp_syntax_yaml::YamlParser.parse_module(source, text),
         Syntax::Lisp => jisp_syntax_lisp::LispParser.parse_module(source, text),
+        Syntax::Ws => jisp_syntax_ws::WsParser.parse_module(source, text),
     } {
         Ok(nodes) => nodes,
         Err(error) => {
@@ -1648,6 +1649,7 @@ fn parse_nodes(
         Syntax::Json => jisp_syntax_json::JsonParser.parse_module(source, text)?,
         Syntax::Yaml => jisp_syntax_yaml::YamlParser.parse_module(source, text)?,
         Syntax::Lisp => jisp_syntax_lisp::LispParser.parse_module(source, text)?,
+        Syntax::Ws => jisp_syntax_ws::WsParser.parse_module(source, text)?,
     })
 }
 
@@ -1673,7 +1675,7 @@ fn module_files(path: &Path) -> Result<Vec<PathBuf>, Error> {
 fn import_candidates(path: &Path) -> Vec<PathBuf> {
     let mut candidates = vec![path.to_path_buf()];
     if path.extension().is_none() {
-        for extension in ["lisp", "jisp", "json", "yaml", "yml"] {
+        for extension in ["lisp", "jisp", "ws", "json", "yaml", "yml"] {
             candidates.push(path.with_extension(extension));
         }
     }

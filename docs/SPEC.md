@@ -12,8 +12,98 @@ The compiled language has no universal dynamic `Value` representation.
 - `.yaml`/`.yml`: restricted flow-style YAML-like syntax. Plain scalars are
   symbols; quoted scalars are strings.
 - `.lisp`/`.jisp`: conventional S-expression syntax.
+- `.ws`: indentation-based syntax equivalent to Lisp forms.
 
 All readers produce the same source-aware AST.
+
+## Indentation-based `ws`
+
+`ws` uses two-space indentation to express nested forms. A multi-token line is a
+form. A one-token line without children is a value; a one-token line with
+children is a form headed by that value. A line whose first token is exactly
+`...` appends the remaining tokens to the immediate parent form at that source
+position:
+
+```ws
+call-this a b
+  ... c d
+  foo 123
+  ... e f
+```
+
+This reads as `(call-this a b c d (foo 123) e f)`. The `...` marker is only a
+layout marker as the first token of a layout line. Inside explicit `(...)`
+tokens, or after another token such as `(a b ... rest)`, it remains an ordinary
+Jisp symbol suitable for rest parameters and patterns. Explicit `(...)` islands
+must close on the same physical line.
+
+Simple function bodies are direct indentation:
+
+```ws
+def answer
+  fn ()
+    + 40 2
+
+export main
+  fn ()
+    answer
+```
+
+Nested call trees use child lines:
+
+```ws
+def normalized-name
+  fn (user)
+    str.replace
+      str.lower (. user "name")
+      " "
+      "-"
+```
+
+This is equivalent to:
+
+```lisp
+(def normalized-name
+  (fn (user)
+    (str.replace
+      (str.lower (. user "name"))
+      " "
+      "-")))
+```
+
+Flat object arguments need explicit continuation when they are split across
+lines:
+
+```ws
+obj
+  ... "kind" "user"
+  ... "slug"
+  normalized-name user
+  ... "active" true
+```
+
+This is equivalent to:
+
+```lisp
+(obj
+  "kind" "user"
+  "slug" (normalized-name user)
+  "active" true)
+```
+
+A single-token child line is a value unless it has children. Use explicit Lisp
+islands for dense parameter lists, rest markers, and calls-as-values:
+
+```ws
+def prepend-all
+  fn (head ... tail)
+    list.prepend head tail
+
+def call-adder
+  fn ()
+    (make-adder 10)
+      32
+```
 
 ## Canonical JSON
 

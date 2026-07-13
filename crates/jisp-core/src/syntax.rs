@@ -9,6 +9,7 @@ pub enum Syntax {
     Json,
     Yaml,
     Lisp,
+    Ws,
 }
 
 impl Syntax {
@@ -17,6 +18,7 @@ impl Syntax {
             Self::Json => "json",
             Self::Yaml => "yaml",
             Self::Lisp => "lisp",
+            Self::Ws => "ws",
         }
     }
 }
@@ -32,6 +34,7 @@ pub fn detect_syntax(path: impl AsRef<Path>) -> Option<Syntax> {
         "json" => Some(Syntax::Json),
         "yaml" | "yml" => Some(Syntax::Yaml),
         "lisp" | "jisp" => Some(Syntax::Lisp),
+        "ws" => Some(Syntax::Ws),
         _ => None,
     }
 }

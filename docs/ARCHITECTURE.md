@@ -1,10 +1,10 @@
 # Architecture
 
 ```text
-JSON / restricted YAML / Lisp
-              ↓
+JSON / restricted YAML / Lisp / ws
+                 ↓
       source-aware Node AST
-              ↓
+                 ↓
         macro expansion
               ↓
  module/import resolution
@@ -20,7 +20,7 @@ JSON / restricted YAML / Lisp
 
 - `jisp-core`: source files, spans, AST, diagnostics, special-form registry,
   generated core schema.
-- `jisp-syntax-*`: three readers normalising to the same AST.
+- `jisp-syntax-*`: syntax readers normalising to the same AST.
 - `jisp-expand`: quote/quasiquote/unquote/unquote-splicing expansion,
   module-local and aliased file-imported template macros, and origin tracking
   before lowering. Macro definitions and resolved `macro-import` forms are
