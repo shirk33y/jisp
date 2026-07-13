@@ -1,7 +1,8 @@
 import init, { PlaygroundSession } from "./pkg/jisp_wasm.js";
 import { basicSetup, EditorView } from "https://esm.sh/codemirror@6.0.1";
 import { EditorState } from "https://esm.sh/@codemirror/state@6.5.2";
-import { clojure } from "https://esm.sh/@codemirror/lang-clojure@6.0.2";
+import { StreamLanguage } from "https://esm.sh/@codemirror/language@6.11.0";
+import { clojure } from "https://esm.sh/@codemirror/legacy-modes@6.5.0/mode/clojure";
 import { oneDark } from "https://esm.sh/@codemirror/theme-one-dark@6.1.2";
 
 const examples = [
@@ -192,7 +193,7 @@ editor = new EditorView({
     doc: "",
     extensions: [
       basicSetup,
-      clojure(),
+      StreamLanguage.define(clojure),
       oneDark,
       EditorView.updateListener.of((update) => {
         if (!update.docChanged) return;
