@@ -8,7 +8,9 @@ use quote::{format_ident, quote};
 
 use self::object_types::ObjectTypes;
 use crate::enum_types::EnumTypes;
-use crate::patterns::{emit_pattern, emit_variant_match_pattern, PatternEmission, PatternMatch};
+use crate::patterns::{
+    emit_pattern, emit_variant_match_pattern, expand_or_pattern, PatternEmission, PatternMatch,
+};
 use crate::{CodegenError, GeneratedRust, RustItemKind, RustSourceItem, RustSourceMap};
 
 #[path = "intrinsics.rs"]
@@ -446,11 +448,26 @@ impl<'a> EmitContext<'a> {
         branches: &[CaseBranch],
         expected: Option<&Type>,
     ) -> Result<TokenStream, CodegenError> {
+        let branches = branches
+            .iter()
+            .map(|branch| {
+                expand_or_pattern(&branch.pattern).map(|mut patterns| CaseBranch {
+                    pattern: if patterns.len() == 1 {
+                        patterns.pop().expect("one pattern")
+                    } else {
+                        Pattern::Or(patterns)
+                    },
+                    guard: branch.guard.clone(),
+                    body: branch.body.clone(),
+                    span: branch.span,
+                })
+            })
+            .collect::<Result<Vec<_>, _>>()?;
         if branches
             .iter()
             .any(|branch| pattern_contains_variant(&branch.pattern))
         {
-            return self.emit_variant_case(subject, branches, expected);
+            return self.emit_variant_case(subject, &branches, expected);
         }
         let subject = self.emit_expr(subject, None)?;
         let subject_name = format_ident!("__jisp_case_subject");

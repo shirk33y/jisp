@@ -1,4 +1,4 @@
-use jisp_ir::Pattern;
+use jisp_ir::{Literal, Pattern};
 use jisp_types::Type;
 use proc_macro2::TokenStream;
 use quote::quote;
@@ -6,6 +6,8 @@ use quote::quote;
 use crate::emit::{emit_literal, rust_ident};
 use crate::enum_types::EnumTypes;
 use crate::CodegenError;
+
+const MAX_EXPANDED_ALTERNATIVES: usize = 128;
 
 #[derive(Clone, Debug)]
 pub(crate) struct PatternEmission {
@@ -34,6 +36,97 @@ pub(crate) struct PatternMatch {
     pub(crate) bindings: Vec<String>,
 }
 
+/// Distributes nested `or` patterns into complete alternatives so codegen can
+/// reuse its branch-local binding machinery for every successful path.
+pub(crate) fn expand_or_pattern(pattern: &Pattern) -> Result<Vec<Pattern>, CodegenError> {
+    match pattern {
+        Pattern::Wildcard | Pattern::Bind(_) | Pattern::Literal(_) => Ok(vec![pattern.clone()]),
+        Pattern::Alias { pattern, name } => expand_or_pattern(pattern)?
+            .into_iter()
+            .map(|pattern| {
+                Ok(Pattern::Alias {
+                    pattern: Box::new(pattern),
+                    name: name.clone(),
+                })
+            })
+            .collect(),
+        Pattern::Or(alternatives) => {
+            let mut output = Vec::new();
+            for alternative in alternatives {
+                output.extend(expand_or_pattern(alternative)?);
+                check_expansion_size(output.len())?;
+            }
+            if output.is_empty() {
+                return Err(CodegenError::Unsupported("empty or case pattern"));
+            }
+            Ok(output)
+        }
+        Pattern::Variant { tag, fields } => expand_pattern_list(fields)?
+            .into_iter()
+            .map(|fields| {
+                Ok(Pattern::Variant {
+                    tag: tag.clone(),
+                    fields,
+                })
+            })
+            .collect(),
+        Pattern::List { prefix, rest } => expand_pattern_list(prefix)?
+            .into_iter()
+            .map(|prefix| {
+                Ok(Pattern::List {
+                    prefix,
+                    rest: rest.clone(),
+                })
+            })
+            .collect(),
+        Pattern::Object(fields) => {
+            let mut output = vec![vec![]];
+            for (name, pattern) in fields {
+                let alternatives = expand_or_pattern(pattern)?;
+                let mut next = Vec::new();
+                for fields in output {
+                    for pattern in &alternatives {
+                        let mut fields = fields.clone();
+                        fields.push((name.clone(), pattern.clone()));
+                        next.push(fields);
+                        check_expansion_size(next.len())?;
+                    }
+                }
+                output = next;
+            }
+            Ok(output.into_iter().map(Pattern::Object).collect())
+        }
+    }
+}
+
+fn expand_pattern_list(patterns: &[Pattern]) -> Result<Vec<Vec<Pattern>>, CodegenError> {
+    let mut output = vec![vec![]];
+    for pattern in patterns {
+        let alternatives = expand_or_pattern(pattern)?;
+        let mut next = Vec::new();
+        for patterns in output {
+            for pattern in &alternatives {
+                let mut patterns = patterns.clone();
+                patterns.push(pattern.clone());
+                next.push(patterns);
+                check_expansion_size(next.len())?;
+            }
+        }
+        output = next;
+    }
+    Ok(output)
+}
+
+fn check_expansion_size(size: usize) -> Result<(), CodegenError> {
+    if size > MAX_EXPANDED_ALTERNATIVES {
+        Err(CodegenError::Unsupported(
+            "case pattern alternatives exceed native expansion limit",
+        ))
+    } else {
+        Ok(())
+    }
+}
+
 pub(crate) fn emit_pattern(
     pattern: &Pattern,
     value: TokenStream,
@@ -52,7 +145,10 @@ pub(crate) fn emit_pattern(
         }
         Pattern::Or(_) => Err(CodegenError::Unsupported("or case patterns")),
         Pattern::Literal(literal) => {
-            let literal = emit_literal(literal)?;
+            let literal = match literal {
+                Literal::String(value) => quote! { #value },
+                literal => emit_literal(literal)?,
+            };
             Ok(PatternEmission::empty(quote! { #value == #literal }))
         }
         Pattern::Variant { .. } => Err(CodegenError::Unsupported("variant case patterns")),

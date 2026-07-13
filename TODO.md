@@ -81,8 +81,8 @@ product-level direction and ordering rationale, see [ROADMAP.md](ROADMAP.md).
   [`.agents/plans/0016-native-open-object-abi.md`](.agents/plans/0016-native-open-object-abi.md).
 - Extend the intentionally bounded macro system only after designing hygiene,
   cross-module visibility, and a general compile-time evaluator.
-- Add stronger list/object exhaustiveness analysis and nested alternative
-  patterns. Top-level native alternatives now preserve branch-local bindings;
+- Add stronger list/object exhaustiveness analysis. Native alternatives now
+  preserve branch-local bindings at top level and inside list/object patterns;
   enum alternatives with shared bindings emit Rust `|` patterns.
 - Expand `jisp-macros` further beyond item-position emission. `lisp_expr!`
   now compiles an exported zero-argument `main` as a typed Rust expression.

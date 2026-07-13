@@ -317,3 +317,15 @@
     (let (original (obj "first" 40 "second" 2)
           updated (obj.del original "second"))
       (+ (. original "second") (. updated "first")))))
+
+(export nested-alternative-list-entry
+  (fn ()
+    (case (list 2 40)
+      ((list (or 1 2) value) (+ value 2))
+      (_ 0))))
+
+(export nested-alternative-object-entry
+  (fn ()
+    (case (obj "kind" "two" "value" 40)
+      ((obj "kind" (or "one" "two") "value" value) (+ value 2))
+      (_ 0))))

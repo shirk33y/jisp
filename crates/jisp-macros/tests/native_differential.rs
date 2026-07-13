@@ -177,6 +177,18 @@ fn native_dynamic_reads_on_homogeneous_closed_objects_match_the_interpreter() {
     );
 }
 
+#[test]
+fn native_nested_alternative_patterns_match_the_interpreter() {
+    assert_matches_interpreter(
+        "nested-alternative-list-entry",
+        Value::Int(nested_alternative_list_entry()),
+    );
+    assert_matches_interpreter(
+        "nested-alternative-object-entry",
+        Value::Int(nested_alternative_object_entry()),
+    );
+}
+
 fn assert_matches_interpreter(export: &str, native: Value) {
     let interpreted = interpreter_export(export);
     assert!(
