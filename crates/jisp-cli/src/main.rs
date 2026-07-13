@@ -30,7 +30,7 @@ enum Command {
         deps: bool,
     },
     Run {
-        path: PathBuf,
+        path: Option<PathBuf>,
     },
     Schema {
         output: Option<PathBuf>,
@@ -89,6 +89,7 @@ fn main() -> Result<()> {
             }
         }
         Command::Run { path } => {
+            let path = path.unwrap_or(package_entry(Path::new("."))?);
             let text = read(&path)?;
             let value = match jisp::run_main_detailed(&path, &text) {
                 Ok(value) => value,
@@ -134,6 +135,23 @@ fn main() -> Result<()> {
         Command::Init { path } => init_project(path.as_deref().unwrap_or_else(|| Path::new(".")))?,
     }
     Ok(())
+}
+
+fn package_entry(directory: &Path) -> Result<PathBuf> {
+    let manifest = directory.join("jisp.toml");
+    let text =
+        fs::read_to_string(&manifest).with_context(|| format!("read {}", manifest.display()))?;
+    let entry = text
+        .lines()
+        .find_map(|line| line.trim().strip_prefix("entry ="))
+        .map(str::trim)
+        .and_then(|value| {
+            value
+                .strip_prefix('"')
+                .and_then(|value| value.strip_suffix('"'))
+        })
+        .context("jisp.toml must contain a quoted `entry` field")?;
+    Ok(directory.join(entry))
 }
 
 fn init_project(path: &Path) -> Result<()> {
@@ -639,8 +657,8 @@ mod tests {
 
     use super::{
         format_json_module, format_lisp_module, format_yaml_module, init_project,
-        lsp_completion_items, lsp_diagnostics, remapped_cargo_errors, repl_step, JsonParser,
-        LispParser, SourceId, SyntaxParser, YamlParser,
+        lsp_completion_items, lsp_diagnostics, package_entry, remapped_cargo_errors, repl_step,
+        JsonParser, LispParser, SourceId, SyntaxParser, YamlParser,
     };
 
     #[test]
@@ -767,6 +785,20 @@ mod tests {
                 .unwrap()
                 .display_string(),
             "Hello from Jisp"
+        );
+        let _ = std::fs::remove_dir_all(&directory);
+    }
+
+    #[test]
+    fn package_entry_reads_the_init_manifest() {
+        let directory =
+            std::env::temp_dir().join(format!("jisp-entry-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&directory);
+        init_project(&directory).unwrap();
+
+        assert_eq!(
+            package_entry(&directory).unwrap(),
+            directory.join("main.lisp")
         );
         let _ = std::fs::remove_dir_all(&directory);
     }

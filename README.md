@@ -87,7 +87,7 @@ expression while tracking the source file and its Jisp imports for Cargo.
 
 ```text
 jisp check [--types] [--deps] <path>
-jisp run <path>
+jisp run [path]
 jisp schema [output]
 jisp export-schema <path> <export> [output]
 jisp emit-rust <path>
@@ -101,7 +101,7 @@ jisp init [path]
 | Command | Purpose |
 | --- | --- |
 | `check` | Parse, expand, and lower; `--types` also checks types, while `--deps` lists resolved imports. |
-| `run` | Type-check and evaluate exported `main` with source-ranged errors. |
+| `run` | Type-check and evaluate exported `main` with source-ranged errors. Without a path, reads `entry` from local `jisp.toml`. |
 | `schema` | Print or write the generated core JSON Schema. |
 | `export-schema` | Print or write a JSON Schema for one monomorphic, JSON-native public export, including non-parameterized tagged variants. |
 | `emit-rust` | Emit Rust tokens for the supported native subset. |
