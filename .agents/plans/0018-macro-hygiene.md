@@ -34,6 +34,8 @@ expansion order.
 - Done: a caller-supplied binding keeps its original spelling and scope.
 - Fresh names are deterministic for one source/module order, but never appear
   in user diagnostics; diagnostics show the template/call origin chain.
+- Done: Lisp, JSON, and YAML reject exported macro bindings at expansion time,
+  preserving the module-local macro contract before lowering/type checking.
 - Pending: Lisp, JSON, and YAML normalize to the same hygienic expanded Core IR.
 - Pending: macro-import cycles produce source-ranged errors once macro imports
   exist. Expansion-step limits already produce source-ranged errors.

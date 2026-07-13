@@ -163,6 +163,61 @@ fn expands_ordered_user_macro_quasiquote_and_removes_its_definition() {
 }
 
 #[test]
+fn rejects_exporting_a_module_local_macro() {
+    let definition = form(vec![
+        sym("def"),
+        sym("unless"),
+        form(vec![
+            sym("~"),
+            form(vec![
+                sym("fn"),
+                form(vec![sym("condition"), sym("then"), sym("otherwise")]),
+                form(vec![
+                    sym("`"),
+                    form(vec![
+                        sym("if"),
+                        form(vec![sym(","), sym("condition")]),
+                        form(vec![sym(","), sym("otherwise")]),
+                        form(vec![sym(","), sym("then")]),
+                    ]),
+                ]),
+            ]),
+        ]),
+    ]);
+    let export = form(vec![sym("export"), sym("unless")]);
+
+    let error = expand_module(&[export, definition]).unwrap_err();
+
+    assert_eq!(error.diagnostics[0].code.as_deref(), Some("JISP-EXPAND"));
+    assert!(error.diagnostics[0]
+        .message
+        .contains("macro `unless` cannot be exported"));
+}
+
+#[test]
+fn rejects_inline_exported_macro_definition() {
+    let export = form(vec![
+        sym("export"),
+        sym("unless"),
+        form(vec![
+            sym("~"),
+            form(vec![
+                sym("fn"),
+                form(vec![sym("condition")]),
+                form(vec![sym("quote"), sym("condition")]),
+            ]),
+        ]),
+    ]);
+
+    let error = expand_module(&[export]).unwrap_err();
+
+    assert_eq!(error.diagnostics[0].code.as_deref(), Some("JISP-EXPAND"));
+    assert!(error.diagnostics[0]
+        .message
+        .contains("macros cannot be exported"));
+}
+
+#[test]
 fn expands_nested_user_macro_calls_and_variadic_splices() {
     let wrap = form(vec![
         sym("def"),

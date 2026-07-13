@@ -68,6 +68,54 @@ fn run_main_expands_user_macro_before_lowering() {
 }
 
 #[test]
+fn parse_rejects_macro_exports_in_all_source_syntaxes() {
+    let cases = [
+        (
+            "macro-export.lisp",
+            r#"
+(def unless
+  (~ (fn ()
+       (quote 1))))
+(export unless)
+"#,
+        ),
+        (
+            "macro-export.json",
+            r#"
+[
+  ["def", "unless",
+    ["~", ["fn", [], ["quote", 1]]]],
+  ["export", "unless"]
+]
+"#,
+        ),
+        (
+            "macro-export.yaml",
+            r#"
+[
+  [def, unless,
+    [~, [fn, [], [quote, 1]]]],
+  [export, unless]
+]
+"#,
+        ),
+    ];
+
+    for (path, text) in cases {
+        let error = match jisp::parse_detailed(path, text) {
+            Ok(_) => panic!("{path} unexpectedly parsed"),
+            Err(error) => error,
+        };
+        let rendered = error.render_diagnostics().unwrap();
+
+        assert!(
+            rendered.contains("macro `unless` cannot be exported"),
+            "{path}: {rendered}"
+        );
+    }
+}
+
+#[test]
 fn user_macro_template_bindings_do_not_capture_caller_identifiers() {
     let value = jisp::run_main(
         "hygienic-macro.lisp",

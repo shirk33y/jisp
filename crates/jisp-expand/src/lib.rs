@@ -86,14 +86,17 @@ impl ExpandError {
 pub struct Expander {
     expansion_map: ExpansionMap,
     macros: HashMap<String, UserMacro>,
+    macro_names: HashSet<String>,
     macro_expansions: usize,
     next_hygienic_id: usize,
 }
 
 impl Expander {
     pub fn expand_module(mut self, nodes: &[Node]) -> Result<ExpandedModule, ExpandError> {
+        self.macro_names = collect_macro_names(nodes);
         let mut expanded = vec![];
         for node in nodes.iter().cloned() {
+            self.reject_macro_export(&node)?;
             if let Some((name, user_macro)) = parse_macro_definition(&node)? {
                 self.macros.insert(name, user_macro);
             } else {
@@ -139,6 +142,30 @@ impl Expander {
             )),
             _ => self.expand_children(node),
         }
+    }
+
+    fn reject_macro_export(&self, node: &Node) -> Result<(), ExpandError> {
+        let Some(items) = node.as_form() else {
+            return Ok(());
+        };
+        if items.first().and_then(Node::as_symbol) != Some("export") {
+            return Ok(());
+        }
+        if let Some(name) = items.get(1).and_then(Node::as_symbol) {
+            if self.macro_names.contains(name) {
+                return Err(ExpandError::single(
+                    items[1].span,
+                    format!("macro `{name}` cannot be exported; macros are module-local"),
+                ));
+            }
+        }
+        if items.get(2).is_some_and(is_macro_marker_form) {
+            return Err(ExpandError::single(
+                items[2].span,
+                "macro definitions must use `def`; macros cannot be exported",
+            ));
+        }
+        Ok(())
     }
 
     fn expand_macro_call(
@@ -713,6 +740,23 @@ pub fn expand_module(nodes: &[Node]) -> Result<ExpandedModule, ExpandError> {
     Expander::default().expand_module(nodes)
 }
 
+fn collect_macro_names(nodes: &[Node]) -> HashSet<String> {
+    nodes
+        .iter()
+        .filter_map(|node| {
+            let items = node.as_form()?;
+            if items.first().and_then(Node::as_symbol) != Some("def") {
+                return None;
+            }
+            let name = items.get(1)?.as_symbol()?;
+            items
+                .get(2)
+                .is_some_and(is_macro_marker_form)
+                .then_some(name.to_owned())
+        })
+        .collect()
+}
+
 fn parse_macro_definition(node: &Node) -> Result<Option<(String, UserMacro)>, ExpandError> {
     let Some(items) = node.as_form() else {
         return Ok(None);
@@ -788,6 +832,13 @@ fn parse_macro_definition(node: &Node) -> Result<Option<(String, UserMacro)>, Ex
             template,
         },
     )))
+}
+
+fn is_macro_marker_form(node: &Node) -> bool {
+    node.as_form()
+        .and_then(|items| items.first())
+        .and_then(Node::as_symbol)
+        .is_some_and(|marker| matches!(marker, "macro" | "~"))
 }
 
 fn parse_macro_parameters(node: &Node) -> Result<(Vec<String>, Option<String>), ExpandError> {
