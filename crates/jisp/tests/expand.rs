@@ -68,6 +68,48 @@ fn run_main_expands_user_macro_before_lowering() {
 }
 
 #[test]
+fn user_macro_template_bindings_do_not_capture_caller_identifiers() {
+    let value = jisp::run_main(
+        "hygienic-macro.lisp",
+        r#"
+(def wrap
+  (~ (fn (expression)
+       `(let (value 1)
+          ,expression))))
+
+(export main
+  (fn ()
+    (let (value 42)
+      (wrap value))))
+"#,
+    )
+    .unwrap();
+
+    assert_eq!(value.display_string(), "42");
+}
+
+#[test]
+fn hygienic_macro_let_binding_value_uses_outer_scope() {
+    let value = jisp::run_main(
+        "hygienic-macro-let-rhs.lisp",
+        r#"
+(def bind
+  (~ (fn ()
+       `(let (value value)
+          value))))
+
+(export main
+  (fn ()
+    (let (value 42)
+      (bind))))
+"#,
+    )
+    .unwrap();
+
+    assert_eq!(value.display_string(), "42");
+}
+
+#[test]
 fn detailed_errors_render_user_macro_expansion_origin() {
     let error = match jisp::check_detailed(
         "bad-macro.lisp",

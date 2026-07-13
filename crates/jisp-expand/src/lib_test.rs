@@ -6,6 +6,10 @@ fn span(start: usize, end: usize) -> Span {
     Span::new(SourceId(0), start, end)
 }
 
+fn sym_at(value: &str, start: usize, end: usize) -> Node {
+    Node::symbol(value, span(start, end))
+}
+
 fn sym(value: &str) -> Node {
     Node::symbol(value, span(0, value.len()))
 }
@@ -198,6 +202,94 @@ fn expands_nested_user_macro_calls_and_variadic_splices() {
     let expanded = expand_module(&[wrap, twice, form(vec![sym("twice"), int(7)])]).unwrap();
 
     assert_eq!(expanded.nodes, vec![form(vec![sym("do"), int(7), int(7)])]);
+}
+
+#[test]
+fn hygienic_macro_let_binding_does_not_capture_caller_identifier() {
+    let definition = form(vec![
+        sym("def"),
+        sym("wrap"),
+        form(vec![
+            sym("~"),
+            form(vec![
+                sym("fn"),
+                form(vec![sym("expression")]),
+                form(vec![
+                    sym("`"),
+                    form(vec![
+                        sym("let"),
+                        form(vec![sym_at("value", 10, 15), int(1)]),
+                        form(vec![
+                            sym("+"),
+                            sym_at("value", 10, 15),
+                            form(vec![sym(","), sym("expression")]),
+                        ]),
+                    ]),
+                ]),
+            ]),
+        ]),
+    ]);
+    let caller_value = sym_at("value", 100, 105);
+
+    let expanded =
+        expand_module(&[definition, form(vec![sym("wrap"), caller_value.clone()])]).unwrap();
+
+    assert_eq!(
+        expanded.nodes,
+        vec![form(vec![
+            sym("let"),
+            form(vec![sym_at("__jisp_macro_0_value", 10, 15), int(1)]),
+            form(vec![
+                sym("+"),
+                sym_at("__jisp_macro_0_value", 10, 15),
+                caller_value
+            ]),
+        ])]
+    );
+}
+
+#[test]
+fn hygienic_macro_preserves_caller_supplied_bindings() {
+    let definition = form(vec![
+        sym("def"),
+        sym("make-fn"),
+        form(vec![
+            sym("~"),
+            form(vec![
+                sym("fn"),
+                form(vec![sym("binding"), sym("body")]),
+                form(vec![
+                    sym("`"),
+                    form(vec![
+                        sym("fn"),
+                        form(vec![form(vec![sym(","), sym("binding")])]),
+                        form(vec![sym(","), sym("body")]),
+                    ]),
+                ]),
+            ]),
+        ]),
+    ]);
+    let caller_binding = sym_at("value", 100, 105);
+    let caller_body = form(vec![sym("+"), sym_at("value", 100, 105), int(1)]);
+
+    let expanded = expand_module(&[
+        definition,
+        form(vec![
+            sym("make-fn"),
+            caller_binding.clone(),
+            caller_body.clone(),
+        ]),
+    ])
+    .unwrap();
+
+    assert_eq!(
+        expanded.nodes,
+        vec![form(vec![
+            sym("fn"),
+            form(vec![caller_binding]),
+            caller_body
+        ])]
+    );
 }
 
 #[test]

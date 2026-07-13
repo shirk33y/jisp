@@ -87,6 +87,7 @@ pub struct Expander {
     expansion_map: ExpansionMap,
     macros: HashMap<String, UserMacro>,
     macro_expansions: usize,
+    next_hygienic_id: usize,
 }
 
 impl Expander {
@@ -155,12 +156,437 @@ impl Expander {
         }
 
         let bindings = bind_macro_arguments(&user_macro, arguments, call_span)?;
+        let caller_spans = caller_spans(arguments);
         let expanded = match &user_macro.template {
             MacroTemplate::Quote(node) => node.clone(),
             MacroTemplate::Quasiquote(node) => self.expand_macro_quasiquote(node, &bindings)?,
         };
+        let expanded = self.hygienize_macro_template(expanded, &caller_spans);
         let originated = self.originated(expanded, call_span);
         self.expand_node(originated)
+    }
+
+    fn hygienize_macro_template(&mut self, node: Node, caller_spans: &HashSet<Span>) -> Node {
+        self.hygienize_node(node, &HashMap::new(), caller_spans)
+    }
+
+    fn hygienize_node(
+        &mut self,
+        node: Node,
+        environment: &HashMap<String, String>,
+        caller_spans: &HashSet<Span>,
+    ) -> Node {
+        match node.kind {
+            NodeKind::Symbol(symbol) if caller_spans.contains(&node.span) => {
+                Node::new(NodeKind::Symbol(symbol), node.span)
+            }
+            NodeKind::Symbol(symbol) => environment
+                .get(symbol.as_str())
+                .map(|name| Node::symbol(name.clone(), node.span))
+                .unwrap_or_else(|| Node::new(NodeKind::Symbol(symbol), node.span)),
+            NodeKind::Form(items) => {
+                let Some(head) = items.first().and_then(Node::as_symbol) else {
+                    return Node::form(
+                        items
+                            .into_iter()
+                            .map(|item| self.hygienize_node(item, environment, caller_spans))
+                            .collect(),
+                        node.span,
+                    );
+                };
+                match head {
+                    "fn" => self.hygienize_fn(node.span, items, environment, caller_spans),
+                    "let" => self.hygienize_let(node.span, items, environment, caller_spans),
+                    "case" => self.hygienize_case(node.span, items, environment, caller_spans),
+                    "use" => self.hygienize_use(node.span, items, environment, caller_spans),
+                    "do" | "if" | "and" | "or" | "not" | "list" | "obj" | "." | "str"
+                    | "str.lines" => Node::form(
+                        items
+                            .into_iter()
+                            .enumerate()
+                            .map(|(index, item)| {
+                                if index == 0 {
+                                    item
+                                } else {
+                                    self.hygienize_node(item, environment, caller_spans)
+                                }
+                            })
+                            .collect(),
+                        node.span,
+                    ),
+                    _ => Node::form(
+                        items
+                            .into_iter()
+                            .map(|item| self.hygienize_node(item, environment, caller_spans))
+                            .collect(),
+                        node.span,
+                    ),
+                }
+            }
+            kind => Node::new(kind, node.span),
+        }
+    }
+
+    fn hygienize_fn(
+        &mut self,
+        span: Span,
+        items: Vec<Node>,
+        environment: &HashMap<String, String>,
+        caller_spans: &HashSet<Span>,
+    ) -> Node {
+        if items.len() < 3 {
+            return self.hygienize_children(span, items, environment, caller_spans);
+        }
+        let mut output = Vec::with_capacity(items.len());
+        output.push(items[0].clone());
+        let mut inner = environment.clone();
+        let params = self.hygienize_binding_list(items[1].clone(), &mut inner, caller_spans);
+        output.push(params);
+        output.extend(
+            items
+                .into_iter()
+                .skip(2)
+                .map(|item| self.hygienize_node(item, &inner, caller_spans)),
+        );
+        Node::form(output, span)
+    }
+
+    fn hygienize_let(
+        &mut self,
+        span: Span,
+        items: Vec<Node>,
+        environment: &HashMap<String, String>,
+        caller_spans: &HashSet<Span>,
+    ) -> Node {
+        if items.len() < 3 {
+            return self.hygienize_children(span, items, environment, caller_spans);
+        }
+        let mut output = Vec::with_capacity(items.len());
+        output.push(items[0].clone());
+        let mut inner = environment.clone();
+        let bindings = match items[1].kind.clone() {
+            NodeKind::Form(bindings) => {
+                let mut rewritten = Vec::with_capacity(bindings.len());
+                for pair in bindings.chunks(2) {
+                    let value = pair
+                        .get(1)
+                        .map(|value| self.hygienize_node(value.clone(), &inner, caller_spans));
+                    if let Some(name) = pair.first() {
+                        rewritten.push(self.hygienize_binding_name(
+                            name.clone(),
+                            &mut inner,
+                            caller_spans,
+                        ));
+                    }
+                    if let Some(value) = value {
+                        rewritten.push(value);
+                    }
+                }
+                Node::form(rewritten, items[1].span)
+            }
+            _ => self.hygienize_node(items[1].clone(), environment, caller_spans),
+        };
+        output.push(bindings);
+        output.extend(
+            items
+                .into_iter()
+                .skip(2)
+                .map(|item| self.hygienize_node(item, &inner, caller_spans)),
+        );
+        Node::form(output, span)
+    }
+
+    fn hygienize_case(
+        &mut self,
+        span: Span,
+        items: Vec<Node>,
+        environment: &HashMap<String, String>,
+        caller_spans: &HashSet<Span>,
+    ) -> Node {
+        if items.len() < 3 {
+            return self.hygienize_children(span, items, environment, caller_spans);
+        }
+        let mut output = Vec::with_capacity(items.len());
+        output.push(items[0].clone());
+        output.push(self.hygienize_node(items[1].clone(), environment, caller_spans));
+        for branch in items.into_iter().skip(2) {
+            output.push(self.hygienize_case_branch(branch, environment, caller_spans));
+        }
+        Node::form(output, span)
+    }
+
+    fn hygienize_case_branch(
+        &mut self,
+        branch: Node,
+        environment: &HashMap<String, String>,
+        caller_spans: &HashSet<Span>,
+    ) -> Node {
+        let NodeKind::Form(items) = branch.kind else {
+            return self.hygienize_node(branch, environment, caller_spans);
+        };
+        if items.is_empty() {
+            return Node::form(items, branch.span);
+        }
+        let mut branch_environment = environment.clone();
+        let mut output = Vec::with_capacity(items.len());
+        let pattern = if is_when_pattern(&items[0]) {
+            let NodeKind::Form(when_items) = items[0].kind.clone() else {
+                unreachable!("is_when_pattern requires a form");
+            };
+            let mut rewritten = Vec::with_capacity(when_items.len());
+            rewritten.push(when_items[0].clone());
+            if let Some(pattern) = when_items.get(1) {
+                rewritten.push(self.hygienize_pattern(
+                    pattern.clone(),
+                    &mut branch_environment,
+                    caller_spans,
+                ));
+            }
+            if let Some(guard) = when_items.get(2) {
+                rewritten.push(self.hygienize_node(
+                    guard.clone(),
+                    &branch_environment,
+                    caller_spans,
+                ));
+            }
+            rewritten.extend(when_items.into_iter().skip(3));
+            Node::form(rewritten, items[0].span)
+        } else {
+            self.hygienize_pattern(items[0].clone(), &mut branch_environment, caller_spans)
+        };
+        output.push(pattern);
+        output.extend(
+            items
+                .into_iter()
+                .skip(1)
+                .map(|item| self.hygienize_node(item, &branch_environment, caller_spans)),
+        );
+        Node::form(output, branch.span)
+    }
+
+    fn hygienize_use(
+        &mut self,
+        span: Span,
+        items: Vec<Node>,
+        environment: &HashMap<String, String>,
+        caller_spans: &HashSet<Span>,
+    ) -> Node {
+        if items.len() < 4 {
+            return self.hygienize_children(span, items, environment, caller_spans);
+        }
+        let mut output = Vec::with_capacity(items.len());
+        output.push(items[0].clone());
+        let mut inner = environment.clone();
+        output.push(self.hygienize_use_bindings(items[1].clone(), &mut inner, caller_spans));
+        output.push(self.hygienize_node(items[2].clone(), environment, caller_spans));
+        output.extend(
+            items
+                .into_iter()
+                .skip(3)
+                .map(|item| self.hygienize_node(item, &inner, caller_spans)),
+        );
+        Node::form(output, span)
+    }
+
+    fn hygienize_children(
+        &mut self,
+        span: Span,
+        items: Vec<Node>,
+        environment: &HashMap<String, String>,
+        caller_spans: &HashSet<Span>,
+    ) -> Node {
+        Node::form(
+            items
+                .into_iter()
+                .map(|item| self.hygienize_node(item, environment, caller_spans))
+                .collect(),
+            span,
+        )
+    }
+
+    fn hygienize_binding_list(
+        &mut self,
+        node: Node,
+        environment: &mut HashMap<String, String>,
+        caller_spans: &HashSet<Span>,
+    ) -> Node {
+        let NodeKind::Form(items) = node.kind else {
+            return node;
+        };
+        let mut output = Vec::with_capacity(items.len());
+        let mut index = 0;
+        while index < items.len() {
+            if items[index].as_symbol() == Some("...") {
+                output.push(items[index].clone());
+                if let Some(rest) = items.get(index + 1) {
+                    output.push(self.hygienize_binding_name(
+                        rest.clone(),
+                        environment,
+                        caller_spans,
+                    ));
+                }
+                output.extend(items.into_iter().skip(index + 2));
+                return Node::form(output, node.span);
+            }
+            output.push(self.hygienize_binding_name(
+                items[index].clone(),
+                environment,
+                caller_spans,
+            ));
+            index += 1;
+        }
+        Node::form(output, node.span)
+    }
+
+    fn hygienize_use_bindings(
+        &mut self,
+        node: Node,
+        environment: &mut HashMap<String, String>,
+        caller_spans: &HashSet<Span>,
+    ) -> Node {
+        if matches!(node.kind, NodeKind::Symbol(_)) {
+            return self.hygienize_binding_name(node, environment, caller_spans);
+        }
+        let NodeKind::Form(items) = node.kind else {
+            return node;
+        };
+        let span = node.span;
+        Node::form(
+            items
+                .into_iter()
+                .map(|item| self.hygienize_binding_name(item, environment, caller_spans))
+                .collect(),
+            span,
+        )
+    }
+
+    fn hygienize_pattern(
+        &mut self,
+        node: Node,
+        environment: &mut HashMap<String, String>,
+        caller_spans: &HashSet<Span>,
+    ) -> Node {
+        match node.kind {
+            NodeKind::Symbol(symbol) if symbol.as_str() == "_" => {
+                Node::new(NodeKind::Symbol(symbol), node.span)
+            }
+            NodeKind::Symbol(_) => self.hygienize_binding_name(node, environment, caller_spans),
+            NodeKind::Form(items) => {
+                let Some(head) = items.first().and_then(Node::as_symbol) else {
+                    return Node::form(items, node.span);
+                };
+                match head {
+                    "list" => {
+                        self.hygienize_list_pattern(node.span, items, environment, caller_spans)
+                    }
+                    "obj" => {
+                        let mut output = vec![items[0].clone()];
+                        for pair in items[1..].chunks(2) {
+                            if let Some(key) = pair.first() {
+                                output.push(key.clone());
+                            }
+                            if let Some(pattern) = pair.get(1) {
+                                output.push(self.hygienize_pattern(
+                                    pattern.clone(),
+                                    environment,
+                                    caller_spans,
+                                ));
+                            }
+                        }
+                        Node::form(output, node.span)
+                    }
+                    "as" => {
+                        let mut output = vec![items[0].clone()];
+                        if let Some(pattern) = items.get(1) {
+                            output.push(self.hygienize_pattern(
+                                pattern.clone(),
+                                environment,
+                                caller_spans,
+                            ));
+                        }
+                        if let Some(alias) = items.get(2) {
+                            output.push(self.hygienize_binding_name(
+                                alias.clone(),
+                                environment,
+                                caller_spans,
+                            ));
+                        }
+                        output.extend(items.into_iter().skip(3));
+                        Node::form(output, node.span)
+                    }
+                    "or" => {
+                        let mut output = vec![items[0].clone()];
+                        output.extend(
+                            items.into_iter().skip(1).map(|item| {
+                                self.hygienize_pattern(item, environment, caller_spans)
+                            }),
+                        );
+                        Node::form(output, node.span)
+                    }
+                    _ => {
+                        let mut output = vec![items[0].clone()];
+                        output.extend(
+                            items.into_iter().skip(1).map(|item| {
+                                self.hygienize_pattern(item, environment, caller_spans)
+                            }),
+                        );
+                        Node::form(output, node.span)
+                    }
+                }
+            }
+            kind => Node::new(kind, node.span),
+        }
+    }
+
+    fn hygienize_list_pattern(
+        &mut self,
+        span: Span,
+        items: Vec<Node>,
+        environment: &mut HashMap<String, String>,
+        caller_spans: &HashSet<Span>,
+    ) -> Node {
+        let mut output = vec![items[0].clone()];
+        let mut index = 1;
+        while index < items.len() {
+            if items[index].as_symbol() == Some("...") {
+                output.push(items[index].clone());
+                if let Some(rest) = items.get(index + 1) {
+                    output.push(self.hygienize_binding_name(
+                        rest.clone(),
+                        environment,
+                        caller_spans,
+                    ));
+                }
+                output.extend(items.into_iter().skip(index + 2));
+                return Node::form(output, span);
+            }
+            output.push(self.hygienize_pattern(items[index].clone(), environment, caller_spans));
+            index += 1;
+        }
+        Node::form(output, span)
+    }
+
+    fn hygienize_binding_name(
+        &mut self,
+        node: Node,
+        environment: &mut HashMap<String, String>,
+        caller_spans: &HashSet<Span>,
+    ) -> Node {
+        let Some(name) = node.as_symbol().map(str::to_owned) else {
+            return node;
+        };
+        if caller_spans.contains(&node.span) || name == "_" {
+            return node;
+        }
+        let renamed = environment
+            .entry(name.clone())
+            .or_insert_with(|| {
+                let id = self.next_hygienic_id;
+                self.next_hygienic_id += 1;
+                format!("__jisp_macro_{id}_{name}")
+            })
+            .clone();
+        Node::symbol(renamed, node.span)
     }
 
     fn expand_macro_quasiquote(
@@ -452,6 +878,28 @@ fn bind_macro_arguments(
         );
     }
     Ok(bindings)
+}
+
+fn caller_spans(arguments: &[Node]) -> HashSet<Span> {
+    let mut spans = HashSet::new();
+    for argument in arguments {
+        collect_spans(argument, &mut spans);
+    }
+    spans
+}
+
+fn collect_spans(node: &Node, spans: &mut HashSet<Span>) {
+    spans.insert(node.span);
+    if let NodeKind::Form(items) = &node.kind {
+        for item in items {
+            collect_spans(item, spans);
+        }
+    }
+}
+
+fn is_when_pattern(node: &Node) -> bool {
+    node.as_form()
+        .is_some_and(|items| items.first().and_then(Node::as_symbol) == Some("when"))
 }
 
 fn expect_macro_parameter<'a>(node: &'a Node, form: &'static str) -> Result<&'a str, ExpandError> {

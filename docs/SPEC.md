@@ -61,12 +61,15 @@ final `... rest` parameter.
     (unless false 1 2)))
 ```
 
-Macros are currently module-local and unhygienic. They cannot be imported or
-exported, and their templates use ordinary lexical name resolution after
-lowering. The macro body is not a general compile-time Jisp evaluator; this
-keeps expansion deterministic and avoids a second prelude, IO, and module
-loading contract. The full design and future boundaries are recorded in
-[`.agents/plans/0010-user-macros.md`](../.agents/plans/0010-user-macros.md).
+Macros are currently module-local. They cannot be imported or exported. Template
+bindings introduced by `fn`, `let`, `use`, list-rest patterns, aliases, and
+ordinary `case` pattern bindings are hygienic: each expansion gives them a
+fresh internal name, while unquoted and spliced caller syntax keeps its original
+spelling and scope. The macro body is not a general compile-time Jisp
+evaluator; this keeps expansion deterministic and avoids a second prelude, IO,
+and module loading contract. The full design and future boundaries are recorded
+in [`.agents/plans/0010-user-macros.md`](../.agents/plans/0010-user-macros.md)
+and [`.agents/plans/0018-macro-hygiene.md`](../.agents/plans/0018-macro-hygiene.md).
 
 ## Case alias patterns
 

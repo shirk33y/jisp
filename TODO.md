@@ -81,8 +81,10 @@ product-level direction and ordering rationale, see [ROADMAP.md](ROADMAP.md).
   Dynamic deletion still changes a closed object's concrete shape. The required
   remaining type/ABI split is recorded in
   [`.agents/plans/0016-native-open-object-abi.md`](.agents/plans/0016-native-open-object-abi.md).
-- Extend the intentionally bounded macro system only after designing hygiene,
-  cross-module visibility, and a general compile-time evaluator.
+- Extend the intentionally bounded macro system only after designing
+  cross-module visibility and a general compile-time evaluator. Local template
+  bindings introduced by macros are now hygienic, while unquoted caller syntax
+  keeps its own spelling and scope.
 - Add stronger list/object exhaustiveness analysis. Finite list patterns and
   products of up to 256 finite object-field combinations are checked; native
   alternatives preserve branch-local bindings at top level and inside
