@@ -77,7 +77,7 @@ pub fn core_schema() -> Value {
                     {
                         "type": "array",
                         "minItems": 2,
-                        "prefixItems": [{ "enum": ["def", "export", "import", "macro-import", "type"] }]
+                        "prefixItems": [{ "enum": ["def", "export", "import", "macro-import", "type", "component"] }]
                     }
                 ]
             }

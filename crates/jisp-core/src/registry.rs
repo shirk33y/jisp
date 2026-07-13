@@ -50,6 +50,14 @@ pub const SPECIAL_FORMS: &[SpecialFormSpec] = &[
         summary: "Define an algebraic data type.",
     },
     SpecialFormSpec {
+        name: "component",
+        aliases: &[],
+        min_args: 3,
+        max_args: None,
+        top_level: true,
+        summary: "Define an experimental UI component over structural objects.",
+    },
+    SpecialFormSpec {
         name: "fn",
         aliases: &[],
         min_args: 2,
@@ -96,6 +104,22 @@ pub const SPECIAL_FORMS: &[SpecialFormSpec] = &[
         max_args: None,
         top_level: false,
         summary: "Pass the remaining body as the final callback argument.",
+    },
+    SpecialFormSpec {
+        name: "tag",
+        aliases: &[],
+        min_args: 1,
+        max_args: None,
+        top_level: false,
+        summary: "Create an experimental structural UI element.",
+    },
+    SpecialFormSpec {
+        name: "text",
+        aliases: &[],
+        min_args: 1,
+        max_args: Some(1),
+        top_level: false,
+        summary: "Create an experimental structural UI text node.",
     },
     SpecialFormSpec {
         name: "quote",

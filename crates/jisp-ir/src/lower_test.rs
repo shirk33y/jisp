@@ -1,11 +1,31 @@
 use jisp_core::{SourceId, SyntaxParser};
 use jisp_syntax_json::JsonParser;
+use jisp_syntax_lisp::LispParser;
 
-use crate::{ExprKind, Lowerer};
+use crate::{Expr, ExprKind, Literal, Lowerer};
 
 fn lower(source: &str) -> Result<crate::Module, crate::LowerError> {
     let nodes = JsonParser.parse_module(SourceId(0), source).unwrap();
     Lowerer.lower_module(&nodes)
+}
+
+fn lower_lisp(source: &str) -> Result<crate::Module, crate::LowerError> {
+    let nodes = LispParser.parse_module(SourceId(0), source).unwrap();
+    Lowerer.lower_module(&nodes)
+}
+
+fn object_field<'a>(fields: &'a [(Expr, Expr)], key: &str) -> Option<&'a Expr> {
+    fields
+        .iter()
+        .find(|(field, _)| literal_string(field) == Some(key))
+        .map(|(_, value)| value)
+}
+
+fn literal_string(expr: &Expr) -> Option<&str> {
+    match &expr.kind {
+        ExprKind::Literal(Literal::String(value)) => Some(value),
+        _ => None,
+    }
 }
 
 #[test]
@@ -110,4 +130,73 @@ fn lower_rejects_duplicate_object_pattern_keys() {
         error.diagnostics[0].message,
         "duplicate object pattern key `name`"
     );
+}
+
+#[test]
+fn component_lowers_to_private_function_with_ui_body() {
+    let module = lower_lisp(
+        r#"
+(component save-button (saving)
+  (tag "button"
+    id "save-button"
+    px-2 true
+    (span (id "label") (text "Save"))))
+"#,
+    )
+    .unwrap();
+
+    assert_eq!(module.definitions[0].name, "save-button");
+    assert!(!module.definitions[0].public);
+
+    let ExprKind::Lambda { params, rest, body } = &module.definitions[0].value.kind else {
+        panic!("component should lower to a function");
+    };
+    assert_eq!(params, &["saving"]);
+    assert!(rest.is_none());
+
+    let ExprKind::Object(fields) = &body.kind else {
+        panic!("component body should lower to a structural UI object");
+    };
+    assert_eq!(
+        object_field(fields, "tag").and_then(literal_string),
+        Some("button")
+    );
+    assert_eq!(
+        object_field(fields, "id").and_then(literal_string),
+        Some("save-button")
+    );
+
+    let ExprKind::Object(classes) = &object_field(fields, "classes").unwrap().kind else {
+        panic!("utility classes should lower to a classes object");
+    };
+    assert!(object_field(classes, "px-2").is_some());
+
+    let ExprKind::List(children) = &object_field(fields, "children").unwrap().kind else {
+        panic!("nested elements should lower to children");
+    };
+    assert_eq!(children.len(), 1);
+}
+
+#[test]
+fn ui_dsl_uses_explicit_class_to_escape_html_attribute_conflicts() {
+    let module = lower_lisp(
+        r#"
+(def view
+  (tag "button"
+    hidden true
+    (class hidden true)
+    (text "Save")))
+"#,
+    )
+    .unwrap();
+
+    let ExprKind::Object(fields) = &module.definitions[0].value.kind else {
+        panic!("tag should lower to a structural UI object");
+    };
+    assert!(object_field(fields, "hidden").is_some());
+
+    let ExprKind::Object(classes) = &object_field(fields, "classes").unwrap().kind else {
+        panic!("explicit class should lower to classes object");
+    };
+    assert!(object_field(classes, "hidden").is_some());
 }
