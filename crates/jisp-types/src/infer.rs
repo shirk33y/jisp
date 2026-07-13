@@ -592,7 +592,11 @@ impl Inferencer {
             let Some(field) = homogeneous_closed_field_type(&row) else {
                 return Ok(None);
             };
-            self.unify(value, field)?;
+            let mut candidate = self.clone();
+            if candidate.unify(value, field).is_err() {
+                return Ok(None);
+            }
+            *self = candidate;
         }
         Ok(Some(Type::Object(row)))
     }
