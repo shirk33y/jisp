@@ -175,7 +175,9 @@ fn remapped_cargo_errors(
             let diagnostic = &message["message"];
             let span = diagnostic["spans"].as_array()?.iter().find(|span| {
                 span["is_primary"] == true
-                    && Path::new(span["file_name"].as_str().unwrap_or_default()) == generated_path
+                    && (Path::new(span["file_name"].as_str().unwrap_or_default()) == generated_path
+                        || Path::new(span["file_name"].as_str().unwrap_or_default())
+                            == Path::new("src/lib.rs"))
             })?;
             let offset = span["byte_start"].as_u64()? as usize;
             let item = generated.source_map.item_at(offset)?;
@@ -189,6 +191,37 @@ fn remapped_cargo_errors(
             )
         })
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::Path;
+
+    use super::remapped_cargo_errors;
+
+    #[test]
+    fn remaps_a_primary_cargo_span_to_the_containing_jisp_item() {
+        let generated = jisp::emit_rust_detailed("main.lisp", "(export main (fn () 42))").unwrap();
+        let item = generated
+            .source_map
+            .item(jisp::RustItemKind::Function, "main")
+            .unwrap();
+        let offset = item.generated_range.as_ref().unwrap().start;
+        let json = format!(
+            r#"{{"reason":"compiler-message","message":{{"level":"error","message":"synthetic rust error","spans":[{{"is_primary":true,"file_name":"src/lib.rs","byte_start":{offset}}}]}}}}"#
+        );
+
+        let rendered = remapped_cargo_errors(&json, &generated, Path::new("/tmp/src/lib.rs"));
+
+        assert_eq!(rendered.len(), 1);
+        assert!(rendered[0].contains("error[JISP-RUST]"), "{}", rendered[0]);
+        assert!(
+            rendered[0].contains("synthetic rust error"),
+            "{}",
+            rendered[0]
+        );
+        assert!(rendered[0].contains("main.lisp:1:1"), "{}", rendered[0]);
+    }
 }
 
 fn read(path: &PathBuf) -> Result<String> {
