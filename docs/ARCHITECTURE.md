@@ -46,8 +46,8 @@ JSON / restricted YAML / Lisp
 - `jisp-macros`: Cargo dependency-tracking proc macros that call the facade
   native-emission seam for item modules and `lisp_expr!` expression expansion.
 - `jisp`: facade API, including detailed native emission with source files,
-  expansion origins, dependencies, tokens, and item-level generated Rust source
-  mapping.
+  expansion origins, dependencies, tokens, and expression/item-level generated
+  Rust source mapping.
 - `jisp-cli`: `check`, `run`, `schema`, and `emit-rust` for the supported
   native subset.
 

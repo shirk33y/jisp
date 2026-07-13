@@ -48,13 +48,18 @@ pub enum RustItemKind {
     Function,
     Struct,
     Enum,
+    Expression,
 }
 
 fn locate_item_range(rendered: &str, kind: RustItemKind, name: &str) -> Option<Range<usize>> {
+    if kind == RustItemKind::Expression {
+        return locate_expression_range(rendered, name);
+    }
     let keyword = match kind {
         RustItemKind::Function => "fn",
         RustItemKind::Struct => "struct",
         RustItemKind::Enum => "enum",
+        RustItemKind::Expression => unreachable!("expressions are handled above"),
     };
     let needle = format!("{keyword} {name}");
     let start = rendered.find(&needle)?;
@@ -73,4 +78,13 @@ fn locate_item_range(rendered: &str, kind: RustItemKind, name: &str) -> Option<R
         }
     }
     None
+}
+
+fn locate_expression_range(rendered: &str, name: &str) -> Option<Range<usize>> {
+    let binding = format!("let {name} =");
+    let binding_start = rendered.find(&binding)?;
+    let start = rendered[..binding_start].rfind('{')?;
+    let end_marker = format!("; {name} }}");
+    let end = binding_start + rendered[binding_start..].find(&end_marker)? + end_marker.len();
+    Some(start..end)
 }

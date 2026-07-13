@@ -54,14 +54,27 @@ pub(crate) fn emit_module(module: &TypedModule) -> Result<GeneratedRust, Codegen
     )?;
     let object_structs = emit_object_structs(&object_types, &enum_types)?;
     let enum_definitions = emit_enum_definitions(&enum_types, &object_types)?;
+    let mut expression_items = Vec::new();
+    let mut next_expression_marker = 0;
     let definitions = module
         .module
         .definitions
         .iter()
-        .map(|definition| emit_definition(module, definition, &names, &object_types, &enum_types))
+        .map(|definition| {
+            emit_definition(
+                module,
+                definition,
+                &names,
+                &object_types,
+                &enum_types,
+                &mut expression_items,
+                &mut next_expression_marker,
+            )
+        })
         .collect::<Result<Vec<_>, _>>()?;
     let tokens = quote! { #(#object_structs)* #(#enum_definitions)* #(#definitions)* };
     let mut source_map = rust_source_map(module, &object_types, &enum_types);
+    source_map.items.extend(expression_items);
     source_map.locate_generated_ranges(&tokens.to_string());
     Ok(GeneratedRust { tokens, source_map })
 }
@@ -72,6 +85,8 @@ fn emit_definition(
     top_level_names: &BTreeSet<String>,
     object_types: &ObjectTypes,
     enum_types: &EnumTypes,
+    expression_items: &mut Vec<RustSourceItem>,
+    next_expression_marker: &mut usize,
 ) -> Result<TokenStream, CodegenError> {
     let Some(scheme) = module.schemes.get(&definition.name) else {
         return Err(CodegenError::Unsupported(
@@ -118,6 +133,8 @@ fn emit_definition(
                 &module.expression_types,
                 object_types,
                 enum_types,
+                expression_items,
+                next_expression_marker,
             );
             let mut emitted_params = params
                 .iter()
@@ -155,6 +172,8 @@ fn emit_definition(
                 &module.expression_types,
                 object_types,
                 enum_types,
+                expression_items,
+                next_expression_marker,
             )
             .emit_expr(&definition.value, Some(ty))?;
             Ok(quote! {
@@ -172,6 +191,8 @@ struct EmitContext<'a> {
     expression_types: &'a HashMap<Span, Type>,
     object_types: &'a ObjectTypes,
     enum_types: &'a EnumTypes,
+    expression_items: &'a mut Vec<RustSourceItem>,
+    next_expression_marker: &'a mut usize,
     locals: BTreeMap<String, Option<Type>>,
     closure_captures: BTreeSet<String>,
 }
@@ -188,6 +209,8 @@ impl<'a> EmitContext<'a> {
         expression_types: &'a HashMap<Span, Type>,
         object_types: &'a ObjectTypes,
         enum_types: &'a EnumTypes,
+        expression_items: &'a mut Vec<RustSourceItem>,
+        next_expression_marker: &'a mut usize,
     ) -> Self {
         Self {
             top_level_names,
@@ -195,6 +218,8 @@ impl<'a> EmitContext<'a> {
             expression_types,
             object_types,
             enum_types,
+            expression_items,
+            next_expression_marker,
             locals: BTreeMap::new(),
             closure_captures: BTreeSet::new(),
         }
@@ -207,7 +232,7 @@ impl<'a> EmitContext<'a> {
     ) -> Result<TokenStream, CodegenError> {
         let inferred = self.expression_type(expr).cloned();
         let expected = expected.or(inferred.as_ref());
-        match &expr.kind {
+        let tokens = match &expr.kind {
             ExprKind::Literal(literal) => emit_literal(literal),
             ExprKind::Name(name) => {
                 let ident = rust_ident(name);
@@ -287,7 +312,27 @@ impl<'a> EmitContext<'a> {
             ExprKind::Field { object, key } => self.emit_field(object, key, expected),
             ExprKind::StringTemplate { lines, parts } => self.emit_string_template(*lines, parts),
             ExprKind::Case { subject, branches } => self.emit_case(subject, branches, expected),
-        }
+        }?;
+        Ok(self.mark_expression(expr.span, tokens))
+    }
+
+    fn mark_expression(&mut self, source_span: Span, tokens: TokenStream) -> TokenStream {
+        let marker_index = *self.next_expression_marker;
+        *self.next_expression_marker += 1;
+        let marker = format_ident!("__jisp_expr_{marker_index}");
+        self.expression_items.push(RustSourceItem {
+            kind: RustItemKind::Expression,
+            rust_name: marker.to_string(),
+            source_span,
+            generated_range: None,
+        });
+        quote! {{
+            #[allow(clippy::let_and_return)]
+            {
+                let #marker = #tokens;
+                #marker
+            }
+        }}
     }
 
     fn emit_let(

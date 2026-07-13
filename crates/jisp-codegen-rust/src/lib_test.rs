@@ -38,6 +38,7 @@ fn generate_reaches_emitter_after_layout_classification() {
 fn generate_detailed_maps_rust_functions_to_jisp_definitions() {
     let source = jisp_core::SourceId(9);
     let definition_span = jisp_core::Span::new(source, 4, 22);
+    let expression_span = jisp_core::Span::new(source, 15, 16);
     let module = TypedModule {
         module: jisp_ir::Module {
             imports: vec![],
@@ -47,7 +48,7 @@ fn generate_detailed_maps_rust_functions_to_jisp_definitions() {
                 public: true,
                 value: jisp_ir::Expr::new(
                     jisp_ir::ExprKind::Literal(jisp_ir::Literal::Int(1)),
-                    definition_span,
+                    expression_span,
                 ),
                 span: definition_span,
             }],
@@ -75,5 +76,22 @@ fn generate_detailed_maps_rust_functions_to_jisp_definitions() {
             .unwrap()
             .source_span,
         definition_span
+    );
+    let expression = generated
+        .source_map
+        .items
+        .iter()
+        .find(|item| item.kind == RustItemKind::Expression)
+        .unwrap();
+    let expression_range = expression.generated_range.as_ref().unwrap();
+    assert_eq!(expression.source_span, expression_span);
+    assert!(rendered[expression_range.clone()].contains("let __jisp_expr_"));
+    assert_eq!(
+        generated
+            .source_map
+            .item_at(expression_range.start)
+            .unwrap()
+            .source_span,
+        expression_span
     );
 }

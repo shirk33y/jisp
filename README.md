@@ -105,7 +105,7 @@ jisp init [path]
 | `schema` | Print or write the generated core JSON Schema. |
 | `export-schema` | Print or write a JSON Schema for one monomorphic, JSON-native public export, including non-parameterized tagged variants. |
 | `emit-rust` | Emit Rust tokens for the supported native subset. |
-| `native-check` | Compile generated Rust in a temporary offline Cargo crate and remap item-level compiler errors to Jisp source. |
+| `native-check` | Compile generated Rust in a temporary offline Cargo crate and remap compiler errors to the narrowest generated Jisp expression or item. |
 | `fmt` | Format `.lisp`/`.jisp`, canonical `.json`, or flow-style `.yaml`/`.yml`; default prints, `--check` validates, and `--write` updates the file. |
 | `repl` | Start a REPL. `def`, `type`, and `import` forms persist for later expressions; `--state <file>` also persists accepted definitions across runs. Use `:help`, `:reset`, or `:quit`. |
 | `lsp` | Start a stdio Language Server Protocol endpoint with initialization, core-form completion and hover, go-to-definition for top-level/imported names plus `fn`, `let`, and `case` bindings, and live frontend diagnostics for opened or changed documents. |
