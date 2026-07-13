@@ -76,3 +76,8 @@ semantics, event dispatch, a reconciler, native widget registries, and
 Tailwind-style token validation remain future runtime work. Until those
 contracts exist, handlers and keys are preserved as data for a host rather than
 executed by Jisp itself.
+
+The GitHub Pages playground runs this same interpreter through the
+`jisp-wasm` WebAssembly entry point; JavaScript loads the module and isolates
+the resulting static HTML preview, but does not parse or evaluate a second UI
+language.

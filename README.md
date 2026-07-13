@@ -142,6 +142,8 @@ deferred. See
 Useful examples live in [examples](examples/): a basic hello program, a native
 codegen fixture, static object helpers, legacy structural UI data for native
 codegen coverage, and declarative [UI components](examples/ui_components.lisp).
+Try the browser-only [UI playground](https://shirk33y.github.io/jisp/) for a
+small, explicitly documented preview subset.
 
 ## Architecture
 

@@ -10,6 +10,7 @@ members = [
   "crates/jisp-ir",
   "crates/jisp-types",
   "crates/jisp-runtime",
+  "crates/jisp-wasm",
   "crates/jisp-eval",
   "crates/jisp-codegen-rust",
   "crates/jisp-macros",

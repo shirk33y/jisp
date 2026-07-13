@@ -6,3 +6,4 @@
 *.rlib
 *.rmeta
 .DS_Store
+playground/pkg/

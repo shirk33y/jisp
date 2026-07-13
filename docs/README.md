@@ -16,6 +16,9 @@ Repository-root files remain deliberately small and operational:
   behaviour, and example.
 - [Declarative UI](UI.md): default component/host-element syntax, lowering
   contract, static HTML behavior, and deferred interactive-runtime work.
+- [UI playground](../playground/index.html): a GitHub Pages preview with
+  editable examples that runs the real interpreter in WebAssembly; its host is
+  intentionally limited to static HTML rendering.
 - [Architecture](ARCHITECTURE.md): crate boundaries and non-negotiable design
   invariants.
 - [Diagnostics](DIAGNOSTICS.md): source ranges, expansion origins, and

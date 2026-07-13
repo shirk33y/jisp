@@ -1,0 +1,39 @@
+name: Deploy playground
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - playground/**
+      - crates/**
+      - Cargo.toml
+      - Cargo.lock
+      - .github/workflows/pages.yml
+  workflow_dispatch:
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/configure-pages@v5
+      - run: rustup target add wasm32-unknown-unknown
+      - uses: jetli/wasm-pack-action@v0.4.0
+      - run: wasm-pack build crates/jisp-wasm --target web --release --out-dir ../../playground/pkg --out-name jisp_wasm
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: playground
+      - id: deployment
+        uses: actions/deploy-pages@v4
