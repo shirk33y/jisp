@@ -17,7 +17,7 @@ use jisp_core::{detect_syntax, Diagnostic, Node, SourceMap, Span, Syntax, Syntax
 use jisp_eval::{Evaluator, ImportValues, LoadedModule, RuntimeError, Value};
 use jisp_expand::ExpansionMap;
 use jisp_ir::{LowerError, Lowerer, Module};
-use jisp_types::{ImportTypeEnvironments, Inferencer, Scheme, Type};
+use jisp_types::{ImportTypeEnvironments, Inferencer, Scheme, Type, TypeVar, Unifier};
 use proc_macro2::TokenStream;
 use serde_json::{json, Value as JsonValue};
 use thiserror::Error;
@@ -461,6 +461,15 @@ pub fn import_dependencies(path: impl AsRef<Path>, text: &str) -> Result<Vec<Pat
 }
 
 pub fn export_schema(path: impl AsRef<Path>, text: &str, export: &str) -> Result<JsonValue, Error> {
+    export_schema_with_type(path, text, export, None)
+}
+
+pub fn export_schema_with_type(
+    path: impl AsRef<Path>,
+    text: &str,
+    export: &str,
+    instantiation: Option<&str>,
+) -> Result<JsonValue, Error> {
     let parsed = check(path, text)?;
     if !parsed.module.exports.iter().any(|name| name == export) {
         return Err(Error::Schema(format!("`{export}` is not a public export")));
@@ -471,13 +480,22 @@ pub fn export_schema(path: impl AsRef<Path>, text: &str, export: &str) -> Result
     let scheme = schemes
         .get(export)
         .ok_or_else(|| Error::Schema(format!("export `{export}` has no value definition")))?;
-    if !scheme.variables.is_empty() {
+    let ty = if let Some(instantiation) = instantiation {
+        let requested = parse_schema_type(&parsed.module, instantiation, false)?;
+        let mut unifier = Unifier::default();
+        unifier
+            .unify(scheme.body.clone(), requested)
+            .map_err(|error| Error::Schema(format!("type instantiation mismatch: {error}")))?;
+        unifier.substitution.apply(&scheme.body)
+    } else if !scheme.variables.is_empty() {
         return Err(Error::Schema(format!(
             "export `{export}` is polymorphic and needs an explicit instantiation"
         )));
-    }
+    } else {
+        scheme.body.clone()
+    };
     let mut builder = JsonSchemaBuilder::new(&parsed.module);
-    let schema = builder.schema_for_type(&scheme.body)?;
+    let schema = builder.schema_for_type(&ty)?;
     let mut envelope = json!({
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "title": format!("Jisp export `{export}`"),
@@ -543,18 +561,22 @@ impl<'a> JsonSchemaBuilder<'a> {
                 "functions have no JSON representation".to_owned(),
             )),
             Type::Named { name, arguments } if arguments.is_empty() => {
-                self.ensure_named_definition(name)?;
-                Ok(json!({ "$ref": format!("#/$defs/{name}") }))
+                let definition = self.ensure_named_definition(name, arguments)?;
+                Ok(json!({ "$ref": format!("#/$defs/{definition}") }))
             }
-            Type::Named { name, .. } => Err(Error::Schema(format!(
-                "parameterized named type `{name}` needs an explicit instantiation"
-            ))),
+            Type::Named { name, arguments } => {
+                let definition = self.ensure_named_definition(name, arguments)?;
+                Ok(json!({ "$ref": format!("#/$defs/{definition}") }))
+            }
         }
     }
 
-    fn ensure_named_definition(&mut self, name: &str) -> Result<(), Error> {
-        if self.definitions.contains_key(name) || self.building.contains(name) {
-            return Ok(());
+    fn ensure_named_definition(&mut self, name: &str, arguments: &[Type]) -> Result<String, Error> {
+        let definition_name = named_definition_key(name, arguments)?;
+        if self.definitions.contains_key(&definition_name)
+            || self.building.contains(&definition_name)
+        {
+            return Ok(definition_name);
         }
         let declaration = self
             .module
@@ -562,7 +584,19 @@ impl<'a> JsonSchemaBuilder<'a> {
             .iter()
             .find(|declaration| declaration.name == name)
             .ok_or_else(|| Error::Schema(format!("unknown named type `{name}`")))?;
-        self.building.insert(name.to_owned());
+        let parameters = declaration_type_parameters(self.module, declaration)?;
+        if parameters.len() != arguments.len() {
+            return Err(Error::Schema(format!(
+                "type `{name}` expects {} argument(s), got {}",
+                parameters.len(),
+                arguments.len()
+            )));
+        }
+        let substitutions = parameters
+            .into_iter()
+            .zip(arguments.iter().cloned())
+            .collect::<BTreeMap<_, _>>();
+        self.building.insert(definition_name.clone());
         let variants = declaration
             .variants
             .iter()
@@ -570,7 +604,11 @@ impl<'a> JsonSchemaBuilder<'a> {
                 let fields = variant
                     .field_types
                     .iter()
-                    .map(|field| self.schema_for_annotation(field))
+                    .map(|field| {
+                        let field = parse_schema_type(self.module, field, true)?;
+                        let field = substitute_schema_type(&field, &substitutions);
+                        self.schema_for_type(&field)
+                    })
                     .collect::<Result<Vec<_>, _>>()?;
                 let count = fields.len() + 1;
                 let mut prefix_items = vec![json!({ "const": variant.name })];
@@ -584,30 +622,244 @@ impl<'a> JsonSchemaBuilder<'a> {
                 }))
             })
             .collect::<Result<Vec<_>, Error>>()?;
-        self.building.remove(name);
+        self.building.remove(&definition_name);
         self.definitions
-            .insert(name.to_owned(), json!({ "oneOf": variants }));
-        Ok(())
+            .insert(definition_name.clone(), json!({ "oneOf": variants }));
+        Ok(definition_name)
     }
+}
 
-    fn schema_for_annotation(&mut self, annotation: &str) -> Result<JsonValue, Error> {
-        match annotation {
-            "null" => self.schema_for_type(&Type::Null),
-            "bool" => self.schema_for_type(&Type::Bool),
-            "int" => self.schema_for_type(&Type::Int),
-            "bigint" => self.schema_for_type(&Type::BigInt),
-            "float" => self.schema_for_type(&Type::Float),
-            "str" => self.schema_for_type(&Type::Str),
-            _ if annotation.starts_with("(list ") && annotation.ends_with(')') => {
-                let item = &annotation[6..annotation.len() - 1];
-                Ok(json!({ "type": "array", "items": self.schema_for_annotation(item)? }))
-            }
-            name => self.schema_for_type(&Type::Named {
-                name: name.to_owned(),
-                arguments: vec![],
-            }),
+fn parse_schema_type(module: &Module, text: &str, allow_parameters: bool) -> Result<Type, Error> {
+    let mut parser = SchemaTypeParser::new(module, allow_parameters);
+    parser.parse(text)
+}
+
+struct SchemaTypeParser<'a> {
+    module: &'a Module,
+    allow_parameters: bool,
+    variables: BTreeMap<String, TypeVar>,
+    order: Vec<TypeVar>,
+}
+
+impl<'a> SchemaTypeParser<'a> {
+    fn new(module: &'a Module, allow_parameters: bool) -> Self {
+        Self {
+            module,
+            allow_parameters,
+            variables: BTreeMap::new(),
+            order: vec![],
         }
     }
+
+    fn parse(&mut self, text: &str) -> Result<Type, Error> {
+        let text = text.trim();
+        Ok(match text {
+            "never" => Type::Never,
+            "null" => Type::Null,
+            "bool" => Type::Bool,
+            "int" => Type::Int,
+            "bigint" => Type::BigInt,
+            "float" => Type::Float,
+            "str" | "string" => Type::Str,
+            _ if is_parenthesized_type(text) => {
+                let inner = &text[1..text.len() - 1];
+                let items = split_schema_type_items(inner)?;
+                let Some((head, tail)) = items.split_first() else {
+                    return Err(Error::Schema("empty type form".to_owned()));
+                };
+                if *head == "list" && tail.len() == 1 {
+                    Type::List(Box::new(self.parse(tail[0])?))
+                } else if *head == "map" && tail.len() == 2 && tail[0] == "str" {
+                    Type::Map(Box::new(self.parse(tail[1])?))
+                } else {
+                    Type::Named {
+                        name: (*head).to_owned(),
+                        arguments: tail
+                            .iter()
+                            .map(|item| self.parse(item))
+                            .collect::<Result<Vec<_>, _>>()?,
+                    }
+                }
+            }
+            _ if self.is_named_type(text) => Type::Named {
+                name: text.to_owned(),
+                arguments: vec![],
+            },
+            _ if self.allow_parameters && is_type_parameter_name(text) => {
+                Type::Var(self.type_parameter(text))
+            }
+            _ if is_type_name(text) => Type::Named {
+                name: text.to_owned(),
+                arguments: vec![],
+            },
+            _ => return Err(Error::Schema(format!("invalid type annotation `{text}`"))),
+        })
+    }
+
+    fn is_named_type(&self, text: &str) -> bool {
+        self.module
+            .types
+            .iter()
+            .any(|declaration| declaration.name == text)
+    }
+
+    fn type_parameter(&mut self, name: &str) -> TypeVar {
+        if let Some(var) = self.variables.get(name) {
+            return *var;
+        }
+        let var = TypeVar(self.variables.len() as u32);
+        self.variables.insert(name.to_owned(), var);
+        self.order.push(var);
+        var
+    }
+}
+
+fn declaration_type_parameters(
+    module: &Module,
+    declaration: &jisp_ir::TypeDecl,
+) -> Result<Vec<TypeVar>, Error> {
+    let mut parser = SchemaTypeParser::new(module, true);
+    for variant in &declaration.variants {
+        for field in &variant.field_types {
+            parser.parse(field)?;
+        }
+    }
+    Ok(parser.order)
+}
+
+fn substitute_schema_type(ty: &Type, substitutions: &BTreeMap<TypeVar, Type>) -> Type {
+    match ty {
+        Type::Var(var) => substitutions.get(var).cloned().unwrap_or(Type::Var(*var)),
+        Type::List(item) => Type::List(Box::new(substitute_schema_type(item, substitutions))),
+        Type::Map(value) => Type::Map(Box::new(substitute_schema_type(value, substitutions))),
+        Type::Object(row) => Type::Object(jisp_types::ObjectRow {
+            fields: row
+                .fields
+                .iter()
+                .map(|(name, ty)| (name.clone(), substitute_schema_type(ty, substitutions)))
+                .collect(),
+            rest: row.rest,
+        }),
+        Type::Function {
+            parameters,
+            rest,
+            result,
+        } => Type::Function {
+            parameters: parameters
+                .iter()
+                .map(|ty| substitute_schema_type(ty, substitutions))
+                .collect(),
+            rest: rest
+                .as_ref()
+                .map(|ty| Box::new(substitute_schema_type(ty, substitutions))),
+            result: Box::new(substitute_schema_type(result, substitutions)),
+        },
+        Type::Named { name, arguments } => Type::Named {
+            name: name.clone(),
+            arguments: arguments
+                .iter()
+                .map(|ty| substitute_schema_type(ty, substitutions))
+                .collect(),
+        },
+        other => other.clone(),
+    }
+}
+
+fn named_definition_key(name: &str, arguments: &[Type]) -> Result<String, Error> {
+    if arguments.is_empty() {
+        return Ok(name.to_owned());
+    }
+    let arguments = arguments
+        .iter()
+        .map(schema_type_key)
+        .collect::<Result<Vec<_>, _>>()?
+        .join("_");
+    Ok(format!("{name}_{arguments}"))
+}
+
+fn schema_type_key(ty: &Type) -> Result<String, Error> {
+    Ok(match ty {
+        Type::Null => "null".to_owned(),
+        Type::Bool => "bool".to_owned(),
+        Type::Int => "int".to_owned(),
+        Type::BigInt => "bigint".to_owned(),
+        Type::Float => "float".to_owned(),
+        Type::Str => "str".to_owned(),
+        Type::List(item) => format!("list_{}", schema_type_key(item)?),
+        Type::Map(value) => format!("map_str_{}", schema_type_key(value)?),
+        Type::Named { name, arguments } => named_definition_key(name, arguments)?,
+        Type::Never => {
+            return Err(Error::Schema(
+                "never values have no JSON representation".to_owned(),
+            ))
+        }
+        Type::Var(_) => return Err(Error::Schema("unresolved type variable".to_owned())),
+        Type::Object(_) => "object".to_owned(),
+        Type::Function { .. } => {
+            return Err(Error::Schema(
+                "functions have no JSON representation".to_owned(),
+            ))
+        }
+    })
+}
+
+fn is_parenthesized_type(text: &str) -> bool {
+    text.starts_with('(') && text.ends_with(')')
+}
+
+fn split_schema_type_items(text: &str) -> Result<Vec<&str>, Error> {
+    let mut items = vec![];
+    let mut depth = 0usize;
+    let mut start = None;
+
+    for (index, ch) in text.char_indices() {
+        match ch {
+            '(' => {
+                if start.is_none() {
+                    start = Some(index);
+                }
+                depth += 1;
+            }
+            ')' => {
+                depth = depth
+                    .checked_sub(1)
+                    .ok_or_else(|| Error::Schema("invalid type annotation".to_owned()))?;
+            }
+            ch if ch.is_whitespace() && depth == 0 => {
+                if let Some(item_start) = start.take() {
+                    items.push(&text[item_start..index]);
+                }
+            }
+            _ if start.is_none() => start = Some(index),
+            _ => {}
+        }
+    }
+
+    if depth != 0 {
+        return Err(Error::Schema("invalid type annotation".to_owned()));
+    }
+    if let Some(item_start) = start {
+        items.push(&text[item_start..]);
+    }
+    Ok(items)
+}
+
+fn is_type_parameter_name(text: &str) -> bool {
+    text.chars()
+        .next()
+        .is_some_and(|ch| ch.is_ascii_lowercase())
+        && text
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || ch == '_' || ch == '-')
+}
+
+fn is_type_name(text: &str) -> bool {
+    text.chars()
+        .next()
+        .is_some_and(|ch| ch.is_ascii_alphabetic())
+        && text
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || ch == '_' || ch == '-' || ch == '/')
 }
 
 pub fn evaluate(path: impl AsRef<Path>, text: &str) -> Result<LoadedModule, Error> {

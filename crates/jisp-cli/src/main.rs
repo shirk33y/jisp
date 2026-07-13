@@ -39,6 +39,8 @@ enum Command {
     ExportSchema {
         path: PathBuf,
         export: String,
+        #[arg(long = "type")]
+        type_: Option<String>,
         output: Option<PathBuf>,
     },
     EmitRust {
@@ -109,10 +111,11 @@ fn main() -> Result<()> {
         Command::ExportSchema {
             path,
             export,
+            type_,
             output,
         } => {
             let text = read(&path)?;
-            let schema = jisp::export_schema(&path, &text, &export)
+            let schema = jisp::export_schema_with_type(&path, &text, &export, type_.as_deref())
                 .map_err(|error| anyhow::anyhow!(error.to_string()))?;
             let json = serde_json::to_string_pretty(&schema)?;
             if let Some(path) = output {

@@ -49,3 +49,42 @@ fn export_schema_describes_named_variants_as_tagged_arrays() {
     assert_eq!(variants[1]["prefixItems"][0]["const"], "err");
     assert_eq!(variants[1]["prefixItems"][1]["type"], "string");
 }
+
+#[test]
+fn export_schema_instantiates_polymorphic_exports() {
+    let error = jisp::export_schema("values.lisp", "(export values (list))", "values").unwrap_err();
+    assert!(error
+        .to_string()
+        .contains("needs an explicit instantiation"));
+
+    let schema = jisp::export_schema_with_type(
+        "values.lisp",
+        "(export values (list))",
+        "values",
+        Some("(list int)"),
+    )
+    .unwrap();
+
+    assert_eq!(schema["schema"]["type"], "array");
+    assert_eq!(schema["schema"]["items"]["type"], "integer");
+}
+
+#[test]
+fn export_schema_instantiates_generic_named_variants() {
+    let schema = jisp::export_schema_with_type(
+        "box.lisp",
+        r#"
+(type box
+  (boxed a))
+(export value (boxed 42))
+"#,
+        "value",
+        Some("(box int)"),
+    )
+    .unwrap();
+
+    assert_eq!(schema["schema"]["$ref"], "#/$defs/box_int");
+    let variants = schema["$defs"]["box_int"]["oneOf"].as_array().unwrap();
+    assert_eq!(variants[0]["prefixItems"][0]["const"], "boxed");
+    assert_eq!(variants[0]["prefixItems"][1]["type"], "integer");
+}

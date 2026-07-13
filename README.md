@@ -91,7 +91,7 @@ expression while tracking the source file and its Jisp imports for Cargo.
 jisp check [--types] [--deps] <path>
 jisp run [path]
 jisp schema [output]
-jisp export-schema <path> <export> [output]
+jisp export-schema [--type <type>] <path> <export> [output]
 jisp emit-rust <path>
 jisp native-check <path>
 jisp fmt [--check | --write] <path>
@@ -105,7 +105,7 @@ jisp init [path]
 | `check` | Parse, expand, and lower; `--types` also checks types, while `--deps` lists resolved imports. |
 | `run` | Type-check and evaluate exported `main` with source-ranged errors. Without a path, reads `entry` from local `jisp.toml`. |
 | `schema` | Print or write the generated core JSON Schema. |
-| `export-schema` | Print or write a JSON Schema for one monomorphic, JSON-native public export, including non-parameterized tagged variants. |
+| `export-schema` | Print or write a JSON Schema for one JSON-native public export. Use `--type "(list int)"` or `--type "(box int)"` to instantiate polymorphic exports and generic tagged variants. |
 | `emit-rust` | Emit Rust tokens for the supported native subset. |
 | `native-check` | Compile generated Rust in a temporary offline Cargo crate and remap compiler errors to the narrowest generated Jisp expression or item. |
 | `fmt` | Format `.lisp`/`.jisp`, canonical `.json`, or flow-style `.yaml`/`.yml`; default prints, `--check` validates, and `--write` updates the file. |
