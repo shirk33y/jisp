@@ -168,6 +168,54 @@ But it should probably normalize to current core shape, not redefine `fn`:
     (print (+ x y z))))
 ```
 
+These are the useful everyday shapes to preserve in examples and tests:
+
+```text
+def answer
+  fn ()
+    + 40 2
+```
+
+Equivalent Lisp:
+
+```lisp
+(def answer
+  (fn ()
+    (+ 40 2)))
+```
+
+Simple nested call trees are where `ws` helps most:
+
+```text
+export main
+  fn ()
+    str.upper
+      str "hello"
+```
+
+Equivalent Lisp:
+
+```lisp
+(export main
+  (fn ()
+    (str.upper (str "hello"))))
+```
+
+Flat continuation is the important explicit marker:
+
+```text
+list
+  ... 1 2 3
+  + 2 2
+  ... 5 6
+```
+
+Equivalent Lisp:
+
+```lisp
+(list 1 2 3 (+ 2 2) 5 6)
+```
+
 This is readable but requires a continuation rule:
 
 ```text
@@ -284,6 +332,42 @@ obj
 
 This can map to `(obj "sum" (+ 2 2) "label" label)`. Header-hoisting cannot
 support this shape without reordering fields or rejecting useful layouts.
+
+For UI-like code, the generic reader stays the same. Props that should remain
+flat arguments need continuations; child elements use ordinary indentation:
+
+```text
+component metric-card (title value delta trend)
+  article
+    ... id title
+    ... rounded-lg true
+    class positive
+      = trend "up"
+    header
+      p text-sm true muted true
+        text title
+      strong value
+      span trend true
+        text trend
+```
+
+Equivalent shape:
+
+```lisp
+(component metric-card (title value delta trend)
+  (article
+    id title
+    rounded-lg true
+    (class positive (= trend "up"))
+    (header
+      (p text-sm true muted true (text title))
+      (strong value)
+      (span trend true (text trend)))))
+```
+
+This is deliberately a little noisy around props. If component bodies later need
+friendlier prop syntax, that should be a component-body sublanguage after
+parsing, not a context-sensitive rule in the generic `ws` reader.
 
 Nested continuation must attach to the immediate layout parent, not the nearest
 visual function name:
