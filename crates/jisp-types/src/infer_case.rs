@@ -82,9 +82,6 @@ impl Inferencer {
         let mut covered = BTreeSet::new();
         let mut has_catch_all = false;
         for branch in branches {
-            if branch.guard.is_some() {
-                continue;
-            }
             if has_catch_all {
                 return Err(InferError::RedundantCasePattern(pattern_name(
                     &branch.pattern,
@@ -94,6 +91,9 @@ impl Inferencer {
                 return Err(InferError::RedundantCasePattern(pattern_name(
                     &branch.pattern,
                 )));
+            }
+            if branch.guard.is_some() {
+                continue;
             }
             for pattern in coverage_patterns(&branch.pattern) {
                 if finite_coverage_is_exhaustive(&expected, &covered) {
@@ -152,9 +152,6 @@ impl Inferencer {
         let mut has_catch_all = false;
 
         for branch in branches {
-            if branch.guard.is_some() {
-                continue;
-            }
             if has_catch_all {
                 return Err(InferError::RedundantCasePattern(pattern_name(
                     &branch.pattern,
@@ -169,6 +166,9 @@ impl Inferencer {
                 return Err(InferError::RedundantCasePattern(pattern_name(
                     &branch.pattern,
                 )));
+            }
+            if branch.guard.is_some() {
+                continue;
             }
 
             for pattern in coverage_patterns(&branch.pattern) {
@@ -279,9 +279,6 @@ impl Inferencer {
         let mut product_expected = None;
 
         for branch in branches {
-            if branch.guard.is_some() {
-                continue;
-            }
             if has_catch_all
                 || object_refinements_are_exhaustive(&refined_fields)
                 || product_coverage_is_exhaustive(product_expected.as_ref(), &product_coverage)
@@ -289,6 +286,9 @@ impl Inferencer {
                 return Err(InferError::RedundantCasePattern(pattern_name(
                     &branch.pattern,
                 )));
+            }
+            if branch.guard.is_some() {
+                continue;
             }
             for pattern in coverage_patterns(&branch.pattern) {
                 if has_catch_all
