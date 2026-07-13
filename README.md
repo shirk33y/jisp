@@ -85,6 +85,7 @@ rows. A proc-macro consumer whose generated module uses bigints must declare
 jisp check [--types] [--deps] <path>
 jisp run <path>
 jisp schema [output]
+jisp export-schema <path> <export> [output]
 jisp emit-rust <path>
 ```
 
@@ -93,6 +94,7 @@ jisp emit-rust <path>
 | `check` | Parse, expand, and lower; `--types` also checks types, while `--deps` lists resolved imports. |
 | `run` | Type-check and evaluate exported `main` with source-ranged errors. |
 | `schema` | Print or write the generated core JSON Schema. |
+| `export-schema` | Print or write a JSON Schema for one monomorphic, JSON-native public export. |
 | `emit-rust` | Emit Rust tokens for the supported native subset. |
 
 Useful examples live in [examples](examples/): a basic hello program, a native

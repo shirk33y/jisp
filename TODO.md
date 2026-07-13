@@ -89,7 +89,9 @@ product-level direction and ordering rationale, see [ROADMAP.md](ROADMAP.md).
   definition/type spans; Cargo JSON ingestion remains separate.
 - Wrap Cargo/rustc JSON diagnostics and remap them to Jisp source ranges.
 - Finalise immutable/COW semantics for `list` and `obj` updates.
-- Add project-aware JSON Schema generated from resolved modules.
+- Extend project-aware export schemas to named algebraic types and explicit
+  generic instantiations. Monomorphic JSON-native exports now resolve imports
+  and expose their dependency graph through `jisp export-schema`.
 - Add formatter, REPL persistence, LSP, and package tooling.
 
 ## Deferred by design

@@ -25,6 +25,11 @@ enum Command {
     Schema {
         output: Option<PathBuf>,
     },
+    ExportSchema {
+        path: PathBuf,
+        export: String,
+        output: Option<PathBuf>,
+    },
     EmitRust {
         path: PathBuf,
     },
@@ -65,6 +70,21 @@ fn main() -> Result<()> {
         }
         Command::Schema { output } => {
             let json = serde_json::to_string_pretty(&jisp_core::core_schema())?;
+            if let Some(path) = output {
+                fs::write(&path, json).with_context(|| format!("write {}", path.display()))?;
+            } else {
+                println!("{json}");
+            }
+        }
+        Command::ExportSchema {
+            path,
+            export,
+            output,
+        } => {
+            let text = read(&path)?;
+            let schema = jisp::export_schema(&path, &text, &export)
+                .map_err(|error| anyhow::anyhow!(error.to_string()))?;
+            let json = serde_json::to_string_pretty(&schema)?;
             if let Some(path) = output {
                 fs::write(&path, json).with_context(|| format!("write {}", path.display()))?;
             } else {

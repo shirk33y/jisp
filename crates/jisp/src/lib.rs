@@ -19,6 +19,7 @@ use jisp_expand::ExpansionMap;
 use jisp_ir::{LowerError, Lowerer, Module};
 use jisp_types::{ImportTypeEnvironments, Inferencer, Scheme, Type};
 use proc_macro2::TokenStream;
+use serde_json::{json, Value as JsonValue};
 use thiserror::Error;
 
 pub use jisp_codegen_rust::{RustItemKind, RustSourceItem, RustSourceMap};
@@ -62,6 +63,8 @@ pub enum Error {
     InvalidMainType(Type),
     #[error("checked module cache is missing import `{0}`")]
     ResolvedImportMissing(String),
+    #[error("cannot generate export schema: {0}")]
+    Schema(String),
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -448,6 +451,67 @@ pub fn check_detailed(path: impl AsRef<Path>, text: &str) -> Result<ParsedModule
 
 pub fn import_dependencies(path: impl AsRef<Path>, text: &str) -> Result<Vec<PathBuf>, Error> {
     Ok(check(path, text)?.dependencies)
+}
+
+pub fn export_schema(path: impl AsRef<Path>, text: &str, export: &str) -> Result<JsonValue, Error> {
+    let parsed = check(path, text)?;
+    if !parsed.module.exports.iter().any(|name| name == export) {
+        return Err(Error::Schema(format!("`{export}` is not a public export")));
+    }
+    let schemes = parsed
+        .types
+        .ok_or_else(|| Error::Schema("type information is unavailable".to_owned()))?;
+    let scheme = schemes
+        .get(export)
+        .ok_or_else(|| Error::Schema(format!("export `{export}` has no value definition")))?;
+    if !scheme.variables.is_empty() {
+        return Err(Error::Schema(format!(
+            "export `{export}` is polymorphic and needs an explicit instantiation"
+        )));
+    }
+    Ok(json!({
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "title": format!("Jisp export `{export}`"),
+        "schema": json_schema_for_type(&scheme.body)?,
+        "dependencies": parsed.dependencies,
+    }))
+}
+
+fn json_schema_for_type(ty: &Type) -> Result<JsonValue, Error> {
+    match ty {
+        Type::Null => Ok(json!({ "type": "null" })),
+        Type::Bool => Ok(json!({ "type": "boolean" })),
+        Type::Int => Ok(json!({ "type": "integer" })),
+        Type::BigInt => Ok(json!({ "type": "string", "pattern": "^-?[0-9]+$" })),
+        Type::Float => Ok(json!({ "type": "number" })),
+        Type::Str => Ok(json!({ "type": "string" })),
+        Type::List(item) => Ok(json!({ "type": "array", "items": json_schema_for_type(item)? })),
+        Type::Object(row) if row.rest.is_none() => {
+            let mut properties = serde_json::Map::new();
+            for (name, field) in &row.fields {
+                properties.insert(name.clone(), json_schema_for_type(field)?);
+            }
+            Ok(json!({
+                "type": "object",
+                "properties": properties,
+                "required": row.fields.keys().collect::<Vec<_>>(),
+                "additionalProperties": false,
+            }))
+        }
+        Type::Object(_) => Err(Error::Schema(
+            "open object rows are not JSON-schemaable".to_owned(),
+        )),
+        Type::Var(_) => Err(Error::Schema("unresolved type variable".to_owned())),
+        Type::Never => Err(Error::Schema(
+            "never values have no JSON representation".to_owned(),
+        )),
+        Type::Function { .. } => Err(Error::Schema(
+            "functions have no JSON representation".to_owned(),
+        )),
+        Type::Named { name, .. } => Err(Error::Schema(format!(
+            "named type `{name}` needs an explicit JSON representation"
+        ))),
+    }
 }
 
 pub fn evaluate(path: impl AsRef<Path>, text: &str) -> Result<LoadedModule, Error> {
