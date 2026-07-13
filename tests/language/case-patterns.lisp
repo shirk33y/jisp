@@ -44,6 +44,13 @@
       (1 "one")
       (_ "many"))))
 
+(def guarded-grade
+  (fn (score)
+    (case score
+      ((when value (>= value 90)) "high")
+      ((when value (>= value 60)) "pass")
+      (_ "retry"))))
+
 (test "variant case binds payload fields"
   (assert.equal
     (list "/" "/users/42/posts" "/search?q=jisp" "404:/old")
@@ -81,6 +88,14 @@
       (literal-match 0)
       (literal-match 1)
       (literal-match 9))))
+
+(test "case guards dispatch before unguarded fallback"
+  (assert.equal
+    (list "high" "pass" "retry")
+    (list
+      (guarded-grade 99)
+      (guarded-grade 75)
+      (guarded-grade 40))))
 
 (test "or patterns share payload bindings across alternatives"
   (assert.equal
