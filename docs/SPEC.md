@@ -76,14 +76,15 @@ so a raw `macro-import` that reaches the lowerer is an error.
 ```
 
 Macros cannot be exported; exporting a macro is an expansion error in every
-source syntax. Template bindings introduced by `fn`, `let`, `use`, list-rest
-patterns, aliases, and ordinary `case` pattern bindings are hygienic: each
-expansion gives them a fresh internal name, while unquoted and spliced caller
-syntax keeps its original spelling and scope. The macro body is not a general
-compile-time Jisp evaluator; this keeps expansion deterministic and avoids a
-second prelude, IO, and host capability contract. Future macro work must still
-fill in richer dependency-cycle diagnostics and any sandboxing rules if a
-general compile-time evaluator is added.
+source syntax. Transitive `macro-import` source files are tracked as module
+dependencies, and transitive import cycles are rejected before expansion.
+Template bindings introduced by `fn`, `let`, `use`, list-rest patterns,
+aliases, and ordinary `case` pattern bindings are hygienic: each expansion gives
+them a fresh internal name, while unquoted and spliced caller syntax keeps its
+original spelling and scope. The macro body is not a general compile-time Jisp
+evaluator; this keeps expansion deterministic and avoids a second prelude, IO,
+and host capability contract. Future macro work needs sandboxing rules only if
+a general compile-time evaluator is added.
 The full design and future boundaries are recorded in
 [`.agents/plans/0010-user-macros.md`](../.agents/plans/0010-user-macros.md) and
 [`.agents/plans/0018-macro-hygiene.md`](../.agents/plans/0018-macro-hygiene.md).

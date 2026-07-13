@@ -367,6 +367,50 @@ fn import_dependencies_include_macro_import_files() {
 }
 
 #[test]
+fn import_dependencies_include_transitive_macro_import_files() {
+    let dir = fixture_dir("transitive-macro-import-dependencies");
+    let main = dir.join("main.lisp");
+    let macros = dir.join("macros.lisp");
+    let base = dir.join("base.lisp");
+    fs::write(
+        &base,
+        r#"
+(def pair
+  (~ (fn (value)
+       `(list 1 ,value))))
+"#,
+    )
+    .unwrap();
+    fs::write(
+        &macros,
+        r#"
+(macro-import b "base.lisp")
+
+(def wrap
+  (~ (fn (value)
+       `(b.pair ,value))))
+"#,
+    )
+    .unwrap();
+    fs::write(
+        &main,
+        r#"
+(macro-import m "macros.lisp")
+(export main (fn () (list.len (m.wrap 7))))
+"#,
+    )
+    .unwrap();
+
+    let text = fs::read_to_string(&main).unwrap();
+    let dependencies = dependency_set(jisp::import_dependencies(&main, &text).unwrap());
+
+    assert_eq!(
+        dependencies,
+        BTreeSet::from([canonical(&base), canonical(&macros)])
+    );
+}
+
+#[test]
 fn import_dependencies_include_directory_module_source_files() {
     let dir = fixture_dir("directory-import-dependencies");
     let module_dir = dir.join("math");

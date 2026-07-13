@@ -1532,16 +1532,34 @@ fn load_macro_imports(
     importer: &Path,
     nodes: &[Node],
 ) -> Result<MacroImportLoad, Error> {
+    load_macro_imports_inner(sources, importer, nodes, &mut vec![])
+}
+
+fn load_macro_imports_inner(
+    sources: &mut SourceMap,
+    importer: &Path,
+    nodes: &[Node],
+    stack: &mut Vec<PathBuf>,
+) -> Result<MacroImportLoad, Error> {
     let mut macros = vec![];
     let mut dependencies = BTreeSet::new();
     for import in macro_imports(nodes)? {
         let path = resolve_import(importer, &import.path)?;
+        let key = canonicalize(&path)?;
+        if stack.contains(&key) {
+            return Err(Error::ImportCycle(format_cycle(stack, &key)));
+        }
+        stack.push(key.clone());
         let mut definitions = vec![];
         for file in module_source_files(&path)? {
             dependencies.insert(canonicalize(&file)?);
             definitions.extend(parse_file(sources, &file)?);
         }
+        let nested = load_macro_imports_inner(sources, &key, &definitions, stack)?;
+        dependencies.extend(nested.dependencies);
+        macros.extend(nested.macros);
         macros.push((import.alias, definitions));
+        stack.pop();
     }
     Ok(MacroImportLoad {
         macros,

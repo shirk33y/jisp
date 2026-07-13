@@ -91,9 +91,10 @@ product-level direction and ordering rationale, see [ROADMAP.md](ROADMAP.md).
   scope. Macro exports are rejected during expansion in all source syntaxes.
   Path-aware facade loading resolves `macro-import` before lowering and imports
   file-module template macros as `alias.name`; these macro source files are
-  included in facade/native/proc-macro dependency lists; raw unresolved
-  `macro-import` still lowers to a dedicated diagnostic. The remaining macro
-  gap is richer dependency/cycle diagnostics and sandbox/capability rules if
+  included in facade/native/proc-macro dependency lists, including transitive
+  macro-imports; transitive macro-import cycles are rejected with import-cycle
+  diagnostics; raw unresolved `macro-import` still lowers to a dedicated
+  diagnostic. The remaining macro gap is sandbox/capability rules if
   compile-time evaluation grows beyond quote/quasiquote templates.
 - Add stronger list/object exhaustiveness analysis. Finite list patterns and
   products of up to 256 finite object-field combinations are checked; native

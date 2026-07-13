@@ -102,6 +102,34 @@ fn run_main_expands_macro_import_from_file_module() {
 }
 
 #[test]
+fn macro_import_reports_transitive_cycles() {
+    let directory =
+        std::env::temp_dir().join(format!("jisp-macro-cycle-test-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&directory);
+    std::fs::create_dir_all(&directory).unwrap();
+    let main = directory.join("main.lisp");
+    let left = directory.join("left.lisp");
+    let right = directory.join("right.lisp");
+    std::fs::write(&left, "(macro-import r \"right.lisp\")\n").unwrap();
+    std::fs::write(&right, "(macro-import l \"left.lisp\")\n").unwrap();
+    let text = r#"
+(macro-import l "left.lisp")
+(export main (fn () 0))
+"#;
+    std::fs::write(&main, text).unwrap();
+
+    let error = match jisp::check(&main, text) {
+        Ok(_) => panic!("expected macro-import cycle"),
+        Err(error) => error,
+    };
+
+    assert!(matches!(error, jisp::Error::ImportCycle(_)), "{error}");
+    assert!(error.to_string().contains("left.lisp"), "{error}");
+    assert!(error.to_string().contains("right.lisp"), "{error}");
+    let _ = std::fs::remove_dir_all(&directory);
+}
+
+#[test]
 fn macro_hygiene_normalizes_to_the_same_ir_across_source_syntaxes() {
     let cases = [
         (
