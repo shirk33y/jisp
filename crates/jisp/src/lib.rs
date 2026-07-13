@@ -1322,13 +1322,28 @@ fn manifest_dependency_spec<'a>(
     dependency: &str,
 ) -> Option<ManifestDependencySpec<'a>> {
     let mut dependencies = false;
+    let mut target_inline_table = false;
     for line in manifest.lines() {
         let line = line.split('#').next()?.trim();
         if line.starts_with('[') {
             dependencies = line == "[dependencies]";
+            target_inline_table = false;
             continue;
         }
         if !dependencies {
+            continue;
+        }
+        if target_inline_table {
+            if line.starts_with('}') {
+                target_inline_table = false;
+                continue;
+            }
+            if let Some(path) = manifest_inline_value(line, "path") {
+                return Some(ManifestDependencySpec::Path(path));
+            }
+            if let Some(requirement) = manifest_inline_value(line, "version") {
+                return Some(ManifestDependencySpec::Registry { requirement });
+            }
             continue;
         }
         let Some((name, value)) = line.split_once('=') else {
@@ -1344,13 +1359,15 @@ fn manifest_dependency_spec<'a>(
         {
             return Some(ManifestDependencySpec::Path(path));
         }
-        let inline = value.strip_prefix('{')?.strip_suffix('}')?.trim();
+        let inline = value.strip_prefix('{')?;
+        let inline = inline.strip_suffix('}').unwrap_or(inline).trim();
         if let Some(path) = manifest_inline_value(inline, "path") {
             return Some(ManifestDependencySpec::Path(path));
         }
         if let Some(requirement) = manifest_inline_value(inline, "version") {
             return Some(ManifestDependencySpec::Registry { requirement });
         }
+        target_inline_table = !value.contains('}');
     }
     None
 }
@@ -1358,8 +1375,9 @@ fn manifest_dependency_spec<'a>(
 fn manifest_inline_value<'a>(inline: &'a str, key: &str) -> Option<&'a str> {
     inline.split(',').find_map(|item| {
         let (name, value) = item.split_once('=')?;
+        let value = value.trim().trim_end_matches(',').trim();
         (name.trim() == key)
-            .then_some(value.trim())?
+            .then_some(value)?
             .strip_prefix('"')?
             .strip_suffix('"')
     })
@@ -1504,7 +1522,12 @@ util = "../util"
     fn manifest_dependencies_parse_registry_specs_without_resolving_them() {
         let manifest = r#"
 [dependencies]
-math = { registry = "jisp", package = "math", version = "1.2.3", checksum = "sha256:abc" }
+math = {
+  registry = "jisp",
+  package = "math",
+  version = "1.2.3",
+  checksum = "sha256:abc"
+}
 "#;
 
         assert_eq!(

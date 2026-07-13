@@ -1,5 +1,5 @@
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     fs,
     io::{self, BufRead, Write},
     path::{Path, PathBuf},
@@ -191,6 +191,10 @@ fn init_project(path: &Path) -> Result<()> {
 
 fn lock_project(path: &Path) -> Result<()> {
     let entry = package_entry(path)?;
+    let manifest_path = path.join("jisp.toml");
+    let manifest = fs::read_to_string(&manifest_path)
+        .with_context(|| format!("read {}", manifest_path.display()))?;
+    let registry_dependency_names = manifest_registry_dependency_names(&manifest);
     let text = read(&entry)?;
     let parsed = jisp::check_detailed(&entry, &text).map_err(|error| {
         anyhow::anyhow!(
@@ -200,21 +204,207 @@ fn lock_project(path: &Path) -> Result<()> {
                 .unwrap_or_else(|| error.error.to_string())
         )
     })?;
+    let mut registry_entries =
+        used_registry_lock_entries(path, &registry_dependency_names, &parsed.dependencies)?;
+    registry_entries.sort_by(|left, right| left.name.cmp(&right.name));
+    let registry_sources = registry_entries
+        .iter()
+        .filter_map(|entry| path.join(&entry.source).canonicalize().ok())
+        .collect::<HashSet<_>>();
     let mut dependencies = parsed
         .dependencies
         .into_iter()
+        .filter(|dependency| !registry_sources.contains(dependency))
         .map(|dependency| dependency.display().to_string())
         .collect::<Vec<_>>();
     dependencies.sort();
     dependencies.dedup();
-    let lock = render_lockfile(&entry, &dependencies);
+    let lock = render_lockfile(&entry, &dependencies, &registry_entries);
     let lock_path = path.join("jisp.lock");
     fs::write(&lock_path, lock).with_context(|| format!("write {}", lock_path.display()))?;
     println!("locked Jisp package: {}", lock_path.display());
     Ok(())
 }
 
-fn render_lockfile(entry: &Path, dependencies: &[String]) -> String {
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct RegistryLockEntry {
+    name: String,
+    registry: Option<String>,
+    package: Option<String>,
+    version: String,
+    source: String,
+    checksum: String,
+}
+
+fn used_registry_lock_entries(
+    project: &Path,
+    registry_dependency_names: &[String],
+    dependencies: &[PathBuf],
+) -> Result<Vec<RegistryLockEntry>> {
+    if registry_dependency_names.is_empty() {
+        return Ok(vec![]);
+    }
+    let lock_path = project.join("jisp.lock");
+    let Ok(lockfile) = fs::read_to_string(&lock_path) else {
+        return Ok(vec![]);
+    };
+    let entries = parse_registry_lock_entries(&lockfile);
+    let dependency_paths = dependencies.iter().collect::<HashSet<_>>();
+    let mut used = vec![];
+    for name in registry_dependency_names {
+        let Some(entry) = entries.get(name) else {
+            continue;
+        };
+        let source = project
+            .join(&entry.source)
+            .canonicalize()
+            .with_context(|| format!("canonicalize locked registry source {}", entry.source))?;
+        if dependency_paths.contains(&source) {
+            used.push(entry.clone());
+        }
+    }
+    Ok(used)
+}
+
+fn manifest_registry_dependency_names(manifest: &str) -> Vec<String> {
+    let mut dependencies = false;
+    let mut names = vec![];
+    let mut current_inline_table: Option<(String, bool, bool)> = None;
+    for line in manifest.lines() {
+        let Some(line) = line.split('#').next().map(str::trim) else {
+            continue;
+        };
+        if line.starts_with('[') {
+            flush_manifest_registry_dependency(&mut names, current_inline_table.take());
+            dependencies = line == "[dependencies]";
+            continue;
+        }
+        if !dependencies {
+            continue;
+        }
+        if let Some((name, has_version, has_path)) = current_inline_table.take() {
+            let has_version = has_version || line.contains("version");
+            let has_path = has_path || line.contains("path");
+            if line.starts_with('}') {
+                if has_version && !has_path {
+                    names.push(name);
+                }
+            } else {
+                current_inline_table = Some((name, has_version, has_path));
+            }
+            continue;
+        }
+        let Some((name, value)) = line.split_once('=') else {
+            continue;
+        };
+        let value = value.trim();
+        if value.starts_with('{') {
+            let name = name.trim().to_owned();
+            let has_version = value.contains("version");
+            let has_path = value.contains("path");
+            if value.contains('}') {
+                if has_version && !has_path {
+                    names.push(name);
+                }
+            } else {
+                current_inline_table = Some((name, has_version, has_path));
+            }
+        }
+    }
+    flush_manifest_registry_dependency(&mut names, current_inline_table);
+    names.sort();
+    names.dedup();
+    names
+}
+
+fn flush_manifest_registry_dependency(
+    names: &mut Vec<String>,
+    dependency: Option<(String, bool, bool)>,
+) {
+    if let Some((name, has_version, has_path)) = dependency {
+        if has_version && !has_path {
+            names.push(name);
+        }
+    }
+}
+
+fn parse_registry_lock_entries(lockfile: &str) -> HashMap<String, RegistryLockEntry> {
+    let mut entries = HashMap::new();
+    let mut current_name: Option<String> = None;
+    let mut current_fields = HashMap::<String, String>::new();
+    for line in lockfile.lines() {
+        let Some(line) = line.split('#').next().map(str::trim) else {
+            continue;
+        };
+        if line.starts_with('[') {
+            flush_registry_lock_entry(&mut entries, current_name.take(), &mut current_fields);
+            current_name = line
+                .strip_prefix("[registry.")
+                .and_then(|name| name.strip_suffix(']'))
+                .map(str::to_owned);
+            continue;
+        }
+        let Some(name) = current_name.as_ref() else {
+            continue;
+        };
+        if line.is_empty() || name.is_empty() {
+            continue;
+        }
+        let Some((key, value)) = line.split_once('=') else {
+            continue;
+        };
+        if let Some(value) = quoted_toml_string(value.trim()) {
+            current_fields.insert(key.trim().to_owned(), value.to_owned());
+        }
+    }
+    flush_registry_lock_entry(&mut entries, current_name, &mut current_fields);
+    entries
+}
+
+fn flush_registry_lock_entry(
+    entries: &mut HashMap<String, RegistryLockEntry>,
+    name: Option<String>,
+    fields: &mut HashMap<String, String>,
+) {
+    let Some(name) = name else {
+        fields.clear();
+        return;
+    };
+    let Some(version) = fields.remove("version") else {
+        fields.clear();
+        return;
+    };
+    let Some(source) = fields.remove("source") else {
+        fields.clear();
+        return;
+    };
+    let Some(checksum) = fields.remove("checksum") else {
+        fields.clear();
+        return;
+    };
+    entries.insert(
+        name.clone(),
+        RegistryLockEntry {
+            name,
+            registry: fields.remove("registry"),
+            package: fields.remove("package"),
+            version,
+            source,
+            checksum,
+        },
+    );
+    fields.clear();
+}
+
+fn quoted_toml_string(value: &str) -> Option<&str> {
+    value.strip_prefix('"')?.strip_suffix('"')
+}
+
+fn render_lockfile(
+    entry: &Path,
+    dependencies: &[String],
+    registry_entries: &[RegistryLockEntry],
+) -> String {
     let mut output = format!(
         "# This file is generated by `jisp lock`.\nversion = 1\nentry = {:?}\n\n",
         entry.display().to_string()
@@ -222,6 +412,18 @@ fn render_lockfile(entry: &Path, dependencies: &[String]) -> String {
     output.push_str("[dependencies]\n");
     for dependency in dependencies {
         output.push_str(&format!("source = {dependency:?}\n"));
+    }
+    for entry in registry_entries {
+        output.push_str(&format!("\n[registry.{}]\n", entry.name));
+        if let Some(registry) = &entry.registry {
+            output.push_str(&format!("registry = {registry:?}\n"));
+        }
+        if let Some(package) = &entry.package {
+            output.push_str(&format!("package = {package:?}\n"));
+        }
+        output.push_str(&format!("version = {:?}\n", entry.version));
+        output.push_str(&format!("source = {:?}\n", entry.source));
+        output.push_str(&format!("checksum = {:?}\n", entry.checksum));
     }
     output
 }
@@ -1318,6 +1520,47 @@ mod tests {
         assert!(lock.contains("version = 1"));
         assert!(lock.contains("entry = "));
         assert!(lock.contains("math/main.lisp"), "{lock}");
+        let _ = std::fs::remove_dir_all(&directory);
+    }
+
+    #[test]
+    fn lock_project_preserves_used_registry_cache_entries() {
+        let directory =
+            std::env::temp_dir().join(format!("jisp-lock-registry-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&directory);
+        std::fs::create_dir_all(directory.join("cache")).unwrap();
+        std::fs::write(
+            directory.join("jisp.toml"),
+            "[package]\nname = \"app\"\nentry = \"main.lisp\"\n\n[dependencies]\nmath = {\n  registry = \"jisp\",\n  package = \"math\",\n  version = \"1.2.3\",\n  checksum = \"sha256:04d7a7c591eb34cfc76a5446b45ccb8edfe1d6f13da96e841c93f823afad524d\"\n}\n",
+        )
+        .unwrap();
+        std::fs::write(
+            directory.join("main.lisp"),
+            "(import math \"math\")\n(export main (fn () (math.inc 41)))",
+        )
+        .unwrap();
+        std::fs::write(
+            directory.join("cache/math.lisp"),
+            "(export inc (fn (value) (+ value 1)))\n",
+        )
+        .unwrap();
+        std::fs::write(
+            directory.join("jisp.lock"),
+            "version = 1\n\n[dependencies]\nsource = \"stale/local.lisp\"\n\n[registry.math]\nregistry = \"jisp\"\npackage = \"math\"\nversion = \"1.2.3\"\nsource = \"cache/math.lisp\"\nchecksum = \"sha256:04d7a7c591eb34cfc76a5446b45ccb8edfe1d6f13da96e841c93f823afad524d\"\n",
+        )
+        .unwrap();
+
+        lock_project(&directory).unwrap();
+
+        let lock = std::fs::read_to_string(directory.join("jisp.lock")).unwrap();
+        assert!(lock.contains("[registry.math]"), "{lock}");
+        assert!(lock.contains("registry = \"jisp\""), "{lock}");
+        assert!(lock.contains("package = \"math\""), "{lock}");
+        assert!(lock.contains("version = \"1.2.3\""), "{lock}");
+        assert!(lock.contains("source = \"cache/math.lisp\""), "{lock}");
+        assert!(lock.contains("checksum = \"sha256:04d7a7c591eb34cfc76a5446b45ccb8edfe1d6f13da96e841c93f823afad524d\""), "{lock}");
+        assert!(!lock.contains("stale/local.lisp"), "{lock}");
+        assert_eq!(lock.matches("source = \"cache/math.lisp\"").count(), 1);
         let _ = std::fs::remove_dir_all(&directory);
     }
 

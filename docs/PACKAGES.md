@@ -14,8 +14,9 @@ math = { path = "../math" }
 ```
 
 `jisp run` without an explicit path reads `[package].entry` from the local
-manifest. `jisp lock` resolves that entry and all transitive local path imports,
-then writes the deterministic `jisp.lock` used by the current offline workflow.
+manifest. `jisp lock` resolves that entry, all transitive local path imports,
+and any already-locked registry cache entries used by the import graph, then
+writes the deterministic `jisp.lock` used by the current offline workflow.
 
 ## Manifest schema
 
@@ -63,6 +64,11 @@ mismatches are hard errors. `registry` and `package` are recorded for
 auditability and future index/fetch tooling; current resolution is intentionally
 driven by the locked source and checksum.
 
+`jisp lock` preserves and normalizes registry entries that are already present,
+valid, and used by the import graph. It does not create a new registry entry
+from the manifest alone, because no registry index or fetch/cache population
+layer exists yet.
+
 ## Source and index decision
 
 The planned registry model is source-first:
@@ -87,6 +93,5 @@ the resolver:
 - no network fallback is allowed during ordinary `check`, `run`, `emit-rust`,
   `native-check`, or proc-macro expansion.
 
-The local cache-hit path above exists now. Registry index lookup, archive
-download, cache population, and lockfile generation for registry packages remain
-deferred.
+The local cache-hit and lockfile preservation path above exists now. Registry
+index lookup, archive download, and cache population remain deferred.

@@ -113,10 +113,11 @@ product-level direction and ordering rationale, see [ROADMAP.md](ROADMAP.md).
   local path dependencies from `[dependencies]` resolve during imports; `jisp repl --state <file>` persists accepted
   definitions across process restarts; `jisp fmt` provides idempotent Lisp,
   canonical JSON, and flow-style YAML formatting with print/check/write modes;
-  `jisp lock` writes a deterministic lockfile for local path dependencies; and
-  registry dependency specs resolve from pre-existing offline lock/cache entries
-  with SHA-256 verification, while index lookup, downloads, cache population,
-  and generated registry lock entries remain deferred.
+  `jisp lock` writes a deterministic lockfile for local path dependencies and
+  preserves used registry cache entries; and registry dependency specs resolve
+  from pre-existing offline lock/cache entries with version and SHA-256
+  verification, while index lookup, downloads, and cache population remain
+  deferred.
 
 ## Deferred by design
 
