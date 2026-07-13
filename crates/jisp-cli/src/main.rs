@@ -53,7 +53,10 @@ enum Command {
         #[arg(long)]
         write: bool,
     },
-    Repl,
+    Repl {
+        #[arg(long)]
+        state: Option<PathBuf>,
+    },
 }
 
 fn main() -> Result<()> {
@@ -122,14 +125,19 @@ fn main() -> Result<()> {
         }
         Command::NativeCheck { path } => native_check(&path)?,
         Command::Fmt { path, check, write } => format_file(&path, check, write)?,
-        Command::Repl => repl()?,
+        Command::Repl { state } => repl(state.as_deref())?,
     }
     Ok(())
 }
 
-fn repl() -> Result<()> {
+fn repl(state_path: Option<&Path>) -> Result<()> {
     let stdin = io::stdin();
-    let mut state = String::new();
+    let mut state = state_path
+        .filter(|path| path.exists())
+        .map(fs::read_to_string)
+        .transpose()
+        .with_context(|| "read REPL state")?
+        .unwrap_or_default();
     let mut stdout = io::stdout();
     eprintln!("Jisp REPL — :help for commands");
     loop {
@@ -145,12 +153,23 @@ fn repl() -> Result<()> {
             ":quit" | ":q" => break,
             ":reset" => {
                 state.clear();
+                if let Some(path) = state_path {
+                    fs::write(path, "")
+                        .with_context(|| format!("write REPL state {}", path.display()))?;
+                }
                 println!("session reset");
             }
             ":help" => println!(":help, :reset, :quit; definitions persist, other forms evaluate"),
             form => match repl_step(&state, form) {
                 Ok((next_state, value)) => {
+                    let changed = next_state != state;
                     state = next_state;
+                    if changed {
+                        if let Some(path) = state_path {
+                            fs::write(path, &state)
+                                .with_context(|| format!("write REPL state {}", path.display()))?;
+                        }
+                    }
                     if let Some(value) = value {
                         println!("{value}");
                     }

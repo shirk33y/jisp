@@ -105,7 +105,7 @@ jisp repl
 | `emit-rust` | Emit Rust tokens for the supported native subset. |
 | `native-check` | Compile generated Rust in a temporary offline Cargo crate and remap item-level compiler errors to Jisp source. |
 | `fmt` | Format `.lisp`/`.jisp`, canonical `.json`, or flow-style `.yaml`/`.yml`; default prints, `--check` validates, and `--write` updates the file. |
-| `repl` | Start an in-process REPL. `def`, `type`, and `import` forms persist for later expressions; use `:help`, `:reset`, or `:quit`. |
+| `repl` | Start a REPL. `def`, `type`, and `import` forms persist for later expressions; `--state <file>` also persists accepted definitions across runs. Use `:help`, `:reset`, or `:quit`. |
 
 Useful examples live in [examples](examples/): a basic hello program, a native
 codegen fixture, static object helpers, and structural UI data.
