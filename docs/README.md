@@ -19,6 +19,8 @@ Repository-root files remain deliberately small and operational:
 - [Diagnostics](DIAGNOSTICS.md): source ranges, expansion origins, and the
   remaining generated-code diagnostic gap.
 - [Testing](TESTING.md): test layers, native conformance, and executable docs.
+- [Packages](PACKAGES.md): package manifest, local dependencies, and future
+  registry/checksum policy.
 - [FFI future](FFI_FUTURE.md): constraints that must be designed before an FFI
   is implemented.
 

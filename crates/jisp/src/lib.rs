@@ -53,6 +53,13 @@ pub enum Error {
     },
     #[error("import `{import}` from `{from}` did not resolve to a Jisp module")]
     ImportNotFound { import: String, from: String },
+    #[error(
+        "registry dependency `{dependency}` is declared as `{requirement}`, but registry resolution is not implemented yet"
+    )]
+    RegistryDependencyUnsupported {
+        dependency: String,
+        requirement: String,
+    },
     #[error("import cycle: {0}")]
     ImportCycle(String),
     #[error("module does not export `main`")]
@@ -1157,7 +1164,7 @@ fn resolve_import(importer: &Path, import: &str) -> Result<PathBuf, Error> {
         }
     }
 
-    if let Some(path) = package_dependency_path(base, import) {
+    if let Some(path) = package_dependency_path(base, import)? {
         if path.is_dir() || path.is_file() && detect_syntax(&path).is_some() {
             return canonicalize(&path);
         }
@@ -1169,23 +1176,39 @@ fn resolve_import(importer: &Path, import: &str) -> Result<PathBuf, Error> {
     })
 }
 
-fn package_dependency_path(base: &Path, import: &str) -> Option<PathBuf> {
+fn package_dependency_path(base: &Path, import: &str) -> Result<Option<PathBuf>, Error> {
     if Path::new(import).components().count() != 1 {
-        return None;
+        return Ok(None);
     }
     for directory in base.ancestors() {
         let manifest = directory.join("jisp.toml");
         let Ok(text) = fs::read_to_string(&manifest) else {
             continue;
         };
-        if let Some(path) = manifest_dependency_path(&text, import) {
-            return Some(directory.join(path));
+        match manifest_dependency_spec(&text, import) {
+            Some(ManifestDependencySpec::Path(path)) => return Ok(Some(directory.join(path))),
+            Some(ManifestDependencySpec::Registry { requirement }) => {
+                return Err(Error::RegistryDependencyUnsupported {
+                    dependency: import.to_owned(),
+                    requirement: requirement.to_owned(),
+                });
+            }
+            None => {}
         }
     }
-    None
+    Ok(None)
 }
 
-fn manifest_dependency_path<'a>(manifest: &'a str, dependency: &str) -> Option<&'a str> {
+#[derive(Debug, PartialEq, Eq)]
+enum ManifestDependencySpec<'a> {
+    Path(&'a str),
+    Registry { requirement: &'a str },
+}
+
+fn manifest_dependency_spec<'a>(
+    manifest: &'a str,
+    dependency: &str,
+) -> Option<ManifestDependencySpec<'a>> {
     let mut dependencies = false;
     for line in manifest.lines() {
         let line = line.split('#').next()?.trim();
@@ -1207,14 +1230,27 @@ fn manifest_dependency_path<'a>(manifest: &'a str, dependency: &str) -> Option<&
             .strip_prefix('"')
             .and_then(|value| value.strip_suffix('"'))
         {
-            return Some(path);
+            return Some(ManifestDependencySpec::Path(path));
         }
-        let path = value.strip_prefix('{')?.strip_suffix('}')?.trim();
-        let (_, value) = path.split_once("path")?;
-        let (_, value) = value.split_once('=')?;
-        return value.trim().strip_prefix('"')?.strip_suffix('"');
+        let inline = value.strip_prefix('{')?.strip_suffix('}')?.trim();
+        if let Some(path) = manifest_inline_value(inline, "path") {
+            return Some(ManifestDependencySpec::Path(path));
+        }
+        if let Some(requirement) = manifest_inline_value(inline, "version") {
+            return Some(ManifestDependencySpec::Registry { requirement });
+        }
     }
     None
+}
+
+fn manifest_inline_value<'a>(inline: &'a str, key: &str) -> Option<&'a str> {
+    inline.split(',').find_map(|item| {
+        let (name, value) = item.split_once('=')?;
+        (name.trim() == key)
+            .then_some(value.trim())?
+            .strip_prefix('"')?
+            .strip_suffix('"')
+    })
 }
 
 fn load_module(sources: &mut SourceMap, path: &Path) -> Result<Module, Error> {
@@ -1322,4 +1358,79 @@ fn format_cycle(stack: &[PathBuf], repeated: &Path) -> String {
     }
     paths.push(repeated.display().to_string());
     paths.join(" -> ")
+}
+
+#[cfg(test)]
+mod manifest_tests {
+    use super::{
+        check_detailed, manifest_dependency_spec, Error, ManifestDependencySpec, ModuleError,
+    };
+
+    #[test]
+    fn manifest_dependencies_support_local_path_specs() {
+        let manifest = r#"
+[package]
+name = "app"
+
+[dependencies]
+math = { path = "../math" }
+util = "../util"
+"#;
+
+        assert_eq!(
+            manifest_dependency_spec(manifest, "math"),
+            Some(ManifestDependencySpec::Path("../math"))
+        );
+        assert_eq!(
+            manifest_dependency_spec(manifest, "util"),
+            Some(ManifestDependencySpec::Path("../util"))
+        );
+    }
+
+    #[test]
+    fn manifest_dependencies_parse_registry_specs_without_resolving_them() {
+        let manifest = r#"
+[dependencies]
+math = { registry = "jisp", package = "math", version = "1.2.3", checksum = "sha256:abc" }
+"#;
+
+        assert_eq!(
+            manifest_dependency_spec(manifest, "math"),
+            Some(ManifestDependencySpec::Registry {
+                requirement: "1.2.3"
+            })
+        );
+    }
+
+    #[test]
+    fn registry_dependencies_fail_offline_resolution_with_a_clear_error() {
+        let directory =
+            std::env::temp_dir().join(format!("jisp-registry-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&directory);
+        std::fs::create_dir_all(&directory).unwrap();
+        std::fs::write(
+            directory.join("jisp.toml"),
+            "[package]\nname = \"app\"\nentry = \"main.lisp\"\n\n[dependencies]\nmath = { registry = \"jisp\", version = \"1.2.3\", checksum = \"sha256:abc\" }\n",
+        )
+        .unwrap();
+        let entry = directory.join("main.lisp");
+        let text = "(import math \"math\")\n(export main (fn () 1))";
+
+        let error = match check_detailed(&entry, text) {
+            Ok(_) => panic!("registry dependency unexpectedly resolved"),
+            Err(error) => error,
+        };
+        assert!(matches!(
+            error,
+            ModuleError {
+                error: Error::RegistryDependencyUnsupported {
+                    dependency,
+                    requirement,
+                },
+                ..
+            } if dependency == "math" && requirement == "1.2.3"
+        ));
+
+        let _ = std::fs::remove_dir_all(&directory);
+    }
 }
