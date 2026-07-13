@@ -13,6 +13,7 @@ use jisp_core::{Diagnostic, Node, NodeKind, SourceId, Span, SyntaxParser};
 use jisp_syntax_json::JsonParser;
 use jisp_syntax_lisp::LispParser;
 use jisp_syntax_yaml::YamlParser;
+use sha2::{Digest, Sha256};
 
 #[derive(Parser)]
 #[command(name = "jisp", version, about = "Jisp language toolkit")]
@@ -194,7 +195,15 @@ fn lock_project(path: &Path) -> Result<()> {
     let manifest_path = path.join("jisp.toml");
     let manifest = fs::read_to_string(&manifest_path)
         .with_context(|| format!("read {}", manifest_path.display()))?;
-    let registry_dependency_names = manifest_registry_dependency_names(&manifest);
+    let registry_dependencies = manifest_registry_dependencies(&manifest);
+    let mut registry_entries = registry_lock_entries_for_manifest(path, &registry_dependencies)?;
+    registry_entries.sort_by(|left, right| left.name.cmp(&right.name));
+    if !registry_entries.is_empty() {
+        let provisional_lock = render_lockfile(&entry, &[], &registry_entries);
+        let lock_path = path.join("jisp.lock");
+        fs::write(&lock_path, provisional_lock)
+            .with_context(|| format!("write {}", lock_path.display()))?;
+    }
     let text = read(&entry)?;
     let parsed = jisp::check_detailed(&entry, &text).map_err(|error| {
         anyhow::anyhow!(
@@ -205,7 +214,7 @@ fn lock_project(path: &Path) -> Result<()> {
         )
     })?;
     let mut registry_entries =
-        used_registry_lock_entries(path, &registry_dependency_names, &parsed.dependencies)?;
+        used_registry_lock_entries(path, &registry_dependencies, &parsed.dependencies)?;
     registry_entries.sort_by(|left, right| left.name.cmp(&right.name));
     let registry_sources = registry_entries
         .iter()
@@ -236,12 +245,154 @@ struct RegistryLockEntry {
     checksum: String,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct ManifestRegistryDependency {
+    name: String,
+    registry: Option<String>,
+    package: String,
+    version: String,
+    checksum: Option<String>,
+}
+
+fn registry_lock_entries_for_manifest(
+    project: &Path,
+    dependencies: &[ManifestRegistryDependency],
+) -> Result<Vec<RegistryLockEntry>> {
+    if dependencies.is_empty() {
+        return Ok(vec![]);
+    }
+    let existing = fs::read_to_string(project.join("jisp.lock"))
+        .ok()
+        .map(|lockfile| parse_registry_lock_entries(&lockfile))
+        .unwrap_or_default();
+    let mut entries = vec![];
+    for dependency in dependencies {
+        if let Some(entry) = existing.get(&dependency.name).filter(|entry| {
+            entry.version == dependency.version
+                && dependency
+                    .checksum
+                    .as_ref()
+                    .is_none_or(|checksum| checksum.eq_ignore_ascii_case(&entry.checksum))
+        }) {
+            entries.push(entry.clone());
+            continue;
+        }
+        if let Some(entry) = registry_lock_entry_from_local_index(project, dependency)? {
+            entries.push(entry);
+        }
+    }
+    Ok(entries)
+}
+
+fn registry_lock_entry_from_local_index(
+    project: &Path,
+    dependency: &ManifestRegistryDependency,
+) -> Result<Option<RegistryLockEntry>> {
+    let Some(registry) = &dependency.registry else {
+        return Ok(None);
+    };
+    let registry_root = project.join(registry);
+    if !registry_root.is_dir() {
+        return Ok(None);
+    }
+    let index_path = registry_root
+        .join(&dependency.package)
+        .join(format!("{}.toml", dependency.version));
+    if !index_path.exists() {
+        return Ok(None);
+    }
+    let index = fs::read_to_string(&index_path)
+        .with_context(|| format!("read {}", index_path.display()))?;
+    let source = quoted_assignment(&index, "source")
+        .with_context(|| format!("{} must contain `source`", index_path.display()))?;
+    let checksum = quoted_assignment(&index, "checksum")
+        .or_else(|| dependency.checksum.clone())
+        .with_context(|| format!("{} must contain `checksum`", index_path.display()))?;
+    if let Some(manifest_checksum) = &dependency.checksum {
+        anyhow::ensure!(
+            manifest_checksum.eq_ignore_ascii_case(&checksum),
+            "registry dependency `{}` checksum {} does not match index checksum {}",
+            dependency.name,
+            manifest_checksum,
+            checksum
+        );
+    }
+    let source_path = registry_root.join(&source);
+    let bytes =
+        fs::read(&source_path).with_context(|| format!("read {}", source_path.display()))?;
+    let actual = sha256_checksum(&bytes);
+    anyhow::ensure!(
+        actual == checksum.to_ascii_lowercase(),
+        "registry dependency `{}` checksum mismatch for {}: expected {}, got {}",
+        dependency.name,
+        source_path.display(),
+        checksum,
+        actual
+    );
+    let cache_dir = project.join(".jisp/cache");
+    fs::create_dir_all(&cache_dir).with_context(|| format!("create {}", cache_dir.display()))?;
+    let cache_name =
+        registry_cache_file_name(&dependency.package, &dependency.version, &source_path);
+    let cache_path = cache_dir.join(cache_name);
+    fs::write(&cache_path, bytes).with_context(|| format!("write {}", cache_path.display()))?;
+    Ok(Some(RegistryLockEntry {
+        name: dependency.name.clone(),
+        registry: dependency.registry.clone(),
+        package: Some(dependency.package.clone()),
+        version: dependency.version.clone(),
+        source: format!(
+            ".jisp/cache/{}",
+            cache_path.file_name().unwrap().to_string_lossy()
+        ),
+        checksum: checksum.to_ascii_lowercase(),
+    }))
+}
+
+fn registry_cache_file_name(package: &str, version: &str, source: &Path) -> String {
+    let mut name = format!("{package}-{version}")
+        .chars()
+        .map(|character| match character {
+            'a'..='z' | 'A'..='Z' | '0'..='9' | '.' | '_' | '-' => character,
+            _ => '_',
+        })
+        .collect::<String>();
+    if let Some(extension) = source.extension().and_then(|extension| extension.to_str()) {
+        name.push('.');
+        name.push_str(extension);
+    }
+    name
+}
+
+fn quoted_assignment(text: &str, key: &str) -> Option<String> {
+    text.lines().find_map(|line| {
+        let line = line.split('#').next()?.trim();
+        let (name, value) = line.split_once('=')?;
+        (name.trim() == key)
+            .then_some(value.trim())?
+            .trim_end_matches(',')
+            .trim()
+            .strip_prefix('"')?
+            .strip_suffix('"')
+            .map(str::to_owned)
+    })
+}
+
+fn sha256_checksum(bytes: &[u8]) -> String {
+    let digest = Sha256::digest(bytes);
+    let mut encoded = String::with_capacity("sha256:".len() + digest.len() * 2);
+    encoded.push_str("sha256:");
+    for byte in digest {
+        encoded.push_str(&format!("{byte:02x}"));
+    }
+    encoded
+}
+
 fn used_registry_lock_entries(
     project: &Path,
-    registry_dependency_names: &[String],
+    registry_dependencies: &[ManifestRegistryDependency],
     dependencies: &[PathBuf],
 ) -> Result<Vec<RegistryLockEntry>> {
-    if registry_dependency_names.is_empty() {
+    if registry_dependencies.is_empty() {
         return Ok(vec![]);
     }
     let lock_path = project.join("jisp.lock");
@@ -251,8 +402,8 @@ fn used_registry_lock_entries(
     let entries = parse_registry_lock_entries(&lockfile);
     let dependency_paths = dependencies.iter().collect::<HashSet<_>>();
     let mut used = vec![];
-    for name in registry_dependency_names {
-        let Some(entry) = entries.get(name) else {
+    for dependency in registry_dependencies {
+        let Some(entry) = entries.get(&dependency.name) else {
             continue;
         };
         let source = project
@@ -266,31 +417,53 @@ fn used_registry_lock_entries(
     Ok(used)
 }
 
-fn manifest_registry_dependency_names(manifest: &str) -> Vec<String> {
+fn manifest_registry_dependencies(manifest: &str) -> Vec<ManifestRegistryDependency> {
+    let mut dependencies = manifest_dependency_tables(manifest)
+        .into_iter()
+        .filter_map(|(name, table)| {
+            if manifest_inline_value(&table, "path").is_some() {
+                return None;
+            }
+            let version = manifest_inline_value(&table, "version")?;
+            Some(ManifestRegistryDependency {
+                package: manifest_inline_value(&table, "package").unwrap_or_else(|| name.clone()),
+                registry: manifest_inline_value(&table, "registry"),
+                checksum: manifest_inline_value(&table, "checksum"),
+                name,
+                version,
+            })
+        })
+        .collect::<Vec<_>>();
+    dependencies.sort_by(|left, right| left.name.cmp(&right.name));
+    dependencies.dedup_by(|left, right| left.name == right.name);
+    dependencies
+}
+
+fn manifest_dependency_tables(manifest: &str) -> Vec<(String, String)> {
     let mut dependencies = false;
-    let mut names = vec![];
-    let mut current_inline_table: Option<(String, bool, bool)> = None;
+    let mut tables = vec![];
+    let mut current_inline_table: Option<(String, String)> = None;
     for line in manifest.lines() {
         let Some(line) = line.split('#').next().map(str::trim) else {
             continue;
         };
         if line.starts_with('[') {
-            flush_manifest_registry_dependency(&mut names, current_inline_table.take());
+            flush_manifest_dependency_table(&mut tables, current_inline_table.take());
             dependencies = line == "[dependencies]";
             continue;
         }
         if !dependencies {
             continue;
         }
-        if let Some((name, has_version, has_path)) = current_inline_table.take() {
-            let has_version = has_version || line.contains("version");
-            let has_path = has_path || line.contains("path");
+        if let Some((name, mut table)) = current_inline_table.take() {
+            if !line.is_empty() {
+                table.push('\n');
+                table.push_str(line);
+            }
             if line.starts_with('}') {
-                if has_version && !has_path {
-                    names.push(name);
-                }
+                flush_manifest_dependency_table(&mut tables, Some((name, table)));
             } else {
-                current_inline_table = Some((name, has_version, has_path));
+                current_inline_table = Some((name, table));
             }
             continue;
         }
@@ -300,32 +473,41 @@ fn manifest_registry_dependency_names(manifest: &str) -> Vec<String> {
         let value = value.trim();
         if value.starts_with('{') {
             let name = name.trim().to_owned();
-            let has_version = value.contains("version");
-            let has_path = value.contains("path");
             if value.contains('}') {
-                if has_version && !has_path {
-                    names.push(name);
-                }
+                tables.push((name, value.to_owned()));
             } else {
-                current_inline_table = Some((name, has_version, has_path));
+                current_inline_table = Some((name, value.to_owned()));
             }
         }
     }
-    flush_manifest_registry_dependency(&mut names, current_inline_table);
-    names.sort();
-    names.dedup();
-    names
+    flush_manifest_dependency_table(&mut tables, current_inline_table);
+    tables
 }
 
-fn flush_manifest_registry_dependency(
-    names: &mut Vec<String>,
-    dependency: Option<(String, bool, bool)>,
+fn flush_manifest_dependency_table(
+    tables: &mut Vec<(String, String)>,
+    dependency: Option<(String, String)>,
 ) {
-    if let Some((name, has_version, has_path)) = dependency {
-        if has_version && !has_path {
-            names.push(name);
-        }
+    if let Some((name, table)) = dependency {
+        tables.push((name, table));
     }
+}
+
+fn manifest_inline_value(inline: &str, key: &str) -> Option<String> {
+    inline
+        .trim()
+        .trim_start_matches('{')
+        .trim_end_matches('}')
+        .split([',', '\n'])
+        .find_map(|item| {
+            let (name, value) = item.split_once('=')?;
+            let value = value.trim().trim_end_matches(',').trim();
+            (name.trim() == key)
+                .then_some(value)?
+                .strip_prefix('"')?
+                .strip_suffix('"')
+                .map(str::to_owned)
+        })
 }
 
 fn parse_registry_lock_entries(lockfile: &str) -> HashMap<String, RegistryLockEntry> {
@@ -1264,7 +1446,7 @@ mod tests {
     use super::{
         format_json_module, format_lisp_module, format_yaml_module, init_project, lock_project,
         lsp_completion_items, lsp_diagnostics, lsp_hover, package_entry, remapped_cargo_errors,
-        repl_step, JsonParser, LispParser, SourceId, SyntaxParser, YamlParser,
+        repl_step, sha256_checksum, JsonParser, LispParser, SourceId, SyntaxParser, YamlParser,
     };
 
     #[test]
@@ -1561,6 +1743,59 @@ mod tests {
         assert!(lock.contains("checksum = \"sha256:04d7a7c591eb34cfc76a5446b45ccb8edfe1d6f13da96e841c93f823afad524d\""), "{lock}");
         assert!(!lock.contains("stale/local.lisp"), "{lock}");
         assert_eq!(lock.matches("source = \"cache/math.lisp\"").count(), 1);
+        let _ = std::fs::remove_dir_all(&directory);
+    }
+
+    #[test]
+    fn lock_project_populates_registry_cache_from_local_index() {
+        let directory = std::env::temp_dir().join(format!(
+            "jisp-lock-registry-index-test-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&directory);
+        let project = directory.join("app");
+        let registry = directory.join("registry");
+        std::fs::create_dir_all(&project).unwrap();
+        std::fs::create_dir_all(registry.join("math")).unwrap();
+        let source = "(export inc (fn (value) (+ value 1)))\n";
+        let checksum = sha256_checksum(source.as_bytes());
+        std::fs::write(registry.join("math-1.2.3.lisp"), source).unwrap();
+        std::fs::write(
+            registry.join("math/1.2.3.toml"),
+            format!("source = \"math-1.2.3.lisp\"\nchecksum = \"{checksum}\"\n"),
+        )
+        .unwrap();
+        std::fs::write(
+            project.join("jisp.toml"),
+            format!(
+                "[package]\nname = \"app\"\nentry = \"main.lisp\"\n\n[dependencies]\nmath = {{\n  registry = \"../registry\",\n  package = \"math\",\n  version = \"1.2.3\",\n  checksum = \"{checksum}\"\n}}\n"
+            ),
+        )
+        .unwrap();
+        std::fs::write(
+            project.join("main.lisp"),
+            "(import math \"math\")\n(export main (fn () (math.inc 41)))",
+        )
+        .unwrap();
+
+        lock_project(&project).unwrap();
+
+        let lock = std::fs::read_to_string(project.join("jisp.lock")).unwrap();
+        assert!(project.join(".jisp/cache/math-1.2.3.lisp").exists());
+        assert!(lock.contains("[registry.math]"), "{lock}");
+        assert!(lock.contains("registry = \"../registry\""), "{lock}");
+        assert!(lock.contains("package = \"math\""), "{lock}");
+        assert!(lock.contains("version = \"1.2.3\""), "{lock}");
+        assert!(
+            lock.contains("source = \".jisp/cache/math-1.2.3.lisp\""),
+            "{lock}"
+        );
+        assert!(
+            lock.contains(&format!("checksum = \"{checksum}\"")),
+            "{lock}"
+        );
+        let entry = std::fs::read_to_string(project.join("main.lisp")).unwrap();
+        assert!(jisp::check_detailed(project.join("main.lisp"), &entry).is_ok());
         let _ = std::fs::remove_dir_all(&directory);
     }
 

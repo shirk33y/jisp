@@ -235,6 +235,7 @@ dependencies = [
  "jisp-syntax-lisp",
  "jisp-syntax-yaml",
  "serde_json",
+ "sha2",
 ]
 
 [[package]]

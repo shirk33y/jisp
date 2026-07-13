@@ -65,6 +65,14 @@ pub enum Error {
         locked: String,
     },
     #[error(
+        "registry dependency `{dependency}` lockfile checksum mismatch: manifest requires {requirement}, lockfile has {locked}"
+    )]
+    RegistryDependencyLockChecksumMismatch {
+        dependency: String,
+        requirement: String,
+        locked: String,
+    },
+    #[error(
         "registry dependency `{dependency}` checksum mismatch for `{source_path}`: expected {expected}, got {actual}"
     )]
     RegistryDependencyChecksumMismatch {
@@ -1200,8 +1208,12 @@ fn package_dependency_path(base: &Path, import: &str) -> Result<Option<PathBuf>,
         };
         match manifest_dependency_spec(&text, import) {
             Some(ManifestDependencySpec::Path(path)) => return Ok(Some(directory.join(path))),
-            Some(ManifestDependencySpec::Registry { requirement }) => {
-                return registry_dependency_path(directory, import, requirement).map(Some);
+            Some(ManifestDependencySpec::Registry {
+                requirement,
+                checksum,
+            }) => {
+                return registry_dependency_path(directory, import, requirement, checksum)
+                    .map(Some);
             }
             None => {}
         }
@@ -1213,6 +1225,7 @@ fn registry_dependency_path(
     directory: &Path,
     dependency: &str,
     requirement: &str,
+    manifest_checksum: Option<&str>,
 ) -> Result<PathBuf, Error> {
     let lock_path = directory.join("jisp.lock");
     let lockfile = fs::read_to_string(&lock_path).map_err(|error| match error.kind() {
@@ -1235,6 +1248,15 @@ fn registry_dependency_path(
             requirement: requirement.to_owned(),
             locked: entry.version.unwrap_or("<missing>").to_owned(),
         });
+    }
+    if let Some(manifest_checksum) = manifest_checksum {
+        if !manifest_checksum.eq_ignore_ascii_case(entry.checksum) {
+            return Err(Error::RegistryDependencyLockChecksumMismatch {
+                dependency: dependency.to_owned(),
+                requirement: manifest_checksum.to_ascii_lowercase(),
+                locked: entry.checksum.to_ascii_lowercase(),
+            });
+        }
     }
     let source_path = directory.join(entry.source);
     let bytes = fs::read(&source_path).map_err(|source| Error::Read {
@@ -1314,7 +1336,10 @@ fn sha256_checksum(bytes: &[u8]) -> String {
 #[derive(Debug, PartialEq, Eq)]
 enum ManifestDependencySpec<'a> {
     Path(&'a str),
-    Registry { requirement: &'a str },
+    Registry {
+        requirement: &'a str,
+        checksum: Option<&'a str>,
+    },
 }
 
 fn manifest_dependency_spec<'a>(
@@ -1323,11 +1348,17 @@ fn manifest_dependency_spec<'a>(
 ) -> Option<ManifestDependencySpec<'a>> {
     let mut dependencies = false;
     let mut target_inline_table = false;
+    let mut target_path = None;
+    let mut target_requirement = None;
+    let mut target_checksum = None;
     for line in manifest.lines() {
         let line = line.split('#').next()?.trim();
         if line.starts_with('[') {
             dependencies = line == "[dependencies]";
             target_inline_table = false;
+            target_path = None;
+            target_requirement = None;
+            target_checksum = None;
             continue;
         }
         if !dependencies {
@@ -1336,13 +1367,26 @@ fn manifest_dependency_spec<'a>(
         if target_inline_table {
             if line.starts_with('}') {
                 target_inline_table = false;
+                if let Some(path) = target_path {
+                    return Some(ManifestDependencySpec::Path(path));
+                }
+                if let Some(requirement) = target_requirement {
+                    return Some(ManifestDependencySpec::Registry {
+                        requirement,
+                        checksum: target_checksum,
+                    });
+                }
+                target_checksum = None;
                 continue;
             }
             if let Some(path) = manifest_inline_value(line, "path") {
-                return Some(ManifestDependencySpec::Path(path));
+                target_path = Some(path);
             }
             if let Some(requirement) = manifest_inline_value(line, "version") {
-                return Some(ManifestDependencySpec::Registry { requirement });
+                target_requirement = Some(requirement);
+            }
+            if let Some(checksum) = manifest_inline_value(line, "checksum") {
+                target_checksum = Some(checksum);
             }
             continue;
         }
@@ -1365,9 +1409,17 @@ fn manifest_dependency_spec<'a>(
             return Some(ManifestDependencySpec::Path(path));
         }
         if let Some(requirement) = manifest_inline_value(inline, "version") {
-            return Some(ManifestDependencySpec::Registry { requirement });
+            return Some(ManifestDependencySpec::Registry {
+                requirement,
+                checksum: manifest_inline_value(inline, "checksum"),
+            });
         }
-        target_inline_table = !value.contains('}');
+        if !value.contains('}') {
+            target_inline_table = true;
+            target_path = None;
+            target_requirement = None;
+            target_checksum = None;
+        }
     }
     None
 }
@@ -1533,7 +1585,8 @@ math = {
         assert_eq!(
             manifest_dependency_spec(manifest, "math"),
             Some(ManifestDependencySpec::Registry {
-                requirement: "1.2.3"
+                requirement: "1.2.3",
+                checksum: Some("sha256:abc")
             })
         );
     }
@@ -1608,7 +1661,7 @@ path = "main.lisp"
         let checksum = sha256_checksum(cached_source.as_bytes());
         std::fs::write(
             directory.join("jisp.toml"),
-            "[package]\nname = \"app\"\nentry = \"main.lisp\"\n\n[dependencies]\nmath = { registry = \"jisp\", package = \"math\", version = \"1.2.3\", checksum = \"sha256:abc\" }\n",
+            format!("[package]\nname = \"app\"\nentry = \"main.lisp\"\n\n[dependencies]\nmath = {{ registry = \"jisp\", package = \"math\", version = \"1.2.3\", checksum = \"{checksum}\" }}\n"),
         )
         .unwrap();
         std::fs::write(
@@ -1641,7 +1694,7 @@ path = "main.lisp"
         let checksum = sha256_checksum(cached_source.as_bytes());
         std::fs::write(
             directory.join("jisp.toml"),
-            "[package]\nname = \"app\"\nentry = \"main.lisp\"\n\n[dependencies]\nmath = { registry = \"jisp\", version = \"2.0.0\", checksum = \"sha256:abc\" }\n",
+            format!("[package]\nname = \"app\"\nentry = \"main.lisp\"\n\n[dependencies]\nmath = {{ registry = \"jisp\", version = \"2.0.0\", checksum = \"{checksum}\" }}\n"),
         )
         .unwrap();
         std::fs::write(
@@ -1675,6 +1728,54 @@ path = "main.lisp"
     }
 
     #[test]
+    fn registry_dependencies_reject_manifest_lock_checksum_mismatches() {
+        let directory = std::env::temp_dir().join(format!(
+            "jisp-registry-lock-checksum-test-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&directory);
+        std::fs::create_dir_all(directory.join("cache")).unwrap();
+        let cached_source = "(export inc (fn (value) (+ value 1)))\n";
+        std::fs::write(directory.join("cache/math.lisp"), cached_source).unwrap();
+        let checksum = sha256_checksum(cached_source.as_bytes());
+        std::fs::write(
+            directory.join("jisp.toml"),
+            "[package]\nname = \"app\"\nentry = \"main.lisp\"\n\n[dependencies]\nmath = { registry = \"jisp\", version = \"1.2.3\", checksum = \"sha256:deadbeef\" }\n",
+        )
+        .unwrap();
+        std::fs::write(
+            directory.join("jisp.lock"),
+            format!(
+                "version = 1\n\n[registry.math]\nversion = \"1.2.3\"\nsource = \"cache/math.lisp\"\nchecksum = \"{checksum}\"\n"
+            ),
+        )
+        .unwrap();
+        let entry = directory.join("main.lisp");
+        let text = "(import math \"math\")\n(export main (fn () (math.inc 41)))";
+
+        let error = match check_detailed(&entry, text) {
+            Ok(_) => panic!("registry dependency unexpectedly resolved"),
+            Err(error) => error,
+        };
+
+        assert!(matches!(
+            error,
+            ModuleError {
+                error: Error::RegistryDependencyLockChecksumMismatch {
+                    dependency,
+                    requirement,
+                    locked,
+                },
+                ..
+            } if dependency == "math"
+                && requirement == "sha256:deadbeef"
+                && locked == checksum
+        ));
+
+        let _ = std::fs::remove_dir_all(&directory);
+    }
+
+    #[test]
     fn registry_dependencies_reject_checksum_mismatches() {
         let directory = std::env::temp_dir().join(format!(
             "jisp-registry-mismatch-test-{}",
@@ -1686,7 +1787,7 @@ path = "main.lisp"
         std::fs::write(directory.join("cache/math.lisp"), cached_source).unwrap();
         std::fs::write(
             directory.join("jisp.toml"),
-            "[package]\nname = \"app\"\nentry = \"main.lisp\"\n\n[dependencies]\nmath = { registry = \"jisp\", version = \"1.2.3\", checksum = \"sha256:abc\" }\n",
+            "[package]\nname = \"app\"\nentry = \"main.lisp\"\n\n[dependencies]\nmath = { registry = \"jisp\", version = \"1.2.3\" }\n",
         )
         .unwrap();
         std::fs::write(

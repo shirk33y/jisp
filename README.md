@@ -128,8 +128,9 @@ math = { path = "../math" }
 files to `jisp.lock`; it is the current lockfile format for local path
 dependencies. Registry-style dependency specs can resolve from existing
 `jisp.lock` cache entries when their versions and SHA-256 checksums match, and
-`jisp lock` preserves used registry cache entries in the regenerated lockfile;
-registry index lookup, downloads, and cache population remain deferred. See
+`jisp lock` preserves used registry cache entries or populates `.jisp/cache`
+from a local file registry index; remote registry lookup and downloads remain
+deferred. See
 [Packages](docs/PACKAGES.md) for the lock/cache contract.
 
 Useful examples live in [examples](examples/): a basic hello program, a native

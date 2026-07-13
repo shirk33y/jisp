@@ -29,12 +29,13 @@ Supported now:
 - `[dependencies].name = "../path"`: shorthand local path dependency.
 - `[dependencies].name = { path = "../path" }`: explicit local path dependency.
 
-Supported only through an existing offline lock/cache entry:
+Supported through an existing offline lock/cache entry, or through a local
+file registry that `jisp lock` can copy into the project cache:
 
 ```toml
 [dependencies]
 math = {
-  registry = "jisp",
+  registry = "../registry",
   package = "math",
   version = "1.2.3",
   checksum = "sha256:<hex-encoded digest>"
@@ -65,16 +66,32 @@ auditability and future index/fetch tooling; current resolution is intentionally
 driven by the locked source and checksum.
 
 `jisp lock` preserves and normalizes registry entries that are already present,
-valid, and used by the import graph. It does not create a new registry entry
-from the manifest alone, because no registry index or fetch/cache population
-layer exists yet.
+valid, and used by the import graph. If `registry` points to a local directory,
+`jisp lock` can also populate `.jisp/cache` from a file registry index:
+
+```text
+registry/
+  math/
+    1.2.3.toml
+  math-1.2.3.lisp
+```
+
+```toml
+# registry/math/1.2.3.toml
+source = "math-1.2.3.lisp"
+checksum = "sha256:<hex-encoded digest>"
+```
+
+The copied cache file is recorded in `jisp.lock` as `.jisp/cache/<package>-<version>.<ext>`.
+Both the manifest checksum and index checksum must match the copied source
+bytes.
 
 ## Source and index decision
 
-The planned registry model is source-first:
+The registry model is source-first:
 
 1. A registry index maps `(registry, package, version)` to immutable source
-   archive metadata.
+   metadata. Local file indexes are supported now; remote indexes are deferred.
 2. The lockfile records the selected version, source URL or index object ID,
    cached source path, and checksum.
 3. Builds and tests consume only the lockfile plus a local cache.
@@ -93,5 +110,6 @@ the resolver:
 - no network fallback is allowed during ordinary `check`, `run`, `emit-rust`,
   `native-check`, or proc-macro expansion.
 
-The local cache-hit and lockfile preservation path above exists now. Registry
-index lookup, archive download, and cache population remain deferred.
+The local cache-hit, lockfile preservation, and local file-index cache
+population paths above exist now. Remote registry index lookup and archive
+download remain deferred.
