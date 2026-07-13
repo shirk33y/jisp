@@ -343,3 +343,15 @@
           (+ (list.len original-list) (list.len prepended))
           (+ (list.len appended) (list.len combined)))
         (+ (. original-object "first") (. merged-object "second"))))))
+
+(export reused-values-entry
+  (fn ()
+    (let (text "Ada"
+          upper (str.upper text)
+          numbers (list 1 2)
+          mapped (list.map increment numbers)
+          details (obj "name" text)
+          name (. details "name"))
+      (+
+        (+ (str.len text) (str.len upper))
+        (+ (list.len numbers) (+ (list.len mapped) (str.len name)))))))

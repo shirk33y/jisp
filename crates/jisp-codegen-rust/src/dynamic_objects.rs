@@ -133,7 +133,7 @@ impl<'a> EmitContext<'a> {
             },
         );
         Ok(quote! {{
-            let mut __jisp_object = (#object).clone();
+            let mut __jisp_object = #object;
             let __jisp_key = #key;
             let __jisp_value = #value;
             #dispatch

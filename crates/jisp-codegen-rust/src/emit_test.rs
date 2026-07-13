@@ -238,7 +238,7 @@ fn emits_let_if_and_bool_expressions() {
     let generated = generate(&module).unwrap().to_string();
 
     assert!(generated.contains("let flag = true"));
-    assert!(generated.contains("if (flag && ! false)"));
+    assert!(generated.contains("if (flag . clone () && ! false)"));
 }
 
 #[test]
@@ -344,7 +344,7 @@ fn emits_native_string_and_list_prelude_helpers() {
 
     assert!(generated.contains("[String :: from (\"hi \") , words () . join"));
     assert!(generated.contains(". concat ()"));
-    assert!(generated.contains("let mut __jisp_list = (vec ! [2i64]) . clone ()"));
+    assert!(generated.contains("let mut __jisp_list = vec ! [2i64]"));
     assert!(generated.contains("__jisp_list . insert (0usize , 1i64)"));
     assert!(generated.contains("__jisp_list . push (3i64)"));
     assert!(generated.contains("greeting () . chars () . count () as i64"));
@@ -624,7 +624,7 @@ fn propagates_expected_object_type_through_let_body() {
     let generated = generate(&module).unwrap().to_string();
 
     assert!(generated.contains("pub fn main () -> JispObject0"));
-    assert!(generated.contains("JispObject0 { age : age }"));
+    assert!(generated.contains("JispObject0 { age : age . clone () }"));
 }
 
 #[test]
@@ -719,7 +719,7 @@ fn emits_bind_and_wildcard_case_patterns_without_value_fallback() {
 
     assert!(generated.contains("if __jisp_case_subject == 0i64"));
     assert!(generated.contains("let value = __jisp_case_subject . clone ()"));
-    assert!(generated.contains("(value + 1i64)"));
+    assert!(generated.contains("(value . clone () + 1i64)"));
     assert!(generated.contains("if true"));
     assert!(!generated.contains("Value"));
     assert!(!generated.contains("jisp_eval"));
@@ -765,7 +765,7 @@ fn emits_list_case_patterns_with_rest_without_value_fallback() {
     assert!(generated.contains("__jisp_case_subject [0usize] == 1i64"));
     assert!(generated.contains("let value = __jisp_case_subject [1usize] . clone ()"));
     assert!(generated.contains("let tail = __jisp_case_subject [2usize ..] . to_vec ()"));
-    assert!(generated.contains("(value + 1i64)"));
+    assert!(generated.contains("(value . clone () + 1i64)"));
     assert!(!generated.contains("Value"));
     assert!(!generated.contains("jisp_eval"));
 }
@@ -818,7 +818,7 @@ fn emits_object_case_patterns_against_native_structs() {
     assert!(generated.contains("let __jisp_case_subject = stats ()"));
     assert!(generated.contains("__jisp_case_subject . active == true"));
     assert!(generated.contains("let age = __jisp_case_subject . age . clone ()"));
-    assert!(generated.contains("(age + 1i64)"));
+    assert!(generated.contains("(age . clone () + 1i64)"));
     assert!(!generated.contains("Value"));
     assert!(!generated.contains("jisp_eval"));
 }
@@ -894,7 +894,7 @@ fn emits_variant_case_as_native_match() {
     let generated = generate(&module).unwrap().to_string();
 
     assert!(generated.contains("match __jisp_case_subject"));
-    assert!(generated.contains("JispEnum0 :: Ok (value) => { (value + 1i64) }"));
+    assert!(generated.contains("JispEnum0 :: Ok (value) => { (value . clone () + 1i64) }"));
     assert!(generated.contains("JispEnum0 :: Err (_) => { 0i64 }"));
     assert!(!generated.contains("Value"));
     assert!(!generated.contains("jisp_eval"));

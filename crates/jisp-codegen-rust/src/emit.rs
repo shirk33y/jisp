@@ -212,11 +212,11 @@ impl<'a> EmitContext<'a> {
             ExprKind::Name(name) => {
                 let ident = rust_ident(name);
                 if self.locals.contains_key(name) {
-                    if self.closure_captures.contains(name) {
-                        Ok(quote! { #ident.clone() })
-                    } else {
-                        Ok(quote! { #ident })
-                    }
+                    // Jisp bindings are immutable and reusable. Rust values such as
+                    // `String`, `Vec`, structs, and `BigInt` are not `Copy`, so each
+                    // expression use receives an owned snapshot rather than moving
+                    // the binding out of scope.
+                    Ok(quote! { #ident.clone() })
                 } else if self.top_level_names.contains(name) {
                     match expected {
                         Some(Type::Function {

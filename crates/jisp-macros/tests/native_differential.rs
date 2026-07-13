@@ -197,6 +197,11 @@ fn native_collection_updates_preserve_their_inputs() {
     );
 }
 
+#[test]
+fn native_values_remain_reusable_after_non_mutating_operations() {
+    assert_matches_interpreter("reused-values-entry", Value::Int(reused_values_entry()));
+}
+
 fn assert_matches_interpreter(export: &str, native: Value) {
     let interpreted = interpreter_export(export);
     assert!(

@@ -95,7 +95,8 @@ product-level direction and ordering rationale, see [ROADMAP.md](ROADMAP.md).
   already remap to the containing Jisp item.
 - Finalise immutable/COW semantics for `list` and `obj` updates. Native
   `list.prepend`/`list.append`/`list.cat` and `obj.set`/`obj.del`/`obj.cat`
-  now copy their inputs before constructing a result.
+  now preserve reusable inputs; the native emitter gives every local Jisp value
+  an owned snapshot before it participates in a generated expression.
 - Extend project-aware export schemas to explicit generic instantiations and
   richer recursive type annotations. Monomorphic JSON-native exports, including
   non-parameterized algebraic types, now resolve imports and expose their
