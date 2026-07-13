@@ -105,7 +105,7 @@ impl Lowerer {
             }
             "macro-import" => Err(error(
                 node.span,
-                "macro-import is reserved for future cross-module macros; runtime import does not import macros",
+                "macro-import must be resolved before lowering; runtime import does not import macros",
             )),
             "type" => {
                 if items.len() < 3 {

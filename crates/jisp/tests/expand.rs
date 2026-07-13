@@ -70,6 +70,38 @@ fn run_main_expands_user_macro_before_lowering() {
 }
 
 #[test]
+fn run_main_expands_macro_import_from_file_module() {
+    let directory =
+        std::env::temp_dir().join(format!("jisp-macro-import-test-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&directory);
+    std::fs::create_dir_all(&directory).unwrap();
+    let main = directory.join("main.lisp");
+    let macros = directory.join("macros.lisp");
+    std::fs::write(
+        &macros,
+        r#"
+(def wrap
+  (~ (fn (value)
+       `(list 99 ,value))))
+"#,
+    )
+    .unwrap();
+    let text = r#"
+(macro-import m "macros.lisp")
+
+(export main
+  (fn ()
+    (m.wrap 7)))
+"#;
+    std::fs::write(&main, text).unwrap();
+
+    let value = jisp::run_main(&main, text).unwrap();
+
+    assert_eq!(value.display_string(), "[99, 7]");
+    let _ = std::fs::remove_dir_all(&directory);
+}
+
+#[test]
 fn macro_hygiene_normalizes_to_the_same_ir_across_source_syntaxes() {
     let cases = [
         (

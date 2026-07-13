@@ -85,13 +85,15 @@ product-level direction and ordering rationale, see [ROADMAP.md](ROADMAP.md).
   deletion still changes a closed object's concrete shape. The required
   remaining type/ABI split is recorded in
   [`.agents/plans/0016-native-open-object-abi.md`](.agents/plans/0016-native-open-object-abi.md).
-- Extend the intentionally bounded macro system only after designing
-  cross-module visibility and a general compile-time evaluator. Local template
-  bindings introduced by macros are now hygienic, while unquoted caller syntax
-  keeps its own spelling and scope. Macro exports are rejected during expansion
-  in all source syntaxes, and `macro-import` is reserved with a dedicated
-  diagnostic, preserving the module-local contract until the explicit
-  compile-time import form has dependency, cycle, and module-loading semantics.
+- Extend the intentionally bounded macro system only after designing any
+  general compile-time evaluator. Local template bindings introduced by macros
+  are now hygienic, while unquoted caller syntax keeps its own spelling and
+  scope. Macro exports are rejected during expansion in all source syntaxes.
+  Path-aware facade loading resolves `macro-import` before lowering and imports
+  file-module template macros as `alias.name`; raw unresolved `macro-import`
+  still lowers to a dedicated diagnostic. The remaining macro gap is richer
+  dependency/cycle diagnostics and sandbox/capability rules if compile-time
+  evaluation grows beyond quote/quasiquote templates.
 - Add stronger list/object exhaustiveness analysis. Finite list patterns and
   products of up to 256 finite object-field combinations are checked; native
   alternatives preserve branch-local bindings at top level and inside

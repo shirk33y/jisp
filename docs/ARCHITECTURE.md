@@ -22,8 +22,9 @@ JSON / restricted YAML / Lisp
   generated core schema.
 - `jisp-syntax-*`: three readers normalising to the same AST.
 - `jisp-expand`: quote/quasiquote/unquote/unquote-splicing expansion,
-  module-local template macros, and origin tracking before lowering. Macro
-  definitions are compile-time-only and are removed before Core IR lowering.
+  module-local and aliased file-imported template macros, and origin tracking
+  before lowering. Macro definitions and resolved `macro-import` forms are
+  compile-time-only and are removed before Core IR lowering.
 - `jisp-ir`: syntax-independent Core IR and lowering.
 - `jisp-types`: type representation, unifier, prelude schemes, import
   environments, expression/module inference, and `TypedModule` output for

@@ -16,7 +16,7 @@ use std::{
 use jisp_core::{detect_syntax, Diagnostic, Node, SourceMap, Span, Syntax, SyntaxParser};
 use jisp_eval::{Evaluator, ImportValues, LoadedModule, RuntimeError, Value};
 use jisp_expand::ExpansionMap;
-use jisp_ir::{LowerError, Lowerer, Module};
+use jisp_ir::{Import, LowerError, Lowerer, Module};
 use jisp_types::{ImportTypeEnvironments, Inferencer, Scheme, Type, TypeVar, Unifier};
 use proc_macro2::TokenStream;
 use serde_json::{json, Value as JsonValue};
@@ -253,7 +253,9 @@ pub fn parse_with_options_detailed(
             Error::UnknownSyntax(path.display().to_string()),
         )
     })?;
-    parse_as_detailed(path.display().to_string(), syntax, text, options)
+    let name = path.display().to_string();
+    let lowered = lower_path_detailed(path, syntax, text)?;
+    parsed_from_lowered(name, lowered, options)
 }
 
 pub fn parse_as_detailed(
@@ -263,12 +265,21 @@ pub fn parse_as_detailed(
     options: ParseOptions,
 ) -> Result<ParsedModule, ModuleError> {
     let name = name.into();
+    let lowered = lower_as_detailed(name.clone(), syntax, text)?;
+    parsed_from_lowered(name, lowered, options)
+}
+
+fn parsed_from_lowered(
+    name: String,
+    lowered: LoweredModule,
+    options: ParseOptions,
+) -> Result<ParsedModule, ModuleError> {
     let LoweredModule {
         mut sources,
         nodes,
         module,
         expansion_map,
-    } = lower_as_detailed(name.clone(), syntax, text)?;
+    } = lowered;
     let mut dependencies = vec![];
     let mut resolved_modules = BTreeMap::new();
     let types = if options.infer_types {
@@ -384,6 +395,50 @@ fn lower_as_detailed(
         }
     };
     let expanded = match jisp_expand::expand_module(&nodes) {
+        Ok(expanded) => expanded,
+        Err(error) => {
+            return Err(ModuleError::new(
+                sources,
+                ExpansionMap::default(),
+                error.into(),
+            ))
+        }
+    };
+    let nodes = expanded.nodes;
+    let module = match Lowerer.lower_module(&nodes) {
+        Ok(module) => module,
+        Err(error) => {
+            return Err(ModuleError::new(
+                sources,
+                expanded.expansion_map,
+                error.into(),
+            ))
+        }
+    };
+    Ok(LoweredModule {
+        sources,
+        nodes,
+        module,
+        expansion_map: expanded.expansion_map,
+    })
+}
+
+fn lower_path_detailed(
+    path: &Path,
+    syntax: Syntax,
+    text: &str,
+) -> Result<LoweredModule, ModuleError> {
+    let mut sources = SourceMap::default();
+    let source = sources.add(path.display().to_string(), text.to_owned());
+    let nodes = match parse_nodes(source, syntax, text) {
+        Ok(nodes) => nodes,
+        Err(error) => return Err(ModuleError::new(sources, ExpansionMap::default(), error)),
+    };
+    let imported_macros = match load_macro_imports(&mut sources, path, &nodes) {
+        Ok(imported_macros) => imported_macros,
+        Err(error) => return Err(ModuleError::new(sources, ExpansionMap::default(), error)),
+    };
+    let expanded = match jisp_expand::expand_module_with_imported_macros(&nodes, &imported_macros) {
         Ok(expanded) => expanded,
         Err(error) => {
             return Err(ModuleError::new(
@@ -1440,8 +1495,79 @@ fn load_module(sources: &mut SourceMap, path: &Path) -> Result<Module, Error> {
     for file in module_source_files(path)? {
         nodes.extend(parse_file(sources, &file)?);
     }
-    let expanded = jisp_expand::expand_module(&nodes)?;
+    let imported_macros = load_macro_imports(sources, path, &nodes)?;
+    let expanded = jisp_expand::expand_module_with_imported_macros(&nodes, &imported_macros)?;
     Ok(Lowerer.lower_module(&expanded.nodes)?)
+}
+
+fn load_macro_imports(
+    sources: &mut SourceMap,
+    importer: &Path,
+    nodes: &[Node],
+) -> Result<Vec<(String, Vec<Node>)>, Error> {
+    let mut imports = vec![];
+    for import in macro_imports(nodes)? {
+        let path = resolve_import(importer, &import.path)?;
+        let mut definitions = vec![];
+        for file in module_source_files(&path)? {
+            definitions.extend(parse_file(sources, &file)?);
+        }
+        imports.push((import.alias, definitions));
+    }
+    Ok(imports)
+}
+
+fn macro_imports(nodes: &[Node]) -> Result<Vec<Import>, Error> {
+    let mut imports = vec![];
+    for node in nodes {
+        let Some(items) = node.as_form() else {
+            continue;
+        };
+        if items.first().and_then(Node::as_symbol) != Some("macro-import") {
+            continue;
+        }
+        if !(items.len() == 2 || items.len() == 3) {
+            return Err(lower_error(
+                node.span,
+                format!(
+                    "macro-import expects 1 or 2 argument(s), got {}",
+                    items.len().saturating_sub(1)
+                ),
+            ));
+        }
+        let (alias, path_node) = if items.len() == 2 {
+            let path = items[1]
+                .as_string()
+                .ok_or_else(|| lower_error(items[1].span, "macro-import path must be a string"))?;
+            (default_import_alias(path), &items[1])
+        } else {
+            (
+                items[1].as_symbol().ok_or_else(|| {
+                    lower_error(items[1].span, "macro-import alias must be a symbol")
+                })?,
+                &items[2],
+            )
+        };
+        let path = path_node
+            .as_string()
+            .ok_or_else(|| lower_error(path_node.span, "macro-import path must be a string"))?;
+        imports.push(Import {
+            alias: alias.to_owned(),
+            path: path.to_owned(),
+            span: node.span,
+        });
+    }
+    Ok(imports)
+}
+
+fn lower_error(span: Span, message: impl Into<String>) -> Error {
+    Error::Lower(LowerError::new(vec![
+        Diagnostic::error(span, message).with_code("JISP-LOWER")
+    ]))
+}
+
+fn default_import_alias(path: &str) -> &str {
+    path.rsplit('/').next().unwrap_or(path)
 }
 
 fn module_source_files(path: &Path) -> Result<Vec<PathBuf>, Error> {

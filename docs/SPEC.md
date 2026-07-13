@@ -61,18 +61,29 @@ final `... rest` parameter.
     (unless false 1 2)))
 ```
 
-Macros are currently module-local. They cannot be imported or exported;
-exporting a macro is an expansion error in every source syntax. `macro-import`
-is reserved as the future explicit compile-time import form and currently
-lowers to a dedicated not-implemented diagnostic; ordinary runtime `import`
-does not import macro bindings. Template
-bindings introduced by `fn`, `let`, `use`, list-rest patterns, aliases, and
-ordinary `case` pattern bindings are hygienic: each expansion gives them a
-fresh internal name, while unquoted and spliced caller syntax keeps its original
-spelling and scope. The macro body is not a general compile-time Jisp
-evaluator; this keeps expansion deterministic and avoids a second prelude, IO,
-and module loading contract. Future cross-module macro visibility must fill in
-the `macro-import` dependency, cycle, and module loading contract.
+Macros can be used locally or imported explicitly at compile time with
+`macro-import`. Imported macros are namespaced under the chosen alias and are
+called as `alias.name`; ordinary runtime `import` does not import macro
+bindings. The path-aware facade resolves `macro-import` before Core IR lowering,
+so a raw `macro-import` that reaches the lowerer is an error.
+
+```lisp
+(macro-import m "macros.lisp")
+
+(export main
+  (fn ()
+    (m.wrap 7)))
+```
+
+Macros cannot be exported; exporting a macro is an expansion error in every
+source syntax. Template bindings introduced by `fn`, `let`, `use`, list-rest
+patterns, aliases, and ordinary `case` pattern bindings are hygienic: each
+expansion gives them a fresh internal name, while unquoted and spliced caller
+syntax keeps its original spelling and scope. The macro body is not a general
+compile-time Jisp evaluator; this keeps expansion deterministic and avoids a
+second prelude, IO, and host capability contract. Future macro work must still
+fill in richer dependency-cycle diagnostics and any sandboxing rules if a
+general compile-time evaluator is added.
 The full design and future boundaries are recorded in
 [`.agents/plans/0010-user-macros.md`](../.agents/plans/0010-user-macros.md) and
 [`.agents/plans/0018-macro-hygiene.md`](../.agents/plans/0018-macro-hygiene.md).

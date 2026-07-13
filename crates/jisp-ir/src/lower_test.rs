@@ -75,7 +75,7 @@ fn lower_reserves_macro_import_for_future_cross_module_macros() {
 
     assert_eq!(
         error.diagnostics[0].message,
-        "macro-import is reserved for future cross-module macros; runtime import does not import macros"
+        "macro-import must be resolved before lowering; runtime import does not import macros"
     );
 }
 

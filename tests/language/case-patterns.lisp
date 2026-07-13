@@ -117,7 +117,7 @@
   (case (list true)
     ((list true) 1)))
 
-(test-error "macro-import stays reserved for cross-module macros"
-  "macro-import is reserved for future cross-module macros"
+(test-error "raw macro-import must be resolved before lowering"
+  "macro-import must be resolved before lowering"
   (module
     (macro-import macros "macros.lisp")))

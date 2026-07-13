@@ -1,6 +1,6 @@
 use jisp_core::{Node, NodeKind, SourceId, Span};
 
-use crate::{expand_module, ExpansionMap};
+use crate::{expand_module, expand_module_with_imported_macros, ExpansionMap};
 
 fn span(start: usize, end: usize) -> Span {
     Span::new(SourceId(0), start, end)
@@ -159,6 +159,41 @@ fn expands_ordered_user_macro_quasiquote_and_removes_its_definition() {
     assert_eq!(
         expanded.expansion_map.origin(expanded.nodes[0].span),
         span(30, 50)
+    );
+}
+
+#[test]
+fn expands_imported_macro_under_alias_and_removes_macro_import() {
+    let imported = vec![form(vec![
+        sym("def"),
+        sym("wrap"),
+        form(vec![
+            sym("~"),
+            form(vec![
+                sym("fn"),
+                form(vec![sym("expression")]),
+                form(vec![
+                    sym("`"),
+                    form(vec![
+                        sym("list"),
+                        string("wrapped"),
+                        form(vec![sym(","), sym("expression")]),
+                    ]),
+                ]),
+            ]),
+        ]),
+    ])];
+    let nodes = vec![
+        form(vec![sym("macro-import"), sym("m"), string("macros.lisp")]),
+        form(vec![sym("m.wrap"), int(7)]),
+    ];
+
+    let expanded =
+        expand_module_with_imported_macros(&nodes, &[("m".to_owned(), imported)]).unwrap();
+
+    assert_eq!(
+        expanded.nodes,
+        vec![form(vec![sym("list"), string("wrapped"), int(7)])]
     );
 }
 

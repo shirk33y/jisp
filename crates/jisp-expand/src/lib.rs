@@ -92,11 +92,37 @@ pub struct Expander {
 }
 
 impl Expander {
-    pub fn expand_module(mut self, nodes: &[Node]) -> Result<ExpandedModule, ExpandError> {
+    pub fn expand_module(self, nodes: &[Node]) -> Result<ExpandedModule, ExpandError> {
+        self.expand_module_inner(nodes, false)
+    }
+
+    pub fn expand_module_with_imported_macros(
+        mut self,
+        nodes: &[Node],
+        imported_macros: &[(String, Vec<Node>)],
+    ) -> Result<ExpandedModule, ExpandError> {
+        for (alias, definitions) in imported_macros {
+            for definition in definitions {
+                if let Some((name, user_macro)) = parse_macro_definition(definition)? {
+                    self.macros.insert(format!("{alias}.{name}"), user_macro);
+                }
+            }
+        }
+        self.expand_module_inner(nodes, true)
+    }
+
+    fn expand_module_inner(
+        mut self,
+        nodes: &[Node],
+        consume_macro_imports: bool,
+    ) -> Result<ExpandedModule, ExpandError> {
         self.macro_names = collect_macro_names(nodes);
         let mut expanded = vec![];
         for node in nodes.iter().cloned() {
             self.reject_macro_export(&node)?;
+            if consume_macro_imports && is_macro_import_form(&node) {
+                continue;
+            }
             if let Some((name, user_macro)) = parse_macro_definition(&node)? {
                 self.macros.insert(name, user_macro);
             } else {
@@ -738,6 +764,20 @@ impl Expander {
 
 pub fn expand_module(nodes: &[Node]) -> Result<ExpandedModule, ExpandError> {
     Expander::default().expand_module(nodes)
+}
+
+pub fn expand_module_with_imported_macros(
+    nodes: &[Node],
+    imported_macros: &[(String, Vec<Node>)],
+) -> Result<ExpandedModule, ExpandError> {
+    Expander::default().expand_module_with_imported_macros(nodes, imported_macros)
+}
+
+fn is_macro_import_form(node: &Node) -> bool {
+    node.as_form()
+        .and_then(|items| items.first())
+        .and_then(Node::as_symbol)
+        == Some("macro-import")
 }
 
 fn collect_macro_names(nodes: &[Node]) -> HashSet<String> {
