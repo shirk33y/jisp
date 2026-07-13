@@ -145,7 +145,18 @@ fn lsp() -> Result<()> {
                 &serde_json::json!({
                     "jsonrpc": "2.0",
                     "id": message["id"],
-                    "result": { "capabilities": { "textDocumentSync": 1 } }
+                    "result": { "capabilities": {
+                        "textDocumentSync": 1,
+                        "completionProvider": { "triggerCharacters": ["(", "."] }
+                    } }
+                }),
+            )?,
+            Some("textDocument/completion") => write_lsp_message(
+                &mut output,
+                &serde_json::json!({
+                    "jsonrpc": "2.0",
+                    "id": message["id"],
+                    "result": lsp_completion_items()
                 }),
             )?,
             Some("textDocument/didOpen") | Some("textDocument/didChange") => {
@@ -182,6 +193,23 @@ fn lsp() -> Result<()> {
         }
     }
     Ok(())
+}
+
+fn lsp_completion_items() -> Vec<serde_json::Value> {
+    jisp_core::SPECIAL_FORMS
+        .iter()
+        .flat_map(|form| {
+            std::iter::once((form.name, form.summary))
+                .chain(form.aliases.iter().map(|alias| (*alias, form.summary)))
+        })
+        .map(|(label, detail)| {
+            serde_json::json!({
+                "label": label,
+                "kind": 3,
+                "detail": detail,
+            })
+        })
+        .collect()
 }
 
 fn read_lsp_message(input: &mut impl BufRead) -> Result<Option<serde_json::Value>> {
@@ -579,9 +607,9 @@ mod tests {
     use std::path::Path;
 
     use super::{
-        format_json_module, format_lisp_module, format_yaml_module, lsp_diagnostics,
-        remapped_cargo_errors, repl_step, JsonParser, LispParser, SourceId, SyntaxParser,
-        YamlParser,
+        format_json_module, format_lisp_module, format_yaml_module, lsp_completion_items,
+        lsp_diagnostics, remapped_cargo_errors, repl_step, JsonParser, LispParser, SourceId,
+        SyntaxParser, YamlParser,
     };
 
     #[test]
@@ -678,6 +706,20 @@ mod tests {
             .as_str()
             .unwrap()
             .contains("no overload"));
+    }
+
+    #[test]
+    fn lsp_completion_comes_from_the_core_special_form_registry() {
+        let items = lsp_completion_items();
+        let labels = items
+            .iter()
+            .filter_map(|item| item["label"].as_str())
+            .collect::<Vec<_>>();
+
+        assert!(labels.contains(&"case"));
+        assert!(labels.contains(&"macro"));
+        assert!(labels.contains(&"~"));
+        assert!(labels.contains(&"`"));
     }
 
     fn same_kind(left: &jisp_core::Node, right: &jisp_core::Node) -> bool {

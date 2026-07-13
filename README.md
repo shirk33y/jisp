@@ -107,7 +107,7 @@ jisp lsp
 | `native-check` | Compile generated Rust in a temporary offline Cargo crate and remap item-level compiler errors to Jisp source. |
 | `fmt` | Format `.lisp`/`.jisp`, canonical `.json`, or flow-style `.yaml`/`.yml`; default prints, `--check` validates, and `--write` updates the file. |
 | `repl` | Start a REPL. `def`, `type`, and `import` forms persist for later expressions; `--state <file>` also persists accepted definitions across runs. Use `:help`, `:reset`, or `:quit`. |
-| `lsp` | Start a stdio Language Server Protocol endpoint with initialization and live frontend diagnostics for opened or changed documents. |
+| `lsp` | Start a stdio Language Server Protocol endpoint with initialization, core-form completion, and live frontend diagnostics for opened or changed documents. |
 
 Useful examples live in [examples](examples/): a basic hello program, a native
 codegen fixture, static object helpers, and structural UI data.
