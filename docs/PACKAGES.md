@@ -28,7 +28,7 @@ Supported now:
 - `[dependencies].name = "../path"`: shorthand local path dependency.
 - `[dependencies].name = { path = "../path" }`: explicit local path dependency.
 
-Reserved for the future registry resolver:
+Supported only through an existing offline lock/cache entry:
 
 ```toml
 [dependencies]
@@ -41,8 +41,27 @@ math = {
 ```
 
 The parser recognizes `version`-based registry dependency specs, but resolution
-fails offline with a clear unsupported-registry error. This keeps the manifest
-shape testable without silently inventing fetch semantics.
+does not fetch from the network. A registry dependency resolves only when
+`jisp.lock` contains a matching `[registry.<name>]` entry with a local cached
+source path and a SHA-256 checksum:
+
+```toml
+version = 1
+
+[registry.math]
+registry = "jisp"
+package = "math"
+version = "1.2.3"
+source = "cache/math.lisp"
+checksum = "sha256:<hex-encoded digest>"
+```
+
+The resolver requires lockfile `version` to match the manifest requirement,
+reads `source`, verifies `checksum`, and then treats the cached file as the
+imported module. Missing lock entries, version mismatches, and checksum
+mismatches are hard errors. `registry` and `package` are recorded for
+auditability and future index/fetch tooling; current resolution is intentionally
+driven by the locked source and checksum.
 
 ## Source and index decision
 
@@ -50,8 +69,8 @@ The planned registry model is source-first:
 
 1. A registry index maps `(registry, package, version)` to immutable source
    archive metadata.
-2. The lockfile records the selected version, source URL or index object ID, and
-   checksum.
+2. The lockfile records the selected version, source URL or index object ID,
+   cached source path, and checksum.
 3. Builds and tests consume only the lockfile plus a local cache.
 
 The index is metadata, not executable code. The source archive is the authority
@@ -68,5 +87,6 @@ the resolver:
 - no network fallback is allowed during ordinary `check`, `run`, `emit-rust`,
   `native-check`, or proc-macro expansion.
 
-Until the fetch/cache layer exists, registry specs remain intentionally
-unsupported at resolution time.
+The local cache-hit path above exists now. Registry index lookup, archive
+download, cache population, and lockfile generation for registry packages remain
+deferred.

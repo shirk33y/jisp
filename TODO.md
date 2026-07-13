@@ -114,8 +114,9 @@ product-level direction and ordering rationale, see [ROADMAP.md](ROADMAP.md).
   definitions across process restarts; `jisp fmt` provides idempotent Lisp,
   canonical JSON, and flow-style YAML formatting with print/check/write modes;
   `jisp lock` writes a deterministic lockfile for local path dependencies; and
-  registry dependency specs are parsed but intentionally rejected offline until
-  the documented index/cache/checksum resolver exists.
+  registry dependency specs resolve from pre-existing offline lock/cache entries
+  with SHA-256 verification, while index lookup, downloads, cache population,
+  and generated registry lock entries remain deferred.
 
 ## Deferred by design
 

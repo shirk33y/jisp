@@ -20,6 +20,7 @@ use jisp_ir::{LowerError, Lowerer, Module};
 use jisp_types::{ImportTypeEnvironments, Inferencer, Scheme, Type, TypeVar, Unifier};
 use proc_macro2::TokenStream;
 use serde_json::{json, Value as JsonValue};
+use sha2::{Digest, Sha256};
 use thiserror::Error;
 
 pub use jisp_codegen_rust::{RustItemKind, RustSourceItem, RustSourceMap};
@@ -53,12 +54,24 @@ pub enum Error {
     },
     #[error("import `{import}` from `{from}` did not resolve to a Jisp module")]
     ImportNotFound { import: String, from: String },
+    #[error("registry dependency `{dependency}` requires a `jisp.lock` cache entry")]
+    RegistryDependencyUnlocked { dependency: String },
     #[error(
-        "registry dependency `{dependency}` is declared as `{requirement}`, but registry resolution is not implemented yet"
+        "registry dependency `{dependency}` lockfile version mismatch: manifest requires {requirement}, lockfile has {locked}"
     )]
-    RegistryDependencyUnsupported {
+    RegistryDependencyLockVersionMismatch {
         dependency: String,
         requirement: String,
+        locked: String,
+    },
+    #[error(
+        "registry dependency `{dependency}` checksum mismatch for `{source_path}`: expected {expected}, got {actual}"
+    )]
+    RegistryDependencyChecksumMismatch {
+        dependency: String,
+        source_path: String,
+        expected: String,
+        actual: String,
     },
     #[error("import cycle: {0}")]
     ImportCycle(String),
@@ -1188,15 +1201,114 @@ fn package_dependency_path(base: &Path, import: &str) -> Result<Option<PathBuf>,
         match manifest_dependency_spec(&text, import) {
             Some(ManifestDependencySpec::Path(path)) => return Ok(Some(directory.join(path))),
             Some(ManifestDependencySpec::Registry { requirement }) => {
-                return Err(Error::RegistryDependencyUnsupported {
-                    dependency: import.to_owned(),
-                    requirement: requirement.to_owned(),
-                });
+                return registry_dependency_path(directory, import, requirement).map(Some);
             }
             None => {}
         }
     }
     Ok(None)
+}
+
+fn registry_dependency_path(
+    directory: &Path,
+    dependency: &str,
+    requirement: &str,
+) -> Result<PathBuf, Error> {
+    let lock_path = directory.join("jisp.lock");
+    let lockfile = fs::read_to_string(&lock_path).map_err(|error| match error.kind() {
+        io::ErrorKind::NotFound => Error::RegistryDependencyUnlocked {
+            dependency: dependency.to_owned(),
+        },
+        _ => Error::Read {
+            path: lock_path.display().to_string(),
+            source: error,
+        },
+    })?;
+    let entry = registry_lock_entry(&lockfile, dependency).ok_or_else(|| {
+        Error::RegistryDependencyUnlocked {
+            dependency: dependency.to_owned(),
+        }
+    })?;
+    if entry.version != Some(requirement) {
+        return Err(Error::RegistryDependencyLockVersionMismatch {
+            dependency: dependency.to_owned(),
+            requirement: requirement.to_owned(),
+            locked: entry.version.unwrap_or("<missing>").to_owned(),
+        });
+    }
+    let source_path = directory.join(entry.source);
+    let bytes = fs::read(&source_path).map_err(|source| Error::Read {
+        path: source_path.display().to_string(),
+        source,
+    })?;
+    let actual = sha256_checksum(&bytes);
+    let expected = entry.checksum.to_ascii_lowercase();
+    if actual != expected {
+        return Err(Error::RegistryDependencyChecksumMismatch {
+            dependency: dependency.to_owned(),
+            source_path: source_path.display().to_string(),
+            expected,
+            actual,
+        });
+    }
+    Ok(source_path)
+}
+
+#[derive(Debug, PartialEq, Eq)]
+struct RegistryLockEntry<'a> {
+    version: Option<&'a str>,
+    source: &'a str,
+    checksum: &'a str,
+}
+
+fn registry_lock_entry<'a>(lockfile: &'a str, dependency: &str) -> Option<RegistryLockEntry<'a>> {
+    let header = format!("[registry.{dependency}]");
+    let mut in_section = false;
+    let mut version = None;
+    let mut source = None;
+    let mut checksum = None;
+    for line in lockfile.lines() {
+        let line = line.split('#').next()?.trim();
+        if line.starts_with('[') {
+            if in_section {
+                break;
+            }
+            in_section = line == header;
+            continue;
+        }
+        if !in_section || line.is_empty() {
+            continue;
+        }
+        let Some((name, value)) = line.split_once('=') else {
+            continue;
+        };
+        let value = quoted_toml_string(value.trim())?;
+        match name.trim() {
+            "version" => version = Some(value),
+            "source" => source = Some(value),
+            "checksum" => checksum = Some(value),
+            _ => {}
+        }
+    }
+    Some(RegistryLockEntry {
+        version,
+        source: source?,
+        checksum: checksum?,
+    })
+}
+
+fn quoted_toml_string(value: &str) -> Option<&str> {
+    value.strip_prefix('"')?.strip_suffix('"')
+}
+
+fn sha256_checksum(bytes: &[u8]) -> String {
+    let digest = Sha256::digest(bytes);
+    let mut encoded = String::with_capacity("sha256:".len() + digest.len() * 2);
+    encoded.push_str("sha256:");
+    for byte in digest {
+        encoded.push_str(&format!("{byte:02x}"));
+    }
+    encoded
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -1363,7 +1475,8 @@ fn format_cycle(stack: &[PathBuf], repeated: &Path) -> String {
 #[cfg(test)]
 mod manifest_tests {
     use super::{
-        check_detailed, manifest_dependency_spec, Error, ManifestDependencySpec, ModuleError,
+        check_detailed, manifest_dependency_spec, registry_lock_entry, sha256_checksum, Error,
+        ManifestDependencySpec, ModuleError, RegistryLockEntry,
     };
 
     #[test]
@@ -1403,9 +1516,11 @@ math = { registry = "jisp", package = "math", version = "1.2.3", checksum = "sha
     }
 
     #[test]
-    fn registry_dependencies_fail_offline_resolution_with_a_clear_error() {
-        let directory =
-            std::env::temp_dir().join(format!("jisp-registry-test-{}", std::process::id()));
+    fn registry_dependencies_require_a_lockfile_cache_entry() {
+        let directory = std::env::temp_dir().join(format!(
+            "jisp-registry-unlocked-test-{}",
+            std::process::id()
+        ));
         let _ = std::fs::remove_dir_all(&directory);
         std::fs::create_dir_all(&directory).unwrap();
         std::fs::write(
@@ -1423,12 +1538,160 @@ math = { registry = "jisp", package = "math", version = "1.2.3", checksum = "sha
         assert!(matches!(
             error,
             ModuleError {
-                error: Error::RegistryDependencyUnsupported {
+                error: Error::RegistryDependencyUnlocked {
                     dependency,
-                    requirement,
                 },
                 ..
-            } if dependency == "math" && requirement == "1.2.3"
+            } if dependency == "math"
+        ));
+
+        let _ = std::fs::remove_dir_all(&directory);
+    }
+
+    #[test]
+    fn registry_lock_entries_parse_source_and_checksum() {
+        let lockfile = r#"
+version = 1
+
+[registry.math]
+registry = "jisp"
+package = "math"
+version = "1.2.3"
+source = "cache/math.lisp"
+checksum = "sha256:abc"
+
+[source.0]
+path = "main.lisp"
+"#;
+
+        assert_eq!(
+            registry_lock_entry(lockfile, "math"),
+            Some(RegistryLockEntry {
+                version: Some("1.2.3"),
+                source: "cache/math.lisp",
+                checksum: "sha256:abc"
+            })
+        );
+    }
+
+    #[test]
+    fn registry_dependencies_resolve_from_locked_cache_with_checksum() {
+        let directory =
+            std::env::temp_dir().join(format!("jisp-registry-cache-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&directory);
+        std::fs::create_dir_all(directory.join("cache")).unwrap();
+        let cached_source = "(export inc (fn (value) (+ value 1)))\n";
+        std::fs::write(directory.join("cache/math.lisp"), cached_source).unwrap();
+        let checksum = sha256_checksum(cached_source.as_bytes());
+        std::fs::write(
+            directory.join("jisp.toml"),
+            "[package]\nname = \"app\"\nentry = \"main.lisp\"\n\n[dependencies]\nmath = { registry = \"jisp\", package = \"math\", version = \"1.2.3\", checksum = \"sha256:abc\" }\n",
+        )
+        .unwrap();
+        std::fs::write(
+            directory.join("jisp.lock"),
+            format!(
+                "version = 1\n\n[registry.math]\nregistry = \"jisp\"\npackage = \"math\"\nversion = \"1.2.3\"\nsource = \"cache/math.lisp\"\nchecksum = \"{checksum}\"\n"
+            ),
+        )
+        .unwrap();
+        let entry = directory.join("main.lisp");
+        let text = "(import math \"math\")\n(export main (fn () (math.inc 41)))";
+
+        let parsed = check_detailed(&entry, text).unwrap();
+
+        assert_eq!(
+            parsed.dependencies,
+            vec![directory.join("cache/math.lisp").canonicalize().unwrap()]
+        );
+        let _ = std::fs::remove_dir_all(&directory);
+    }
+
+    #[test]
+    fn registry_dependencies_reject_lockfile_version_mismatches() {
+        let directory =
+            std::env::temp_dir().join(format!("jisp-registry-version-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&directory);
+        std::fs::create_dir_all(directory.join("cache")).unwrap();
+        let cached_source = "(export inc (fn (value) (+ value 1)))\n";
+        std::fs::write(directory.join("cache/math.lisp"), cached_source).unwrap();
+        let checksum = sha256_checksum(cached_source.as_bytes());
+        std::fs::write(
+            directory.join("jisp.toml"),
+            "[package]\nname = \"app\"\nentry = \"main.lisp\"\n\n[dependencies]\nmath = { registry = \"jisp\", version = \"2.0.0\", checksum = \"sha256:abc\" }\n",
+        )
+        .unwrap();
+        std::fs::write(
+            directory.join("jisp.lock"),
+            format!(
+                "version = 1\n\n[registry.math]\nversion = \"1.2.3\"\nsource = \"cache/math.lisp\"\nchecksum = \"{checksum}\"\n"
+            ),
+        )
+        .unwrap();
+        let entry = directory.join("main.lisp");
+        let text = "(import math \"math\")\n(export main (fn () (math.inc 41)))";
+
+        let error = match check_detailed(&entry, text) {
+            Ok(_) => panic!("registry dependency unexpectedly resolved"),
+            Err(error) => error,
+        };
+
+        assert!(matches!(
+            error,
+            ModuleError {
+                error: Error::RegistryDependencyLockVersionMismatch {
+                    dependency,
+                    requirement,
+                    locked,
+                },
+                ..
+            } if dependency == "math" && requirement == "2.0.0" && locked == "1.2.3"
+        ));
+
+        let _ = std::fs::remove_dir_all(&directory);
+    }
+
+    #[test]
+    fn registry_dependencies_reject_checksum_mismatches() {
+        let directory = std::env::temp_dir().join(format!(
+            "jisp-registry-mismatch-test-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&directory);
+        std::fs::create_dir_all(directory.join("cache")).unwrap();
+        let cached_source = "(export inc (fn (value) (+ value 1)))\n";
+        std::fs::write(directory.join("cache/math.lisp"), cached_source).unwrap();
+        std::fs::write(
+            directory.join("jisp.toml"),
+            "[package]\nname = \"app\"\nentry = \"main.lisp\"\n\n[dependencies]\nmath = { registry = \"jisp\", version = \"1.2.3\", checksum = \"sha256:abc\" }\n",
+        )
+        .unwrap();
+        std::fs::write(
+            directory.join("jisp.lock"),
+            "version = 1\n\n[registry.math]\nversion = \"1.2.3\"\nsource = \"cache/math.lisp\"\nchecksum = \"sha256:deadbeef\"\n",
+        )
+        .unwrap();
+        let entry = directory.join("main.lisp");
+        let text = "(import math \"math\")\n(export main (fn () (math.inc 41)))";
+
+        let error = match check_detailed(&entry, text) {
+            Ok(_) => panic!("registry dependency unexpectedly resolved"),
+            Err(error) => error,
+        };
+
+        assert!(matches!(
+            error,
+            ModuleError {
+                error: Error::RegistryDependencyChecksumMismatch {
+                    dependency,
+                    expected,
+                    actual,
+                    ..
+                },
+                ..
+            } if dependency == "math"
+                && expected == "sha256:deadbeef"
+                && actual == sha256_checksum(cached_source.as_bytes())
         ));
 
         let _ = std::fs::remove_dir_all(&directory);

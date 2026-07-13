@@ -126,9 +126,10 @@ math = { path = "../math" }
 
 `jisp lock` writes the resolved entry source and transitive dependency source
 files to `jisp.lock`; it is the current lockfile format for local path
-dependencies. Registry-style dependency specs are reserved and parsed, but
-resolution intentionally fails offline until the index, cache, and checksum
-contract in [Packages](docs/PACKAGES.md) is implemented.
+dependencies. Registry-style dependency specs can resolve from existing
+`jisp.lock` cache entries when their SHA-256 checksums match; registry index
+lookup, downloads, and cache population remain deferred. See
+[Packages](docs/PACKAGES.md) for the lock/cache contract.
 
 Useful examples live in [examples](examples/): a basic hello program, a native
 codegen fixture, static object helpers, and structural UI data.
