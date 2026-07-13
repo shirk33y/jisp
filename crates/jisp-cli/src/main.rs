@@ -9,7 +9,7 @@ use std::{
 
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
-use jisp_core::{Diagnostic, Node, NodeKind, SourceId, SyntaxParser};
+use jisp_core::{Diagnostic, Node, NodeKind, SourceId, Span, SyntaxParser};
 use jisp_syntax_json::JsonParser;
 use jisp_syntax_lisp::LispParser;
 use jisp_syntax_yaml::YamlParser;
@@ -313,18 +313,52 @@ fn lsp_definition(
 ) -> Option<serde_json::Value> {
     let offset = lsp_byte_offset(text, line, character)?;
     let symbol = lsp_symbol_at(text, offset)?;
-    let parsed = jisp::parse_detailed(uri.strip_prefix("file://").unwrap_or(uri), text).ok()?;
+    let path = uri.strip_prefix("file://").unwrap_or(uri);
+    let parsed = match jisp::check_detailed(path, text) {
+        Ok(parsed) => parsed,
+        Err(_) => jisp::parse_detailed(path, text).ok()?,
+    };
     let span = parsed
         .module
         .definitions
         .iter()
         .find(|definition| definition.name == symbol)
-        .map(|definition| definition.span)?;
+        .map(|definition| definition.span)
+        .or_else(|| lsp_imported_definition_span(&parsed, symbol))?;
     let file = parsed.sources.get(span.source)?;
     Some(serde_json::json!({
-        "uri": uri,
+        "uri": lsp_source_uri(uri, file.name()),
         "range": { "start": lsp_position(file, span.start), "end": lsp_position(file, span.end) }
     }))
+}
+
+fn lsp_imported_definition_span(parsed: &jisp::ParsedModule, symbol: &str) -> Option<Span> {
+    let (alias, name) = symbol.split_once('.')?;
+    let import = parsed
+        .module
+        .imports
+        .iter()
+        .find(|import| import.alias == alias)?;
+    let import_name = Path::new(&import.path)
+        .file_stem()
+        .or_else(|| Path::new(&import.path).file_name())?
+        .to_str()?;
+    let module = parsed.resolved_modules.iter().find_map(|(path, module)| {
+        (path.file_stem().and_then(|stem| stem.to_str()) == Some(import_name)).then_some(module)
+    })?;
+    module
+        .definitions
+        .iter()
+        .find(|definition| definition.name == name)
+        .map(|definition| definition.span)
+}
+
+fn lsp_source_uri(current_uri: &str, source_name: &str) -> String {
+    if current_uri.strip_prefix("file://") == Some(source_name) {
+        current_uri.to_owned()
+    } else {
+        format!("file://{source_name}")
+    }
 }
 
 fn lsp_byte_offset(text: &str, line: usize, character: usize) -> Option<usize> {
