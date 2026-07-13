@@ -88,10 +88,9 @@ product-level direction and ordering rationale, see [ROADMAP.md](ROADMAP.md).
   patterns.
 - Expand `jisp-macros` further beyond item-position emission. `lisp_expr!`
   now compiles an exported zero-argument `main` as a typed Rust expression.
-- Preserve macro-origin chains while remapping native diagnostics. Generated
-  Rust has stable byte ranges for expressions as well as functions, structs,
-  and enums; Cargo JSON primary and secondary spans resolve to the narrowest
-  containing Jisp spans.
+- Generated Rust has stable byte ranges for expressions as well as functions,
+  structs, and enums; Cargo JSON primary and secondary spans resolve to the
+  narrowest containing Jisp spans, including macro expansion origins.
 - Finalise immutable/COW semantics for `list` and `obj` updates. Native
   `list.prepend`/`list.append`/`list.cat` and `obj.set`/`obj.del`/`obj.cat`
   now preserve reusable inputs; the native emitter gives every local Jisp value

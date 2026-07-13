@@ -970,6 +970,9 @@ fn remapped_cargo_errors(
                 diagnostic["message"].as_str().unwrap_or("rustc error"),
             )
             .with_code("JISP-RUST");
+            for origin in generated.expansion_map.origin_chain(item.source_span) {
+                remapped = remapped.with_secondary(origin, "expanded from here");
+            }
             for secondary in diagnostic["spans"].as_array()?.iter().filter(|span| {
                 span["is_primary"] != true && is_generated_cargo_span(span, generated_path)
             }) {
@@ -1066,6 +1069,46 @@ mod tests {
         assert_eq!(rendered.len(), 1);
         assert!(
             rendered[0].contains("required by this generated function"),
+            "{}",
+            rendered[0]
+        );
+    }
+
+    #[test]
+    fn remaps_macro_expansion_origins_for_native_diagnostics() {
+        let generated = jisp::emit_rust_detailed(
+            "main.lisp",
+            r#"
+(def add-one
+  (~ (fn (value)
+       `(+ ,value 1))))
+
+(export main (fn () (add-one 41)))
+"#,
+        )
+        .unwrap();
+        let item = generated
+            .source_map
+            .items
+            .iter()
+            .find(|item| {
+                item.kind == jisp::RustItemKind::Expression
+                    && !generated
+                        .expansion_map
+                        .origin_chain(item.source_span)
+                        .is_empty()
+            })
+            .unwrap();
+        let offset = item.generated_range.as_ref().unwrap().start;
+        let json = format!(
+            r#"{{"reason":"compiler-message","message":{{"level":"error","message":"synthetic rust error","spans":[{{"is_primary":true,"file_name":"src/lib.rs","byte_start":{offset}}}]}}}}"#
+        );
+
+        let rendered = remapped_cargo_errors(&json, &generated, Path::new("/tmp/src/lib.rs"));
+
+        assert_eq!(rendered.len(), 1);
+        assert!(
+            rendered[0].contains("expanded from here"),
             "{}",
             rendered[0]
         );

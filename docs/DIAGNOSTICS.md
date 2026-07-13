@@ -24,7 +24,7 @@ invocation.
 
 Secondary rustc spans from that generated file are retained as secondary Jisp
 labels and use their rustc label text when one is present. Expansion-origin
-chains for remapped native spans remain future work.
+chains for remapped native spans are appended as `expanded from here` labels.
 
 The native emitter records byte ranges for generated functions, structs, enums,
 and instrumented expression blocks in its rendered Rust output.
