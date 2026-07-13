@@ -552,6 +552,12 @@ impl Inferencer {
                 if let Some(field) = homogeneous_closed_field_type(&row) {
                     return Ok(field);
                 }
+                if row.rest.is_none() {
+                    return Err(InferError::NoMatchingOverload {
+                        name: ".".to_owned(),
+                        expected: "static field or homogeneous closed object".to_owned(),
+                    });
+                }
             }
         }
         let field_ty = self.fresh_type();
@@ -598,6 +604,12 @@ impl Inferencer {
             homogeneous_closed_field_type(&row)
         };
         let Some(field) = field else {
+            if static_string_key(&arguments[1]).is_none() && row.rest.is_none() {
+                return Err(InferError::NoMatchingOverload {
+                    name: "obj.get".to_owned(),
+                    expected: "static field or homogeneous closed object".to_owned(),
+                });
+            }
             return Ok(None);
         };
         Ok(Some(result_type(field, Type::Str)))

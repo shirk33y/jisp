@@ -315,9 +315,11 @@ row. Use `map` for runtime-sized homogeneous dictionaries:
 ```
 
 The source type is `(map str A)`. Native Rust uses
-`indexmap::IndexMap<String, A>` for this shape. A heterogeneous dynamic JSON
-value is not implicit in map or object lookup; if the language needs that, it
-must be a future source-visible sum type consumed with `case`.
+`indexmap::IndexMap<String, A>` for this shape. Dynamic object lookup on
+heterogeneous closed rows is a type error unless the key is statically known. A
+heterogeneous dynamic JSON value is not implicit in map or object lookup; if the
+language needs that, it must be a future source-visible sum type consumed with
+`case`.
 
 Homogeneous closed objects can be converted explicitly to maps with
 `obj.to-map` before using runtime-sized helpers such as `map.del`:

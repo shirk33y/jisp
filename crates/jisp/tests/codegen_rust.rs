@@ -556,18 +556,18 @@ fn emit_rust_detailed_rejects_dynamic_reads_on_heterogeneous_objects() {
 (export main
   (fn ()
     (let (key (str.cat "a" ""))
-      (+ (. (obj "a" 1 "b" true) key) 1))))
+      (. (obj "a" 1 "b" true) key))))
 "#,
     ) {
         Ok(_) => panic!("expected heterogeneous dynamic object read to be rejected"),
         Err(error) => error.error,
     };
 
-    assert!(matches!(error, jisp::Error::Codegen(_)), "{error}");
+    assert!(matches!(error, jisp::Error::Type(_)), "{error}");
     assert!(
         error
             .to_string()
-            .contains("dynamic native access on heterogeneous object"),
+            .contains("static field or homogeneous closed object"),
         "{error}"
     );
 }

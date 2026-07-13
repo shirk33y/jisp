@@ -112,8 +112,9 @@ keys are valid for all object helpers. Native Rust generation currently needs a
 closed object shape. Dynamic `.`/`obj.get`/`obj.has` reads and `obj.set` are
 supported when every field has the same concrete type. Convert a homogeneous
 closed object with `obj.to-map` when runtime-sized updates such as dynamic
-delete should use the explicit map ABI. Heterogeneous dynamic reads, direct
-dynamic object deletion, and open rows remain interpreter-only.
+delete should use the explicit map ABI. Heterogeneous dynamic reads are type
+errors unless the key is statically known; direct dynamic object deletion and
+open rows remain interpreter-only.
 
 | Function | Signature | Description | Example |
 | --- | --- | --- | --- |

@@ -719,6 +719,44 @@ fn prelude_refines_dynamic_reads_on_homogeneous_closed_objects() {
 }
 
 #[test]
+fn rejects_dynamic_reads_on_heterogeneous_closed_objects() {
+    let object = || {
+        expr(ExprKind::Object(vec![
+            (string("active"), bool_(true)),
+            (string("age"), int(42)),
+        ]))
+    };
+    let key = || {
+        expr(ExprKind::Call {
+            callee: Box::new(name("str.cat")),
+            arguments: vec![string("a"), string("ge")],
+        })
+    };
+
+    let mut inferencer = Inferencer::with_prelude();
+    let field = expr(ExprKind::Field {
+        object: Box::new(object()),
+        key: Box::new(key()),
+    });
+    assert!(matches!(
+        inferencer.infer_expr(&field),
+        Err(InferError::NoMatchingOverload { name, expected })
+            if name == "." && expected == "static field or homogeneous closed object"
+    ));
+
+    let mut inferencer = Inferencer::with_prelude();
+    let get = expr(ExprKind::Call {
+        callee: Box::new(name("obj.get")),
+        arguments: vec![object(), key()],
+    });
+    assert!(matches!(
+        inferencer.infer_expr(&get),
+        Err(InferError::NoMatchingOverload { name, expected })
+            if name == "obj.get" && expected == "static field or homogeneous closed object"
+    ));
+}
+
+#[test]
 fn prelude_converts_homogeneous_closed_objects_to_maps() {
     let mut inferencer = Inferencer::with_prelude();
     let converted = expr(ExprKind::Call {
