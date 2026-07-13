@@ -139,6 +139,11 @@ domains it can enumerate cheaply:
 - object fields whose value type has a finite domain, including nested fields
   and products of up to 256 finite field combinations.
 
+When a finite list or object product is incomplete, diagnostics name the
+missing combinations, for example `list [false]` or
+`object {active: false, visible: true}`. Open structural domains still use a
+conservative generic missing-pattern message.
+
 Guarded branches are type-checked but do not contribute to exhaustiveness or
 redundancy coverage, because the checker does not prove guard predicates. Keep
 an unguarded fallback for the remaining values.

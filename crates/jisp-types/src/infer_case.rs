@@ -6,6 +6,11 @@ use super::{InferError, Inferencer, ObjectRow, Scheme, Type, UnifyError};
 
 const MAX_OBJECT_COVERAGE_COMBINATIONS: usize = 256;
 
+type ListLabels = Vec<String>;
+type ListLabelSet = BTreeSet<ListLabels>;
+type ObjectLabels = Vec<(String, String)>;
+type ObjectLabelSet = BTreeSet<ObjectLabels>;
+
 impl Inferencer {
     pub(super) fn infer_case(
         &mut self,
@@ -134,7 +139,7 @@ impl Inferencer {
     ) -> Result<(), InferError> {
         let mut exact_lengths = BTreeSet::new();
         let mut refined_exact_lengths: BTreeMap<usize, BTreeSet<Vec<String>>> = BTreeMap::new();
-        let mut refined_exact_expected = BTreeMap::new();
+        let mut refined_exact_expected: BTreeMap<usize, BTreeSet<Vec<String>>> = BTreeMap::new();
         let mut rest_lengths = BTreeSet::new();
         let mut has_catch_all = false;
 
@@ -264,16 +269,16 @@ impl Inferencer {
                     has_catch_all = true;
                     continue;
                 }
-                if let Some((covered, expected)) = self.object_product_coverage(pattern, subject_ty)
-                {
-                    if covered
+                if let Some(coverage) = self.object_product_coverage(pattern, subject_ty) {
+                    if coverage
+                        .covered
                         .iter()
                         .all(|labels| product_coverage.contains(labels))
                     {
                         return Err(InferError::RedundantCasePattern(pattern_name(pattern)));
                     }
-                    product_coverage.extend(covered);
-                    product_expected = Some(expected);
+                    product_coverage.extend(coverage.covered);
+                    product_expected = Some(coverage.expected);
                 }
                 if let Some(coverage) = self.pattern_finite_refinement_coverage(pattern, subject_ty)
                 {
@@ -290,13 +295,20 @@ impl Inferencer {
 
         if has_catch_all
             || object_refinements_are_exhaustive(&refined_fields)
-            || product_expected.is_some_and(|expected| product_coverage.len() == expected)
+            || product_expected
+                .as_ref()
+                .is_some_and(|expected| expected.is_subset(&product_coverage))
         {
             Ok(())
         } else {
+            let missing = product_expected
+                .as_ref()
+                .map(|expected| missing_object_product_patterns(expected, &product_coverage))
+                .filter(|missing| !missing.is_empty())
+                .unwrap_or_else(|| vec!["object pattern".to_owned()]);
             Err(InferError::NonExhaustiveCase {
                 type_name: "object".to_owned(),
-                missing: vec!["object pattern".to_owned()],
+                missing,
             })
         }
     }
@@ -340,9 +352,9 @@ impl Inferencer {
         &self,
         prefix: &[Pattern],
         item: &Type,
-    ) -> Option<(BTreeSet<Vec<String>>, usize)> {
+    ) -> Option<(ListLabelSet, ListLabelSet)> {
         let domain = self.finite_domain_for_type(item)?;
-        let expected = domain.len().checked_pow(prefix.len() as u32)?;
+        let expected = label_combinations(&domain, prefix.len(), None)?;
         let mut combinations = BTreeSet::from([Vec::new()]);
 
         for pattern in prefix {
@@ -412,11 +424,7 @@ impl Inferencer {
         None
     }
 
-    fn object_product_coverage(
-        &self,
-        pattern: &Pattern,
-        ty: &Type,
-    ) -> Option<(BTreeSet<Vec<String>>, usize)> {
+    fn object_product_coverage(&self, pattern: &Pattern, ty: &Type) -> Option<ProductCoverage> {
         let Pattern::Object(pattern_fields) = strip_alias(pattern) else {
             return None;
         };
@@ -428,14 +436,19 @@ impl Inferencer {
             .map(|(name, pattern)| (name, pattern))
             .collect::<BTreeMap<_, _>>();
         let mut combinations = BTreeSet::from([Vec::new()]);
-        let mut expected = 1usize;
+        let mut expected = BTreeSet::from([Vec::new()]);
         let mut has_finite_field = false;
 
         for (name, field_ty) in &row.fields {
             match self.finite_domain_for_type(field_ty) {
                 Some(domain) => {
                     has_finite_field = true;
-                    expected = expected.checked_mul(domain.len())?;
+                    expected = append_object_product_labels(
+                        &expected,
+                        name,
+                        &domain,
+                        Some(MAX_OBJECT_COVERAGE_COMBINATIONS),
+                    )?;
                     let labels = patterns.get(name).map_or_else(
                         || Some(domain.clone()),
                         |pattern| self.pattern_labels_for_domain(pattern, field_ty, &domain),
@@ -444,7 +457,7 @@ impl Inferencer {
                     for prefix in &combinations {
                         for label in &labels {
                             let mut labels = prefix.clone();
-                            labels.push(label.clone());
+                            labels.push((name.clone(), label.clone()));
                             next.insert(labels);
                             if next.len() > MAX_OBJECT_COVERAGE_COMBINATIONS {
                                 return None;
@@ -462,7 +475,10 @@ impl Inferencer {
                 }
             }
         }
-        has_finite_field.then_some((combinations, expected))
+        has_finite_field.then_some(ProductCoverage {
+            covered: combinations,
+            expected,
+        })
     }
 
     fn finite_domain_for_type(&self, ty: &Type) -> Option<BTreeSet<String>> {
@@ -651,6 +667,11 @@ struct FiniteCoverage {
     labels: BTreeSet<String>,
 }
 
+struct ProductCoverage {
+    covered: ObjectLabelSet,
+    expected: ObjectLabelSet,
+}
+
 fn object_refinements_are_exhaustive(
     refined_fields: &BTreeMap<String, (BTreeSet<String>, BTreeSet<String>)>,
 ) -> bool {
@@ -680,7 +701,7 @@ fn coverage_patterns(pattern: &Pattern) -> Vec<&Pattern> {
 fn list_coverage_is_exhaustive(
     exact_lengths: &BTreeSet<usize>,
     refined_exact_lengths: &BTreeMap<usize, BTreeSet<Vec<String>>>,
-    refined_exact_expected: &BTreeMap<usize, usize>,
+    refined_exact_expected: &BTreeMap<usize, BTreeSet<Vec<String>>>,
     rest_lengths: &BTreeSet<usize>,
 ) -> bool {
     let Some(rest_start) = rest_lengths.first().copied() else {
@@ -699,27 +720,52 @@ fn list_coverage_is_exhaustive(
 fn missing_list_patterns(
     exact_lengths: &BTreeSet<usize>,
     refined_exact_lengths: &BTreeMap<usize, BTreeSet<Vec<String>>>,
-    refined_exact_expected: &BTreeMap<usize, usize>,
+    refined_exact_expected: &BTreeMap<usize, BTreeSet<Vec<String>>>,
     rest_lengths: &BTreeSet<usize>,
 ) -> Vec<String> {
     if let Some(rest_start) = rest_lengths.first().copied() {
-        return (0..rest_start)
-            .filter(|length| {
-                !exact_lengths.contains(length)
-                    && !refined_list_length_is_exhaustive(
-                        *length,
-                        refined_exact_lengths,
-                        refined_exact_expected,
-                    )
-            })
-            .map(list_length_pattern)
-            .collect();
+        let mut missing = vec![];
+        for length in 0..rest_start {
+            if exact_lengths.contains(&length) {
+                continue;
+            }
+            let refined_missing = missing_refined_list_patterns(
+                length,
+                refined_exact_lengths,
+                refined_exact_expected,
+            );
+            if refined_missing.is_empty() {
+                missing.push(list_length_pattern(length));
+            } else {
+                missing.extend(refined_missing);
+            }
+        }
+        return missing;
     }
 
-    let max_exact = exact_lengths.last().copied().unwrap_or(0);
+    let max_exact = exact_lengths
+        .iter()
+        .chain(refined_exact_lengths.keys())
+        .copied()
+        .max()
+        .unwrap_or(0);
     let mut missing = (0..=max_exact)
-        .filter(|length| !exact_lengths.contains(length))
-        .map(list_length_pattern)
+        .flat_map(|length| {
+            if exact_lengths.contains(&length) {
+                vec![]
+            } else {
+                let refined_missing = missing_refined_list_patterns(
+                    length,
+                    refined_exact_lengths,
+                    refined_exact_expected,
+                );
+                if refined_missing.is_empty() {
+                    vec![list_length_pattern(length)]
+                } else {
+                    refined_missing
+                }
+            }
+        })
         .collect::<Vec<_>>();
     missing.push(format!("list length >= {}", max_exact + 1));
     missing
@@ -728,12 +774,28 @@ fn missing_list_patterns(
 fn refined_list_length_is_exhaustive(
     length: usize,
     refined_exact_lengths: &BTreeMap<usize, BTreeSet<Vec<String>>>,
-    refined_exact_expected: &BTreeMap<usize, usize>,
+    refined_exact_expected: &BTreeMap<usize, BTreeSet<Vec<String>>>,
 ) -> bool {
     refined_exact_lengths
         .get(&length)
         .zip(refined_exact_expected.get(&length))
-        .is_some_and(|(covered, expected)| covered.len() == *expected)
+        .is_some_and(|(covered, expected)| expected.is_subset(covered))
+}
+
+fn missing_refined_list_patterns(
+    length: usize,
+    refined_exact_lengths: &BTreeMap<usize, BTreeSet<Vec<String>>>,
+    refined_exact_expected: &BTreeMap<usize, BTreeSet<Vec<String>>>,
+) -> Vec<String> {
+    let Some(expected) = refined_exact_expected.get(&length) else {
+        return vec![];
+    };
+    let covered = refined_exact_lengths.get(&length);
+    expected
+        .iter()
+        .filter(|labels| covered.is_none_or(|covered| !covered.contains(*labels)))
+        .map(|labels| format!("list [{}]", labels.join(", ")))
+        .collect()
 }
 
 fn list_length_pattern(length: usize) -> String {
@@ -742,4 +804,65 @@ fn list_length_pattern(length: usize) -> String {
     } else {
         format!("list length {length}")
     }
+}
+
+fn label_combinations(
+    domain: &BTreeSet<String>,
+    length: usize,
+    limit: Option<usize>,
+) -> Option<ListLabelSet> {
+    let mut combinations = BTreeSet::from([Vec::new()]);
+    for _ in 0..length {
+        let mut next = BTreeSet::new();
+        for prefix in &combinations {
+            for label in domain {
+                let mut labels = prefix.clone();
+                labels.push(label.clone());
+                next.insert(labels);
+                if limit.is_some_and(|limit| next.len() > limit) {
+                    return None;
+                }
+            }
+        }
+        combinations = next;
+    }
+    Some(combinations)
+}
+
+fn append_object_product_labels(
+    combinations: &ObjectLabelSet,
+    field: &str,
+    domain: &BTreeSet<String>,
+    limit: Option<usize>,
+) -> Option<ObjectLabelSet> {
+    let mut next = BTreeSet::new();
+    for prefix in combinations {
+        for label in domain {
+            let mut labels = prefix.clone();
+            labels.push((field.to_owned(), label.clone()));
+            next.insert(labels);
+            if limit.is_some_and(|limit| next.len() > limit) {
+                return None;
+            }
+        }
+    }
+    Some(next)
+}
+
+fn missing_object_product_patterns(
+    expected: &ObjectLabelSet,
+    covered: &ObjectLabelSet,
+) -> Vec<String> {
+    expected
+        .iter()
+        .filter(|labels| !covered.contains(*labels))
+        .map(|labels| {
+            let fields = labels
+                .iter()
+                .map(|(name, label)| format!("{name}: {label}"))
+                .collect::<Vec<_>>()
+                .join(", ");
+            format!("object {{{fields}}}")
+        })
+        .collect()
 }

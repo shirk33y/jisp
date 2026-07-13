@@ -470,6 +470,43 @@ fn rejects_redundant_refined_bool_list_case_pattern() {
 }
 
 #[test]
+fn reports_missing_refined_bool_list_case_pattern() {
+    let mut inferencer = Inferencer::default();
+    let expression = expr(ExprKind::Case {
+        subject: Box::new(expr(ExprKind::List(vec![bool_(true)]))),
+        branches: vec![
+            branch(
+                Pattern::List {
+                    prefix: vec![],
+                    rest: None,
+                },
+                int(0),
+            ),
+            branch(
+                Pattern::List {
+                    prefix: vec![Pattern::Literal(Literal::Bool(true))],
+                    rest: None,
+                },
+                int(1),
+            ),
+            branch(
+                Pattern::List {
+                    prefix: vec![Pattern::Wildcard, Pattern::Wildcard],
+                    rest: Some("tail".to_owned()),
+                },
+                int(2),
+            ),
+        ],
+    });
+
+    assert!(matches!(
+        inferencer.infer_expr(&expression),
+        Err(InferError::NonExhaustiveCase { type_name, missing })
+            if type_name == "list" && missing == vec!["list [false]".to_owned()]
+    ));
+}
+
+#[test]
 fn rejects_refined_bool_list_case_pattern_covered_by_exact_length() {
     let mut inferencer = Inferencer::default();
     let expression = expr(ExprKind::Case {
@@ -688,7 +725,7 @@ fn rejects_payload_refined_enum_field_as_exhaustive_object_case() {
     assert!(matches!(
         inferencer.infer_module(&module),
         Err(InferError::NonExhaustiveCase { type_name, missing })
-            if type_name == "object" && missing == vec!["object pattern".to_owned()]
+            if type_name == "object" && missing == vec!["object {status: ok}".to_owned()]
     ));
 }
 
@@ -846,6 +883,39 @@ fn rejects_redundant_object_product_case_pattern() {
     assert!(matches!(
         inferencer.infer_expr(&expression),
         Err(InferError::RedundantCasePattern(pattern)) if pattern == "object pattern"
+    ));
+}
+
+#[test]
+fn reports_missing_object_product_case_pattern() {
+    let mut inferencer = Inferencer::default();
+    let field = |name: &str, value| (name.to_owned(), Pattern::Literal(Literal::Bool(value)));
+    let expression = expr(ExprKind::Case {
+        subject: Box::new(expr(ExprKind::Object(vec![
+            (string("active"), bool_(true)),
+            (string("visible"), bool_(true)),
+        ]))),
+        branches: vec![
+            branch(
+                Pattern::Object(vec![field("active", true), field("visible", true)]),
+                int(3),
+            ),
+            branch(
+                Pattern::Object(vec![field("active", true), field("visible", false)]),
+                int(2),
+            ),
+            branch(
+                Pattern::Object(vec![field("active", false), field("visible", true)]),
+                int(1),
+            ),
+        ],
+    });
+
+    assert!(matches!(
+        inferencer.infer_expr(&expression),
+        Err(InferError::NonExhaustiveCase { type_name, missing })
+            if type_name == "object"
+                && missing == vec!["object {active: false, visible: false}".to_owned()]
     ));
 }
 
