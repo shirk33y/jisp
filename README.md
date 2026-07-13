@@ -111,6 +111,15 @@ jisp init [path]
 | `lsp` | Start a stdio Language Server Protocol endpoint with initialization, core-form completion and hover, go-to-definition for top-level/imported names plus `fn`, `let`, and `case` bindings, and live frontend diagnostics for opened or changed documents. |
 | `init` | Create a new package directory with `jisp.toml` and a runnable `main.lisp`; refuses to overwrite either file. |
 
+`jisp.toml` may declare local package dependencies. An import matching the
+dependency name resolves to its path when no sibling module with that name
+exists:
+
+```toml
+[dependencies]
+math = { path = "../math" }
+```
+
 Useful examples live in [examples](examples/): a basic hello program, a native
 codegen fixture, static object helpers, and structural UI data.
 

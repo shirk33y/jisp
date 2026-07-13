@@ -53,6 +53,39 @@ fn run_main_resolves_file_imports() {
 }
 
 #[test]
+fn run_main_resolves_local_package_dependencies() {
+    let dir = fixture_dir("package-dependencies");
+    let app = dir.join("app");
+    let math = dir.join("math");
+    fs::create_dir_all(&app).unwrap();
+    fs::create_dir_all(&math).unwrap();
+    let main = app.join("main.lisp");
+    fs::write(
+        app.join("jisp.toml"),
+        "[package]\nname = \"app\"\nentry = \"main.lisp\"\n\n[dependencies]\nmath = { path = \"../math\" }\n",
+    )
+    .unwrap();
+    fs::write(
+        math.join("main.lisp"),
+        "(export inc (fn (value) (+ value 1)))",
+    )
+    .unwrap();
+    fs::write(
+        &main,
+        r#"
+(import math "math")
+(export main (fn () (math.inc 41)))
+"#,
+    )
+    .unwrap();
+
+    let text = fs::read_to_string(&main).unwrap();
+    let value = jisp::run_main(&main, &text).unwrap();
+
+    assert_int(value, 42);
+}
+
+#[test]
 fn type_errors_in_imports_render_the_imported_source() {
     let dir = fixture_dir("imported-type-diagnostics");
     let main = dir.join("main.lisp");

@@ -831,10 +831,64 @@ fn resolve_import(importer: &Path, import: &str) -> Result<PathBuf, Error> {
         }
     }
 
+    if let Some(path) = package_dependency_path(base, import) {
+        if path.is_dir() || path.is_file() && detect_syntax(&path).is_some() {
+            return canonicalize(&path);
+        }
+    }
+
     Err(Error::ImportNotFound {
         import: import.to_owned(),
         from: importer.display().to_string(),
     })
+}
+
+fn package_dependency_path(base: &Path, import: &str) -> Option<PathBuf> {
+    if Path::new(import).components().count() != 1 {
+        return None;
+    }
+    for directory in base.ancestors() {
+        let manifest = directory.join("jisp.toml");
+        let Ok(text) = fs::read_to_string(&manifest) else {
+            continue;
+        };
+        if let Some(path) = manifest_dependency_path(&text, import) {
+            return Some(directory.join(path));
+        }
+    }
+    None
+}
+
+fn manifest_dependency_path<'a>(manifest: &'a str, dependency: &str) -> Option<&'a str> {
+    let mut dependencies = false;
+    for line in manifest.lines() {
+        let line = line.split('#').next()?.trim();
+        if line.starts_with('[') {
+            dependencies = line == "[dependencies]";
+            continue;
+        }
+        if !dependencies {
+            continue;
+        }
+        let Some((name, value)) = line.split_once('=') else {
+            continue;
+        };
+        if name.trim() != dependency {
+            continue;
+        }
+        let value = value.trim();
+        if let Some(path) = value
+            .strip_prefix('"')
+            .and_then(|value| value.strip_suffix('"'))
+        {
+            return Some(path);
+        }
+        let path = value.strip_prefix('{')?.strip_suffix('}')?.trim();
+        let (_, value) = path.split_once("path")?;
+        let (_, value) = value.split_once('=')?;
+        return value.trim().strip_prefix('"')?.strip_suffix('"');
+    }
+    None
 }
 
 fn load_module(sources: &mut SourceMap, path: &Path) -> Result<Module, Error> {
