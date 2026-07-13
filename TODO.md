@@ -77,6 +77,8 @@ product-level direction and ordering rationale, see [ROADMAP.md](ROADMAP.md).
   reads, and open rows with an explicitly designed concrete ABI. Dynamic
   `obj.set` on closed homogeneous rows is now supported without a dynamic
   runtime representation; dynamic deletion still changes the concrete shape.
+  The required type/ABI split is recorded in
+  [`.agents/plans/0016-native-open-object-abi.md`](.agents/plans/0016-native-open-object-abi.md).
 - Extend the intentionally bounded macro system only after designing hygiene,
   cross-module visibility, and a general compile-time evaluator.
 - Add stronger list/object exhaustiveness analysis and nested alternative
