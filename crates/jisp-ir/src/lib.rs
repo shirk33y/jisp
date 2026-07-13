@@ -1,5 +1,6 @@
 mod ir;
 mod lower;
+mod ui;
 
 #[cfg(test)]
 mod lower_test;

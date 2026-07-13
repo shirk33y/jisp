@@ -63,6 +63,9 @@ literal. In Lisp and YAML-like source, quoted values are strings.
 - Pattern matching with current exhaustiveness checks for finite enum, boolean,
   null, list, and structural-object cases.
 - Interpreter execution of an exported, typed, zero-argument `main`.
+- Declarative, renderer-neutral UI components with explicit host elements,
+  attributes, properties, utility classes, event metadata, keys, and repeated
+  children; `ui.html` is the current escaped static-HTML host.
 - A deliberately narrower native Rust subset: monomorphic definitions, closed
   objects, lists, bigints, typed function values, capturing closures, and
   variadic user functions, supported `case` patterns, imports, and selected
@@ -113,7 +116,7 @@ jisp lock [path]
 | `emit-rust` | Emit Rust tokens for the supported native subset. |
 | `native-check` | Compile generated Rust in a temporary offline Cargo crate and remap compiler errors to the narrowest generated Jisp expression or item. |
 | `fmt` | Format `.lisp`/`.jisp`, canonical `.json`, or flow-style `.yaml`/`.yml`; default prints, `--check` validates, and `--write` updates the file. |
-| `repl` | Start a REPL. `def`, `type`, and `import` forms persist for later expressions; `--state <file>` also persists accepted definitions across runs. Use `:help`, `:reset`, or `:quit`. |
+| `repl` | Start a REPL. `def`, `defn`, `component`, `type`, and `import` forms persist for later expressions; `--state <file>` also persists accepted definitions across runs. Use `:help`, `:reset`, or `:quit`. |
 | `lsp` | Start a stdio Language Server Protocol endpoint with initialization, core-form completion and hover, go-to-definition for top-level/imported names plus `fn`, `let`, and `case` bindings, and live frontend diagnostics for opened or changed documents. |
 | `init` | Create a new package directory with `jisp.toml` and a runnable `main.lisp`; refuses to overwrite either file. |
 | `lock` | Resolve the package entry and local path dependencies, then write a deterministic `jisp.lock`. |
@@ -137,7 +140,8 @@ deferred. See
 [Packages](docs/PACKAGES.md) for the lock/cache contract.
 
 Useful examples live in [examples](examples/): a basic hello program, a native
-codegen fixture, static object helpers, and structural UI data.
+codegen fixture, static object helpers, legacy structural UI data for native
+codegen coverage, and declarative [UI components](examples/ui_components.lisp).
 
 ## Architecture
 
@@ -187,6 +191,7 @@ compilation of generated Rust in downstream fixtures.
 - [Documentation index](docs/README.md)
 - [Language specification](docs/SPEC.md)
 - [Standard library surface](docs/STDLIB.md)
+- [Declarative UI syntax](docs/UI.md)
 - [Roadmap](ROADMAP.md) and [implementation queue](TODO.md)
 - [Architecture and invariants](docs/ARCHITECTURE.md)
 - [Research: Gleam mapping](docs/research/GLEAM.md)

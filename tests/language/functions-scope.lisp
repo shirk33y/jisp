@@ -19,11 +19,10 @@
       0
       values)))
 
-(def fact
-  (fn (n)
-    (if (= n 0)
-      1
-      (* n (fact (- n 1))))))
+(defn fact (n)
+  (if (= n 0)
+    1
+    (* n (fact (- n 1)))))
 
 (test "closures capture lexical bindings"
   (assert.equal

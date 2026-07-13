@@ -84,3 +84,37 @@ fn rejects_non_bool_class_flags() {
 
     assert_eq!(error.message, "ui class flags must be bool, got str");
 }
+
+#[test]
+fn renders_explicit_attrs_props_and_nested_child_lists() {
+    let node = obj([
+        ("tag", string("div")),
+        ("key", Value::Int(7)),
+        ("events", obj([("click", Value::Null)])),
+        (
+            "attrs",
+            obj([("aria-label", string("Tasks")), ("data-id", string("7"))]),
+        ),
+        ("props", obj([("hidden", Value::Bool(false))])),
+        (
+            "children",
+            Value::List(vec![Value::List(vec![obj([
+                ("tag", string("span")),
+                (
+                    "children",
+                    Value::List(vec![obj([
+                        ("tag", string("text")),
+                        ("value", string("One")),
+                    ])]),
+                ),
+            ])])]),
+        ),
+    ]);
+
+    let html = render_html(&node, span()).unwrap();
+
+    assert_eq!(
+        html,
+        r#"<div aria-label="Tasks" data-id="7"><span>One</span></div>"#
+    );
+}

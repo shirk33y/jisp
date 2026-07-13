@@ -44,6 +44,10 @@ not dates. The detailed engineering queue remains [TODO.md](TODO.md).
 3. **Dynamic structural data.** Keep `map<str, A>` as the homogeneous runtime
    dictionary. Native open rows and heterogeneous dynamic selection require a
    source-visible type/ABI proposal before implementation.
+4. **Interactive UI runtime.** Declarative UI source lowers to renderer-neutral
+   nodes and has a static HTML proof. Design state ownership, event payloads,
+   update scheduling, reconciliation, lifecycle/effect boundaries, and host
+   widget registries together before claiming React-/React-Native-like support.
 
 ## Tooling and project workflow
 

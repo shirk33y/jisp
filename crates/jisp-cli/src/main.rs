@@ -741,11 +741,14 @@ fn lsp() -> Result<()> {
 fn lsp_hover(text: &str, line: usize, character: usize) -> Option<serde_json::Value> {
     let offset = lsp_byte_offset(text, line, character)?;
     let symbol = lsp_symbol_at(text, offset)?;
-    let form = jisp_core::SPECIAL_FORMS
-        .iter()
-        .find(|form| form.name == symbol || form.aliases.contains(&symbol))?;
+    let (name, summary) = jisp_core::special_form(symbol)
+        .map(|form| (form.name, form.summary))
+        .or_else(|| jisp_core::ui_element(symbol).map(|element| (element.name, element.summary)))
+        .or_else(|| {
+            jisp_core::ui_directive(symbol).map(|directive| (directive.name, directive.summary))
+        })?;
     Some(serde_json::json!({
-        "contents": { "kind": "markdown", "value": format!("**{}** — {}", form.name, form.summary) }
+        "contents": { "kind": "markdown", "value": format!("**{}** — {}", name, summary) }
     }))
 }
 
@@ -793,7 +796,10 @@ fn lsp_top_level_binding(node: &Node) -> Option<(&str, Span)> {
     let [head, name, ..] = node.as_form()? else {
         return None;
     };
-    if matches!(head.as_symbol(), Some("def" | "export")) {
+    if matches!(
+        head.as_symbol(),
+        Some("def" | "defn" | "export" | "component")
+    ) {
         let value = name.as_symbol()?;
         Some((value, name.span))
     } else {
@@ -813,7 +819,7 @@ fn lsp_binding_in_node(
     let items = node.as_form()?;
     let head = items.first().and_then(Node::as_symbol);
     match head {
-        Some("fn") if items.len() == 3 => {
+        Some("fn") if items.len() >= 3 => {
             let mut scope = scope.to_vec();
             for parameter in items[1].as_form()? {
                 if let Some(name) = parameter.as_symbol().filter(|name| *name != "...") {
@@ -823,7 +829,27 @@ fn lsp_binding_in_node(
                     scope.push((name, parameter.span));
                 }
             }
-            lsp_binding_in_node(&items[2], offset, symbol, &scope)
+            items[2..]
+                .iter()
+                .find_map(|body| lsp_binding_in_node(body, offset, symbol, &scope))
+        }
+        Some("defn" | "component") if items.len() >= 4 => {
+            let name = items[1].as_symbol()?;
+            if span_contains(items[1].span, offset) && name == symbol {
+                return Some(items[1].span);
+            }
+            let mut scope = scope.to_vec();
+            for parameter in items[2].as_form()? {
+                if let Some(name) = parameter.as_symbol().filter(|name| *name != "...") {
+                    if span_contains(parameter.span, offset) && name == symbol {
+                        return Some(parameter.span);
+                    }
+                    scope.push((name, parameter.span));
+                }
+            }
+            items[3..]
+                .iter()
+                .find_map(|body| lsp_binding_in_node(body, offset, symbol, &scope))
         }
         Some("let") if items.len() == 3 => {
             let mut scope = scope.to_vec();
@@ -1044,6 +1070,20 @@ fn lsp_completion_items() -> Vec<serde_json::Value> {
                 "detail": detail,
             })
         })
+        .chain(jisp_core::UI_ELEMENTS.iter().map(|element| {
+            serde_json::json!({
+                "label": element.name,
+                "kind": 7,
+                "detail": element.summary,
+            })
+        }))
+        .chain(jisp_core::UI_DIRECTIVES.iter().map(|directive| {
+            serde_json::json!({
+                "label": directive.name,
+                "kind": 3,
+                "detail": directive.summary,
+            })
+        }))
         .collect()
 }
 
@@ -1187,7 +1227,7 @@ fn repl_step(state: &str, form: &str) -> Result<(String, Option<String>)> {
 fn is_repl_definition(form: &str) -> bool {
     matches!(
         form.split_whitespace().next(),
-        Some("(def" | "(type" | "(import")
+        Some("(def" | "(defn" | "(component" | "(type" | "(import")
     )
 }
 
@@ -1461,8 +1501,9 @@ mod tests {
 
     use super::{
         format_json_module, format_lisp_module, format_yaml_module, init_project, lock_project,
-        lsp_completion_items, lsp_diagnostics, lsp_hover, package_entry, remapped_cargo_errors,
-        repl_step, sha256_checksum, JsonParser, LispParser, SourceId, SyntaxParser, YamlParser,
+        lsp_completion_items, lsp_definition, lsp_diagnostics, lsp_hover, package_entry,
+        remapped_cargo_errors, repl_step, sha256_checksum, JsonParser, LispParser, SourceId,
+        SyntaxParser, YamlParser,
     };
 
     #[test]
@@ -1617,6 +1658,25 @@ mod tests {
     }
 
     #[test]
+    fn repl_keeps_defn_definitions_between_expression_steps() {
+        let (state, value) = repl_step("", "(defn add-one (value) (+ value 1))").unwrap();
+        assert!(value.is_none());
+
+        let (next_state, value) = repl_step(&state, "(add-one 41)").unwrap();
+        assert_eq!(next_state, state);
+        assert_eq!(value.as_deref(), Some("42"));
+    }
+
+    #[test]
+    fn lsp_definition_resolves_defn_bindings() {
+        let source = "(defn add (left right) (+ left right))\n(export main (fn () (add 1 2)))";
+        let definition = lsp_definition("file:///main.lisp", source, 1, 21).unwrap();
+
+        assert_eq!(definition["range"]["start"]["line"], 0);
+        assert_eq!(definition["range"]["start"]["character"], 6);
+    }
+
+    #[test]
     fn lsp_publishes_frontend_diagnostics_with_lsp_positions() {
         let diagnostics = lsp_diagnostics("file:///main.lisp", "(export main (fn () (+ 1 true)))");
 
@@ -1631,7 +1691,7 @@ mod tests {
     }
 
     #[test]
-    fn lsp_completion_comes_from_the_core_special_form_registry() {
+    fn lsp_completion_includes_core_and_ui_registries() {
         let items = lsp_completion_items();
         let labels = items
             .iter()
@@ -1643,10 +1703,12 @@ mod tests {
         assert!(labels.contains(&"macro-import"));
         assert!(labels.contains(&"~"));
         assert!(labels.contains(&"`"));
+        assert!(labels.contains(&"div"));
+        assert!(labels.contains(&"class-if"));
     }
 
     #[test]
-    fn lsp_hover_resolves_special_forms_and_utf16_positions() {
+    fn lsp_hover_resolves_core_and_ui_forms_at_utf16_positions() {
         let hover = lsp_hover("\u{1f642} (case value)", 0, 5).unwrap();
 
         assert_eq!(hover["contents"]["kind"], "markdown");
@@ -1654,6 +1716,16 @@ mod tests {
             .as_str()
             .unwrap()
             .contains("**case**"));
+        let ui_hover = lsp_hover("(div (class \"rounded\"))", 0, 2).unwrap();
+        assert!(ui_hover["contents"]["value"]
+            .as_str()
+            .unwrap()
+            .contains("HTML generic container"));
+        let directive_hover = lsp_hover("(div (class \"rounded\"))", 0, 7).unwrap();
+        assert!(directive_hover["contents"]["value"]
+            .as_str()
+            .unwrap()
+            .contains("utility classes"));
         assert!(lsp_hover("(unknown value)", 0, 2).is_none());
     }
 

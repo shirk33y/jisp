@@ -27,25 +27,43 @@ fn render_node(value: &Value, span: Span, output: &mut String) -> Result<(), Run
     output.push_str(tag);
     render_classes(node.get("classes"), span, output)?;
     for (key, value) in node {
-        if matches!(key.as_str(), "tag" | "classes" | "children" | "value") {
+        if matches!(
+            key.as_str(),
+            "tag" | "attrs" | "props" | "classes" | "children" | "events" | "key" | "value"
+        ) {
             continue;
         }
         render_attribute(key, value, span, output)?;
     }
+    render_attribute_object(node.get("attrs"), "attrs", span, output)?;
+    render_attribute_object(node.get("props"), "props", span, output)?;
     output.push('>');
 
     if let Some(children) = node.get("children") {
         let Value::List(children) = children else {
             return Err(RuntimeError::at(span, "ui children must be a list"));
         };
-        for child in children {
-            render_node(child, span, output)?;
-        }
+        render_children(children, span, output)?;
     }
 
     output.push_str("</");
     output.push_str(tag);
     output.push('>');
+    Ok(())
+}
+
+fn render_children(
+    children: &[Value],
+    span: Span,
+    output: &mut String,
+) -> Result<(), RuntimeError> {
+    for child in children {
+        match child {
+            Value::Null => {}
+            Value::List(children) => render_children(children, span, output)?,
+            child => render_node(child, span, output)?,
+        }
+    }
     Ok(())
 }
 
@@ -127,6 +145,24 @@ fn render_attribute(
             ),
         )),
     }
+}
+
+fn render_attribute_object(
+    value: Option<&Value>,
+    field: &str,
+    span: Span,
+    output: &mut String,
+) -> Result<(), RuntimeError> {
+    let Some(value) = value else {
+        return Ok(());
+    };
+    let Value::Obj(attributes) = value else {
+        return Err(RuntimeError::at(span, format!("ui {field} must be an obj")));
+    };
+    for (key, value) in attributes {
+        render_attribute(key, value, span, output)?;
+    }
+    Ok(())
 }
 
 fn expect_string_field<'a>(

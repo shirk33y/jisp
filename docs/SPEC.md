@@ -34,7 +34,7 @@ expression that must produce a string.
 
 ## Core forms
 
-- `def`, `export`, `import`, `type`
+- `def`, `defn`, `export`, `import`, `type`, `component`
 - `fn`, `let`, `do`, `if`, `case`, `use`
 - `quote`, `quasiquote`, `unquote`, `unquote-splicing`, `macro` (alias `~`)
 - `.`, `and`, `or`, `not`
@@ -174,6 +174,7 @@ the present language contract.
 
 ```yaml
 [def, private-name, value]
+[defn, private-function, [parameter], body]
 [export, public-name, value]
 [export, existing-name]
 [import, "std/list"]
@@ -188,6 +189,10 @@ Definition names, type names, constructors, and import aliases must each be
 unique within a module. Constructors share the value namespace with
 definitions. Reusing one is a lowering error rather than a shadowing rule.
 
+`defn` is top-level function-definition sugar. It accepts a name, parameter
+list, and one or more body expressions, and lowers exactly as a private `def`
+whose value is an `fn`. It adds no function or runtime semantics.
+
 ## Functions and calls
 
 Functions are values and use lexical scope. Their parameters are inferred; a
@@ -196,9 +201,8 @@ is a list of the remaining arguments, including an empty list when no
 arguments remain.
 
 ```lisp test=spec.variadic-function mode=run
-(def sum-rest
-  (fn (head ... tail)
-    (+ head (list.fold + 0 tail))))
+(defn sum-rest (head ... tail)
+  (+ head (list.fold + 0 tail)))
 
 (export main
   (fn () (sum-rest 40 1 1)))
@@ -248,11 +252,15 @@ collection where practical. `obj` is created with alternating key/value
 arguments. Repeated statically known object keys, including keys in object case
 patterns, are rejected. Raw `{}` syntax is reserved and currently rejected.
 
-The current UI proof uses ordinary objects rather than new syntax. A node has a
-string `tag`, optional scalar attributes, optional `classes` object whose keys
-are utility class names and whose values are booleans, and optional `children`
-list. Text is represented as `{tag: "text", value: "..."}` in object form. The
-prototype `ui.html` builtin renders this data shape to an escaped HTML string.
+UI source uses explicit component and host-element forms such as
+`(component row (title) (li (class "rounded") (text title)))`, not an `el`
+escape hatch or attribute-name heuristics. The canonical set of host names and
+the directive grammar are defined in [UI.md](UI.md). Lowering creates a
+renderer-neutral structural node with `tag`, optional `attrs`, `props`,
+`classes`, `events`, `key`, and `children`; text becomes `{tag: "text", value:
+"..."}`. The prototype `ui.html` builtin renders escaped static HTML and
+intentionally ignores events and keys. Reactive state, reconciliation, and
+event dispatch are deferred runtime contracts.
 
 `[., object, key]` is field/map lookup only. Jisp has no method syntax or
 implicit receiver. A function stored in a field is called normally.

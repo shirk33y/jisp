@@ -166,7 +166,7 @@ from it. `option` deliberately has only its constructors; consume it with
 
 | Function | Signature | Description | Example |
 | --- | --- | --- | --- |
-| `ui.html` | `(A) -> str` | Prototype renderer for the structural UI shape in [SPEC.md](SPEC.md#data); escapes text and attributes. | `(ui.html (obj "tag" "text" "value" "Hi"))` |
+| `ui.html` | `(A) -> str` | Static HTML renderer for a UI node; escapes text and attributes, flattens child lists, and ignores event/key metadata. See [UI.md](UI.md). | `(ui.html (save-button))` |
 | `io.println` | `(A) -> null` | Writes a display value followed by a newline. | `(io.println "Hello")` |
 
 ## Runnable examples
@@ -208,11 +208,13 @@ suite. The per-function examples above are concise call-site references.
 ```
 
 ```lisp test=stdlib.ui-html mode=run
+(component save-button ()
+  (button
+    (attr "title" "Save <draft>")
+    (class "px-4")
+    (span (text "Save & close"))))
+
 (export main
   (fn ()
-    (ui.html
-      (obj
-        "tag" "button"
-        "title" "Save <draft>"
-        "children" (list (obj "tag" "text" "value" "Save & close"))))))
+    (ui.html (save-button))))
 ```
