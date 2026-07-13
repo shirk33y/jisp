@@ -174,6 +174,11 @@ struct EmitContext<'a> {
     closure_captures: BTreeSet<String>,
 }
 
+struct CaseFallbacks {
+    condition: TokenStream,
+    guard: TokenStream,
+}
+
 impl<'a> EmitContext<'a> {
     fn new(
         top_level_names: &'a BTreeSet<String>,
@@ -460,8 +465,10 @@ impl<'a> EmitContext<'a> {
                         branch.guard.as_ref(),
                         &branch.body,
                         expected,
-                        quote! { #alternatives_output },
-                        quote! { #fallback },
+                        CaseFallbacks {
+                            condition: quote! { #alternatives_output },
+                            guard: quote! { #fallback },
+                        },
                         quote! { #subject_name },
                     )?;
                 }
@@ -472,8 +479,10 @@ impl<'a> EmitContext<'a> {
                     branch.guard.as_ref(),
                     &branch.body,
                     expected,
-                    quote! { #output },
-                    quote! { #output },
+                    CaseFallbacks {
+                        condition: quote! { #output },
+                        guard: quote! { #output },
+                    },
                     quote! { #subject_name },
                 )?;
             }
@@ -490,10 +499,11 @@ impl<'a> EmitContext<'a> {
         guard: Option<&Expr>,
         body: &Expr,
         expected: Option<&Type>,
-        condition_fallback: TokenStream,
-        guard_fallback: TokenStream,
+        fallbacks: CaseFallbacks,
         subject: TokenStream,
     ) -> Result<TokenStream, CodegenError> {
+        let condition_fallback = fallbacks.condition;
+        let guard_fallback = fallbacks.guard;
         let PatternEmission {
             condition,
             bindings,
@@ -533,7 +543,7 @@ impl<'a> EmitContext<'a> {
             if #condition {
                 #branch
             } else {
-                #condition_fallback
+                    #condition_fallback
             }
         })
     }
