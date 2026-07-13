@@ -1,7 +1,8 @@
 import init, { PlaygroundSession } from "./pkg/jisp_wasm.js";
-import { basicSetup, EditorView } from "https://esm.sh/codemirror@6.0.1";
-import { EditorState } from "https://esm.sh/@codemirror/state@6.5.2";
-import { StreamLanguage } from "https://esm.sh/@codemirror/language@6.11.0";
+import { EditorView, keymap } from "https://esm.sh/@codemirror/view@6.43.6";
+import { EditorState } from "https://esm.sh/@codemirror/state@6.7.1";
+import { StreamLanguage } from "https://esm.sh/@codemirror/language@6.12.4";
+import { defaultKeymap, history, historyKeymap, indentWithTab } from "https://esm.sh/@codemirror/commands@6.10.4";
 import { clojure } from "https://esm.sh/@codemirror/legacy-modes@6.5.0/mode/clojure";
 import { oneDark } from "https://esm.sh/@codemirror/theme-one-dark@6.1.2";
 
@@ -76,7 +77,7 @@ function setStatus(kind, text) {
 }
 
 function previewDocument() {
-  return `<!doctype html><html><head><meta charset="utf-8"><script src="https://cdn.tailwindcss.com"><\/script></head><body class="min-h-screen bg-slate-50 p-4 md:p-8"><div id="root"></div><script>
+  return `<!doctype html><html><head><meta charset="utf-8"><style>html { overflow-y: scroll; scrollbar-gutter: stable; }</style><script src="https://cdn.tailwindcss.com"><\/script></head><body class="min-h-screen bg-slate-50 p-4 md:p-8"><div id="root"></div><script>
 const allowedTags = new Set(["a", "article", "aside", "button", "div", "footer", "form", "h1", "h2", "h3", "header", "img", "input", "label", "li", "main", "nav", "ol", "option", "p", "section", "select", "span", "strong", "textarea", "ul"]);
 const allowedEvents = new Set(["blur", "change", "click", "focus", "input", "keydown", "keyup", "submit"]);
 const root = document.getElementById("root");
@@ -98,10 +99,11 @@ function browserEvent(event) {
   };
 }
 
-function node(tree) {
+function node(tree, path) {
   if (tree.kind === "text") return document.createTextNode(String(tree.value ?? ""));
   if (tree.kind !== "element" || !allowedTags.has(tree.tag)) return document.createComment("invalid Jisp UI node");
   const element = document.createElement(tree.tag);
+  element.dataset.jispPath = path;
   for (const [name, value] of Object.entries(tree.attrs || {})) safeAttribute(element, name, value);
   for (const [name, value] of Object.entries(tree.props || {})) {
     if (!name.startsWith("on") && name in element) element[name] = value;
@@ -114,13 +116,33 @@ function node(tree) {
       parent.postMessage({ type: "jisp-event", handler, event: browserEvent(event) }, "*");
     });
   }
-  for (const child of tree.children || []) element.append(node(child));
+  for (const [index, child] of (tree.children || []).entries()) element.append(node(child, path + "." + index));
   return element;
+}
+
+function focusedControl() {
+  const element = document.activeElement;
+  if (!(element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement)) return null;
+  return {
+    path: element.dataset.jispPath,
+    start: element.selectionStart,
+    end: element.selectionEnd,
+  };
+}
+
+function restoreFocus(focus) {
+  if (!focus?.path) return;
+  const element = root.querySelector('[data-jisp-path="' + focus.path + '"]');
+  if (!(element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement)) return;
+  element.focus({ preventScroll: true });
+  if (Number.isInteger(focus.start) && Number.isInteger(focus.end)) element.setSelectionRange(focus.start, focus.end);
 }
 
 addEventListener("message", (message) => {
   if (message.source !== parent || message.data?.type !== "jisp-render") return;
-  root.replaceChildren(node(message.data.tree));
+  const focus = focusedControl();
+  root.replaceChildren(node(message.data.tree, "0"));
+  restoreFocus(focus);
 });
 <\/script></body></html>`;
 }
@@ -192,7 +214,9 @@ editor = new EditorView({
   state: EditorState.create({
     doc: "",
     extensions: [
-      basicSetup,
+      history(),
+      keymap.of([...defaultKeymap, ...historyKeymap, indentWithTab]),
+      EditorView.lineWrapping,
       StreamLanguage.define(clojure),
       oneDark,
       EditorView.updateListener.of((update) => {
