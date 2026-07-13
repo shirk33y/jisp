@@ -95,6 +95,7 @@ jisp native-check <path>
 jisp fmt [--check | --write] <path>
 jisp repl
 jisp lsp
+jisp init [path]
 ```
 
 | Command | Purpose |
@@ -108,6 +109,7 @@ jisp lsp
 | `fmt` | Format `.lisp`/`.jisp`, canonical `.json`, or flow-style `.yaml`/`.yml`; default prints, `--check` validates, and `--write` updates the file. |
 | `repl` | Start a REPL. `def`, `type`, and `import` forms persist for later expressions; `--state <file>` also persists accepted definitions across runs. Use `:help`, `:reset`, or `:quit`. |
 | `lsp` | Start a stdio Language Server Protocol endpoint with initialization, core-form completion, and live frontend diagnostics for opened or changed documents. |
+| `init` | Create a new package directory with `jisp.toml` and a runnable `main.lisp`; refuses to overwrite either file. |
 
 Useful examples live in [examples](examples/): a basic hello program, a native
 codegen fixture, static object helpers, and structural UI data.

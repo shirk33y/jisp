@@ -58,6 +58,9 @@ enum Command {
         state: Option<PathBuf>,
     },
     Lsp,
+    Init {
+        path: Option<PathBuf>,
+    },
 }
 
 fn main() -> Result<()> {
@@ -128,7 +131,35 @@ fn main() -> Result<()> {
         Command::Fmt { path, check, write } => format_file(&path, check, write)?,
         Command::Repl { state } => repl(state.as_deref())?,
         Command::Lsp => lsp()?,
+        Command::Init { path } => init_project(path.as_deref().unwrap_or_else(|| Path::new(".")))?,
     }
+    Ok(())
+}
+
+fn init_project(path: &Path) -> Result<()> {
+    fs::create_dir_all(path).with_context(|| format!("create {}", path.display()))?;
+    let manifest = path.join("jisp.toml");
+    let entry = path.join("main.lisp");
+    if manifest.exists() || entry.exists() {
+        anyhow::bail!(
+            "refusing to initialize {} because jisp.toml or main.lisp already exists",
+            path.display()
+        );
+    }
+    let name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .filter(|name| !name.is_empty() && *name != ".")
+        .unwrap_or("jisp-project");
+    fs::write(
+        &manifest,
+        format!("[package]\nname = {name:?}\nversion = \"0.1.0\"\nentry = \"main.lisp\"\n"),
+    )?;
+    fs::write(
+        &entry,
+        "(export main\n  (fn ()\n    (str \"Hello from Jisp\")))\n",
+    )?;
+    println!("initialized Jisp package: {}", path.display());
     Ok(())
 }
 
@@ -607,9 +638,9 @@ mod tests {
     use std::path::Path;
 
     use super::{
-        format_json_module, format_lisp_module, format_yaml_module, lsp_completion_items,
-        lsp_diagnostics, remapped_cargo_errors, repl_step, JsonParser, LispParser, SourceId,
-        SyntaxParser, YamlParser,
+        format_json_module, format_lisp_module, format_yaml_module, init_project,
+        lsp_completion_items, lsp_diagnostics, remapped_cargo_errors, repl_step, JsonParser,
+        LispParser, SourceId, SyntaxParser, YamlParser,
     };
 
     #[test]
@@ -720,6 +751,24 @@ mod tests {
         assert!(labels.contains(&"macro"));
         assert!(labels.contains(&"~"));
         assert!(labels.contains(&"`"));
+    }
+
+    #[test]
+    fn init_creates_a_manifest_and_runnable_entry_point() {
+        let directory = std::env::temp_dir().join(format!("jisp-init-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&directory);
+
+        init_project(&directory).unwrap();
+
+        assert!(directory.join("jisp.toml").exists());
+        let entry = std::fs::read_to_string(directory.join("main.lisp")).unwrap();
+        assert_eq!(
+            jisp::run_main(directory.join("main.lisp"), &entry)
+                .unwrap()
+                .display_string(),
+            "Hello from Jisp"
+        );
+        let _ = std::fs::remove_dir_all(&directory);
     }
 
     fn same_kind(left: &jisp_core::Node, right: &jisp_core::Node) -> bool {
