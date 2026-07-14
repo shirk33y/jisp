@@ -700,6 +700,46 @@ fn native_widget_adapter_materializes_semantic_widgets_without_dom_types() {
 }
 
 #[test]
+fn native_widget_adapter_accepts_flattened_dynamic_for_children() {
+    let typed = typed(
+        r#"
+(component row (item)
+  (li (key (. item "id")) (text (. item "title"))))
+
+(component app (state)
+  (ul
+    (for item (. state "items")
+      (row item))))
+"#,
+    );
+    let state = Value::Obj(indexmap::IndexMap::from([(
+        "items".to_owned(),
+        Value::List(vec![
+            Value::Obj(indexmap::IndexMap::from([
+                ("id".to_owned(), Value::Int(1)),
+                ("title".to_owned(), Value::string("Plan")),
+            ])),
+            Value::Obj(indexmap::IndexMap::from([
+                ("id".to_owned(), Value::Int(2)),
+                ("title".to_owned(), Value::string("Ship")),
+            ])),
+        ]),
+    )]));
+    let program = compile(&typed).unwrap();
+    let mut evaluator = Evaluator::new();
+    let loaded = evaluator.load_module(&typed.module).unwrap();
+    let tree = execute(&program, &mut evaluator, &loaded.env, "app", &[state]).unwrap();
+
+    let native = native::render(&tree, &native::NativeRegistry::portable_baseline()).unwrap();
+    assert_eq!(native.kind, NativeWidgetKind::List);
+    assert_eq!(native.children.len(), 2);
+    assert!(native
+        .children
+        .iter()
+        .all(|child| child.kind == NativeWidgetKind::ListItem));
+}
+
+#[test]
 fn native_widget_adapter_reports_unsupported_host_capabilities() {
     let image = Value::Obj(indexmap::IndexMap::from([(
         "tag".to_owned(),
