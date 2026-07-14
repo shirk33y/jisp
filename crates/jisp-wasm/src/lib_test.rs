@@ -39,7 +39,9 @@ fn ssr_payload_matches_the_initial_ui_app_tree() {
 (def init (obj "title" "Plan"))
 (defn update (state action) state)
 (component app (state)
-  (main (h1 (text (. state "title")))))
+  (main
+    (h1 (text (. state "title")))
+    (ul (li (key "first") (text "One")))))
 (ui.app init update app)
 "#,
         )
@@ -48,9 +50,32 @@ fn ssr_payload_matches_the_initial_ui_app_tree() {
     .unwrap();
 
     assert_eq!(payload["protocol"], "jisp-ui-ssr/1");
-    assert_eq!(payload["html"], "<main><h1>Plan</h1></main>");
+    assert_eq!(
+        payload["html"],
+        "<main data-jisp-path=\"0\"><h1 data-jisp-path=\"0.0\">Plan</h1><ul data-jisp-path=\"0.1\"><li data-jisp-path=\"0.1.0\" data-jisp-key=\"string:&quot;first&quot;\">One</li></ul></main>"
+    );
     assert_eq!(payload["state"]["title"], "Plan");
     assert_eq!(payload["tree"]["tag"], "main");
+}
+
+#[cfg(feature = "juir")]
+#[test]
+fn ssr_rejects_hydration_marker_collisions() {
+    let mut session = PlaygroundSession::new();
+    session
+        .load_source(
+            r#"
+(def init null)
+(defn update (state action) state)
+(component app (state)
+  (div (attr "data-jisp-path" "spoofed") (text "Unsafe")))
+(ui.app init update app)
+"#,
+        )
+        .unwrap();
+    let error = session.ssr_payload().unwrap_err();
+
+    assert!(error.contains("reserved for hydration"));
 }
 
 #[test]

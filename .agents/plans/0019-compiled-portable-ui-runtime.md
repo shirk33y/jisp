@@ -30,11 +30,14 @@ M4's pre-implementation ownership and capability contract is documented in
 [`docs/UI_EFFECTS.md`](../../docs/UI_EFFECTS.md): effects remain reducer data,
 carry stable owner/id/generation identity, and require deterministic fake-host
 tests before a source-level command API is introduced.
-M5 has an initial versioned SSR payload (`jisp-ui-ssr/1`) containing escaped
-HTML, serializable state, and the structural tree. The playground hydrates that
-HTML by attaching the tree/listeners without replacing matching nodes. Stable
-SSR anchors, production server delivery, and a native-host prototype remain
-subsequent M5 work.
+M5 has a versioned SSR payload (`jisp-ui-ssr/1`) containing escaped HTML,
+serializable state, and the structural tree. Its generated `data-jisp-path` and
+`data-jisp-key` markers provide stable element anchors without allowing source
+attributes to spoof them. The playground hydrates a matching existing tree by
+attaching paths/listeners in place and preserves pre-hydration form
+`value`/`checked` state until an actual reducer change writes the property.
+Production server delivery, block-level anchors, and a native-host prototype
+remain subsequent M5 work.
 
 ## Goal
 

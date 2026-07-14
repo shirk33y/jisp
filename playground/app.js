@@ -84,6 +84,8 @@ let renderTimer;
 let latestTree = null;
 let session = null;
 let hostMetrics = null;
+let previewHydrated = false;
+let latestSsrPayload = null;
 const language = new Compartment();
 const clojureLanguage = StreamLanguage.define(clojure);
 const jsonLanguage = json();
@@ -215,8 +217,9 @@ function reportHostMetrics() {
 }
 
 function safeAttribute(element, name, value) {
-  if (name.startsWith("on") || value === null || value === false) return false;
-  if ((name === "href" || name === "src") && typeof value === "string" && /^javascript:/i.test(value)) return false;
+  const lower = name.toLowerCase();
+  if (lower.startsWith("on") || value === null || value === false) return false;
+  if ((lower === "href" || lower === "src") && typeof value === "string" && /^\s*javascript:/i.test(value)) return false;
   if (value === true) element.setAttribute(name, "");
   else element.setAttribute(name, String(value));
   return true;
@@ -257,8 +260,9 @@ function createNode(tree, path) {
   return element;
 }
 
-function patchNode(parent, existing, tree, path) {
+function patchNode(parent, existing, tree, path, options = {}) {
   if (!matchesTree(existing, tree)) {
+    if (options.hydrating) return null;
     const created = createNode(tree, path);
     if (existing?.parentNode === parent) {
       hostMetrics.replacements += 1;
@@ -274,19 +278,19 @@ function patchNode(parent, existing, tree, path) {
       existing.data = value;
     }
   } else {
-    patchElement(existing, tree, path);
+    patchElement(existing, tree, path, options);
   }
   return existing;
 }
 
-function patchElement(element, tree, path) {
+function patchElement(element, tree, path, options = {}) {
   hostMetrics.elementPatches += 1;
   element.dataset.jispPath = path;
   syncAttributes(element, tree.attrs || {});
-  syncProperties(element, tree.props || {});
+  syncProperties(element, tree.props || {}, null, options.hydrating);
   syncClasses(element, tree.classes || []);
   syncEvents(element, tree.events || {});
-  reconcileChildren(element, tree.children || [], path);
+  reconcileChildren(element, tree.children || [], path, options);
   element.__jispKey = treeKey(tree);
 }
 
@@ -308,12 +312,13 @@ function resetProperty(element, name) {
   else element[name] = null;
 }
 
-function syncProperties(element, props, sequence = null) {
+function syncProperties(element, props, sequence = null, hydrating = false) {
   const previous = element.__jispProps || new Map();
   const next = new Map();
   for (const [name, value] of Object.entries(props)) {
-    if (name.startsWith("on") || !(name in element)) continue;
+    if (name.toLowerCase().startsWith("on") || !(name in element)) continue;
     next.set(name, value);
+    if (hydrating && preservesBrowserControlState(element, name)) continue;
     if (name === "value"
       && element === document.activeElement
       && Number.isInteger(sequence)
@@ -324,6 +329,15 @@ function syncProperties(element, props, sequence = null) {
     if (!next.has(name)) resetProperty(element, name);
   }
   element.__jispProps = next;
+}
+
+function preservesBrowserControlState(element, name) {
+  if (name === "value") {
+    return element instanceof HTMLInputElement
+      || element instanceof HTMLTextAreaElement
+      || element instanceof HTMLSelectElement;
+  }
+  return name === "checked" && element instanceof HTMLInputElement;
 }
 
 function syncClasses(element, classes) {
@@ -388,7 +402,7 @@ function eventDescriptor(value) {
   return { handler: value.handler, policy };
 }
 
-function reconcileChildren(parent, trees, path) {
+function reconcileChildren(parent, trees, path, options = {}) {
   hostMetrics.childReconciliations += 1;
   const existing = [...parent.childNodes];
   const keyed = new Map();
@@ -403,7 +417,8 @@ function reconcileChildren(parent, trees, path) {
   for (const [index, tree] of trees.entries()) {
     const key = treeKey(tree);
     const current = key === null ? unkeyed[unkeyedIndex++] : keyed.get(key);
-    const child = patchNode(parent, current, tree, path + "." + index);
+    const child = patchNode(parent, current, tree, path + "." + index, options);
+    if (!child) return false;
     child.__jispKey = key;
     rendered.push(child);
   }
@@ -416,6 +431,7 @@ function reconcileChildren(parent, trees, path) {
   for (const child of [...parent.childNodes]) {
     if (!retained.has(child)) child.remove();
   }
+  return true;
 }
 
 function focusedControl() {
@@ -489,16 +505,22 @@ function applyPatches(patches, sequence) {
   return true;
 }
 
-function hydrateTree(payload) {
+function hydrateTree(payload, preserveBrowserState) {
   if (!payload || typeof payload.html !== "string" || !payload.tree) return false;
-  root.innerHTML = payload.html;
-  const next = patchNode(root, root.firstChild, payload.tree, "0");
-  for (const child of [...root.childNodes]) {
-    if (child !== next) child.remove();
-  }
+  if (!root.firstChild) root.innerHTML = payload.html;
+  if (!matchesHydrationTree(root.firstChild, payload.tree)) return false;
+  if (!patchNode(root, root.firstChild, payload.tree, "0", { hydrating: preserveBrowserState })) return false;
   hostMetrics.hydrations += 1;
   reportHostMetrics();
   return true;
+}
+
+function matchesHydrationTree(existing, tree) {
+  if (!matchesTree(existing, tree)) return false;
+  if (tree?.kind === "text") return true;
+  const children = tree?.children || [];
+  if (existing.childNodes.length !== children.length) return false;
+  return children.every((child, index) => matchesHydrationTree(existing.childNodes[index], child));
 }
 
 addEventListener("message", (message) => {
@@ -515,7 +537,9 @@ addEventListener("message", (message) => {
     return;
   }
   if (message.data?.type === "jisp-hydrate") {
-    if (!hydrateTree(message.data.payload)) parent.postMessage({ type: "jisp-recover" }, "*");
+    if (!hydrateTree(message.data.payload, message.data.preserveBrowserState === true)) {
+      parent.postMessage({ type: "jisp-recover" }, "*");
+    }
     return;
   }
   if (message.data?.type === "jisp-patches" && !applyPatches(message.data.patches || [], message.data.sequence)) {
@@ -527,6 +551,7 @@ addEventListener("message", (message) => {
 
 function postTree(tree) {
   latestTree = tree;
+  latestSsrPayload = null;
   preview.contentWindow?.postMessage({ type: "jisp-render", tree }, "*");
 }
 
@@ -537,7 +562,13 @@ function postPatches(patches, sequence) {
 
 function postHydrate(payload) {
   latestTree = payload.tree;
-  preview.contentWindow?.postMessage({ type: "jisp-hydrate", payload }, "*");
+  if (previewHydrated) {
+    postTree(payload.tree);
+    return;
+  }
+  latestSsrPayload = payload;
+  preview.contentWindow?.postMessage({ type: "jisp-hydrate", payload, preserveBrowserState: true }, "*");
+  previewHydrated = true;
 }
 
 function sourceText() {
@@ -595,7 +626,9 @@ async function loadExample(path) {
 }
 
 preview.addEventListener("load", () => {
-  if (latestTree) postTree(latestTree);
+  previewHydrated = false;
+  if (latestSsrPayload) postHydrate(latestSsrPayload);
+  else if (latestTree) postTree(latestTree);
   else if (session) postTree(JSON.parse(session.snapshot()));
 });
 preview.srcdoc = previewDocument();

@@ -86,6 +86,20 @@ fn rejects_javascript_urls_in_static_html() {
 }
 
 #[test]
+fn rejects_inline_event_attributes_in_static_html() {
+    let node = obj([
+        ("tag", string("button")),
+        ("attrs", obj([("OnClick", string("alert(1)"))])),
+    ]);
+
+    let error = render_html(&node, span()).unwrap_err();
+
+    assert!(error
+        .message
+        .contains("event attribute `OnClick` is not allowed"));
+}
+
+#[test]
 fn rejects_non_bool_class_flags() {
     let node = obj([
         ("tag", string("div")),

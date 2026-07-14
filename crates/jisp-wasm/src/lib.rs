@@ -349,26 +349,13 @@ impl PlaygroundSession {
         {
             let runtime = self
                 .runtime
-                .as_mut()
+                .as_ref()
                 .ok_or_else(|| "load a ui.app program before rendering SSR".to_owned())?;
-            let vnode = runtime
-                .last_value
-                .clone()
-                .ok_or_else(|| "JUIR runtime has no initial SSR tree".to_owned())?;
             let tree = runtime
                 .last_tree
                 .clone()
                 .ok_or_else(|| "JUIR runtime has no serializable SSR tree".to_owned())?;
-            let renderer = runtime
-                .evaluator
-                .root_env()
-                .lookup("ui.html")
-                .map_err(|error| error.to_string())?;
-            let html = runtime
-                .evaluator
-                .apply(renderer, &[vnode], runtime.span)
-                .map_err(|error| error.to_string())?
-                .display_string();
+            let html = render_ssr_html(&tree)?;
             return serde_json::to_string(&json!({
                 "protocol": "jisp-ui-ssr/1",
                 "html": html,
@@ -379,6 +366,204 @@ impl PlaygroundSession {
         }
         #[cfg(not(feature = "juir"))]
         Err("SSR payloads require the `juir` feature".to_owned())
+    }
+}
+
+/// Serialize the renderer-neutral tree as safe server HTML and retain the
+/// stable host markers needed to attach a browser host without replacing a
+/// matching node. These markers are host protocol metadata, never Jisp source
+/// attributes, so a user cannot override them through `attr`.
+#[cfg(feature = "juir")]
+fn render_ssr_html(tree: &JsonValue) -> Result<String, String> {
+    let mut html = String::new();
+    render_ssr_node(tree, "0", &mut html)?;
+    Ok(html)
+}
+
+#[cfg(feature = "juir")]
+fn render_ssr_node(tree: &JsonValue, path: &str, output: &mut String) -> Result<(), String> {
+    match tree.get("kind").and_then(JsonValue::as_str) {
+        Some("text") => {
+            escape_ssr_text(&ssr_scalar_display(tree.get("value")), output);
+            Ok(())
+        }
+        Some("element") => {
+            let tag = tree
+                .get("tag")
+                .and_then(JsonValue::as_str)
+                .ok_or_else(|| "SSR UI element is missing a string `tag`".to_owned())?;
+            if ui_element(tag).is_none() {
+                return Err(format!("SSR UI element has unsupported tag `{tag}`"));
+            }
+            output.push('<');
+            output.push_str(tag);
+            render_ssr_attributes(tree.get("attrs"), output)?;
+            render_ssr_attributes(tree.get("props"), output)?;
+            render_ssr_classes(tree.get("classes"), output)?;
+            output.push_str(" data-jisp-path=\"");
+            escape_ssr_attribute(path, output);
+            output.push('"');
+            if let Some(key) = tree.get("key").filter(|key| !key.is_null()) {
+                output.push_str(" data-jisp-key=\"");
+                escape_ssr_attribute(&ssr_key(key)?, output);
+                output.push('"');
+            }
+            output.push('>');
+            let children = tree
+                .get("children")
+                .and_then(JsonValue::as_array)
+                .ok_or_else(|| "SSR UI element is missing `children`".to_owned())?;
+            for (index, child) in children.iter().enumerate() {
+                render_ssr_node(child, &format!("{path}.{index}"), output)?;
+            }
+            output.push_str("</");
+            output.push_str(tag);
+            output.push('>');
+            Ok(())
+        }
+        _ => Err("SSR tree node must have kind `text` or `element`".to_owned()),
+    }
+}
+
+#[cfg(feature = "juir")]
+fn render_ssr_attributes(value: Option<&JsonValue>, output: &mut String) -> Result<(), String> {
+    let Some(value) = value else {
+        return Ok(());
+    };
+    let attributes = value
+        .as_object()
+        .ok_or_else(|| "SSR UI attributes must be an object".to_owned())?;
+    for (name, value) in attributes {
+        let lower = name.to_ascii_lowercase();
+        if !is_safe_ssr_attribute_name(name) {
+            return Err(format!("SSR UI attribute `{name}` is invalid or unsafe"));
+        }
+        if matches!(lower.as_str(), "data-jisp-path" | "data-jisp-key") {
+            return Err(format!(
+                "SSR UI attribute `{name}` is reserved for hydration"
+            ));
+        }
+        if value.is_null() || value == &JsonValue::Bool(false) {
+            continue;
+        }
+        if value == &JsonValue::Bool(true) {
+            output.push(' ');
+            output.push_str(name);
+            continue;
+        }
+        let value = ssr_scalar_display(Some(value));
+        if matches!(lower.as_str(), "href" | "src")
+            && value
+                .trim_start()
+                .to_ascii_lowercase()
+                .starts_with("javascript:")
+        {
+            return Err(format!("SSR UI {name} must not use a javascript: URL"));
+        }
+        output.push(' ');
+        output.push_str(name);
+        output.push_str("=\"");
+        escape_ssr_attribute(&value, output);
+        output.push('"');
+    }
+    Ok(())
+}
+
+#[cfg(feature = "juir")]
+fn render_ssr_classes(value: Option<&JsonValue>, output: &mut String) -> Result<(), String> {
+    let Some(value) = value else {
+        return Ok(());
+    };
+    let classes = value
+        .as_array()
+        .ok_or_else(|| "SSR UI classes must be an array".to_owned())?;
+    if classes.is_empty() {
+        return Ok(());
+    }
+    output.push_str(" class=\"");
+    for (index, class) in classes.iter().enumerate() {
+        let class = class
+            .as_str()
+            .ok_or_else(|| "SSR UI class must be a string".to_owned())?;
+        if index > 0 {
+            output.push(' ');
+        }
+        escape_ssr_attribute(class, output);
+    }
+    output.push('"');
+    Ok(())
+}
+
+#[cfg(feature = "juir")]
+fn is_safe_ssr_attribute_name(name: &str) -> bool {
+    !name.is_empty()
+        && name
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b':' | b'.'))
+        && !name.to_ascii_lowercase().starts_with("on")
+}
+
+#[cfg(feature = "juir")]
+fn ssr_key(key: &JsonValue) -> Result<String, String> {
+    let kind = match key {
+        JsonValue::String(_) => "string",
+        JsonValue::Number(_) => "number",
+        JsonValue::Bool(_) => "boolean",
+        _ => return Err("SSR UI key must be a string, number, or bool".to_owned()),
+    };
+    Ok(format!(
+        "{kind}:{}",
+        serde_json::to_string(key).map_err(|error| error.to_string())?
+    ))
+}
+
+#[cfg(feature = "juir")]
+fn ssr_scalar_display(value: Option<&JsonValue>) -> String {
+    match value {
+        None | Some(JsonValue::Null) => String::new(),
+        Some(JsonValue::Bool(value)) => value.to_string(),
+        Some(JsonValue::Number(value)) => {
+            if let Some(value) = value.as_i64() {
+                value.to_string()
+            } else if let Some(value) = value.as_u64() {
+                value.to_string()
+            } else if let Some(value) = value.as_f64() {
+                if value == 0.0 {
+                    "0".to_owned()
+                } else {
+                    value.to_string()
+                }
+            } else {
+                value.to_string()
+            }
+        }
+        Some(JsonValue::String(value)) => value.clone(),
+        Some(_) => String::new(),
+    }
+}
+
+#[cfg(feature = "juir")]
+fn escape_ssr_text(value: &str, output: &mut String) {
+    for character in value.chars() {
+        match character {
+            '&' => output.push_str("&amp;"),
+            '<' => output.push_str("&lt;"),
+            '>' => output.push_str("&gt;"),
+            _ => output.push(character),
+        }
+    }
+}
+
+#[cfg(feature = "juir")]
+fn escape_ssr_attribute(value: &str, output: &mut String) {
+    for character in value.chars() {
+        match character {
+            '&' => output.push_str("&amp;"),
+            '<' => output.push_str("&lt;"),
+            '>' => output.push_str("&gt;"),
+            '"' => output.push_str("&quot;"),
+            _ => output.push(character),
+        }
     }
 }
 

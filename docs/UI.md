@@ -173,11 +173,22 @@ event-update path.
 `render_ssr(source)` and `PlaygroundSession.ssr()` return the versioned
 `jisp-ui-ssr/1` payload: escaped `html`, serializable initial `state`, and the
 same structural `tree` used by the interactive host. The embedding server owns
-safe document serialization and activation. The playground starts from the
-payload's HTML, then attaches the structural tree and listeners to matching
-existing nodes without replacing them. This proves the hydration contract
-locally; a production server-delivery adapter and resumability remain future
-work.
+safe document serialization and activation. SSR HTML carries generated,
+reserved `data-jisp-path` markers on elements and `data-jisp-key` markers on
+keyed elements. They come from the tree rather than source attributes, so an
+application cannot spoof a hydration anchor.
+
+When a matching SSR tree already exists, the playground host attaches paths,
+properties, and listeners in place; it does not overwrite `innerHTML`, replace
+matching nodes, or reset browser-entered `value`/`checked` control state during
+that first attachment. A later reducer update still writes a changed declared
+property as usual. The playground seeds its empty iframe from the payload only
+to emulate a server document. A mismatching server tree is rejected and
+recovered through the ordinary full-tree mount rather than silently claiming
+hydration succeeded.
+
+This proves the hydration contract locally; a production server-delivery
+adapter, block-level SSR anchors, and resumability remain future work.
 
 ## Lowered contract and host status
 
@@ -192,7 +203,8 @@ contract, not yet a React-equivalent runtime. Effect/lifecycle semantics,
 subscriptions, async commands, direct static-template DOM mounting, native
 widget registries, and Tailwind-style token validation remain future runtime
 work. The static `ui.html` renderer still preserves neither event handlers nor
-keys.
+keys; it rejects inline `on*` attributes, so portable events must use the `on`
+directive.
 
 The GitHub Pages playground runs this same interpreter through the
 `jisp-wasm` WebAssembly entry point. JavaScript loads the module, renders the

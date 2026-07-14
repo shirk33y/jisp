@@ -193,18 +193,25 @@ fn validate_tag(tag: &str, span: Span) -> Result<(), RuntimeError> {
 }
 
 fn validate_attribute(attribute: &str, span: Span) -> Result<(), RuntimeError> {
-    if is_html_name(attribute) {
-        Ok(())
-    } else {
+    if !is_html_name(attribute) {
         Err(RuntimeError::at(
             span,
             format!("invalid ui attribute `{attribute}`"),
         ))
+    } else if attribute.to_ascii_lowercase().starts_with("on") {
+        Err(RuntimeError::at(
+            span,
+            format!(
+                "ui event attribute `{attribute}` is not allowed; use the `on` directive instead"
+            ),
+        ))
+    } else {
+        Ok(())
     }
 }
 
 fn validate_attribute_value(attribute: &str, value: &str, span: Span) -> Result<(), RuntimeError> {
-    if matches!(attribute, "href" | "src")
+    if matches!(attribute.to_ascii_lowercase().as_str(), "href" | "src")
         && value
             .trim_start()
             .to_ascii_lowercase()
