@@ -54,77 +54,83 @@ def guarded-grade
       _ "retry"
 
 test "variant case binds payload fields"
-  assert.equal
-    list "/" "/users/42/posts" "/search?q=jisp" "404:/old"
-    list
-      render-route home
-      render-route
-        profile 42 "posts"
-      render-route
-        search "jisp"
-      render-route
-        missing "/old"
+  assert
+    =
+      list "/" "/users/42/posts" "/search?q=jisp" "404:/old"
+      list
+        render-route home
+        render-route
+          profile 42 "posts"
+        render-route
+          search "jisp"
+        render-route
+          missing "/old"
 
 test "list patterns can nest and bind rest"
-  assert.equal
-    list 5 0 -1
-    list
-      nested-list-score
-        list
-          list 1 3
-          list 9 9
-          list 10 10
-      nested-list-score
-        (list)
-      nested-list-score
-        list
-          list 2 3
+  assert
+    =
+      list 5 0 -1
+      list
+        nested-list-score
+          list
+            list 1 3
+            list 9 9
+            list 10 10
+        nested-list-score
+          (list)
+        nested-list-score
+          list
+            list 2 3
 
 test "object patterns can nest and refine literals"
-  assert.equal
-    list "trusted:3" "blocked" "loaded" "ignored"
-    list
-      nested-object-state
-        obj "kind" "click"
-          ... "meta" (obj "trusted" true "count" 3)
-      nested-object-state
-        obj "kind" "click"
-          ... "meta" (obj "trusted" false "count" 2)
-      nested-object-state
-        obj "kind" "load"
-          ... "meta" (obj "trusted" true "count" 0)
-      nested-object-state
-        obj "kind" "hover"
-          ... "meta" (obj "trusted" true "count" 0)
+  assert
+    =
+      list "trusted:3" "blocked" "loaded" "ignored"
+      list
+        nested-object-state
+          obj "kind" "click"
+            ... "meta" (obj "trusted" true "count" 3)
+        nested-object-state
+          obj "kind" "click"
+            ... "meta" (obj "trusted" false "count" 2)
+        nested-object-state
+          obj "kind" "load"
+            ... "meta" (obj "trusted" true "count" 0)
+        nested-object-state
+          obj "kind" "hover"
+            ... "meta" (obj "trusted" true "count" 0)
 
 test "literal and wildcard branches keep case exhaustive"
-  assert.equal
-    list "zero" "one" "many"
-    list
-      literal-match 0
-      literal-match 1
-      literal-match 9
+  assert
+    =
+      list "zero" "one" "many"
+      list
+        literal-match 0
+        literal-match 1
+        literal-match 9
 
 test "case guards dispatch before unguarded fallback"
-  assert.equal
-    list "high" "pass" "retry"
-    list
-      guarded-grade 99
-      guarded-grade 75
-      guarded-grade 40
+  assert
+    =
+      list "high" "pass" "retry"
+      list
+        guarded-grade 99
+        guarded-grade 75
+        guarded-grade 40
 
 test "or patterns share payload bindings across alternatives"
-  assert.equal 8
-    case
-      search "ignored"
-      (or (search value) (missing value))
-        +
-          str.len value
-          1
-      (home)
-        0
-      (profile _ _)
-        0
+  assert
+    = 8
+      case
+        search "ignored"
+        (or (search value) (missing value))
+          +
+            str.len value
+            1
+        (home)
+          0
+        (profile _ _)
+          0
 
 test-error "redundant guarded branch after catch-all is rejected"
   "redundant case pattern"

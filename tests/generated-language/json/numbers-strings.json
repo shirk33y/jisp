@@ -100,20 +100,23 @@
       "integer division modes are explicit in portable lisp"
     ],
     [
-      "assert.equal",
+      "assert",
       [
-        "list",
-        -4,
-        -10,
-        -21,
-        -2,
-        -3,
-        2
-      ],
-      [
-        "arithmetic-report",
-        -7,
-        3
+        "=",
+        [
+          "list",
+          -4,
+          -10,
+          -21,
+          -2,
+          -3,
+          2
+        ],
+        [
+          "arithmetic-report",
+          -7,
+          3
+        ]
       ]
     ]
   ],
@@ -124,36 +127,39 @@
       "float math helpers compose without integer coercion"
     ],
     [
-      "assert.equal",
+      "assert",
       [
-        "list",
-        3.5,
-        9.0,
-        4.0,
-        4.0,
-        4.0
-      ],
-      [
-        "list",
+        "=",
         [
-          "math.abs",
-          -3.5
+          "list",
+          3.5,
+          9.0,
+          4.0,
+          4.0,
+          4.0
         ],
         [
-          "math.sqrt",
-          81.0
-        ],
-        [
-          "math.floor",
-          4.8
-        ],
-        [
-          "math.ceil",
-          3.2
-        ],
-        [
-          "math.round",
-          3.5
+          "list",
+          [
+            "math.abs",
+            -3.5
+          ],
+          [
+            "math.sqrt",
+            81.0
+          ],
+          [
+            "math.floor",
+            4.8
+          ],
+          [
+            "math.ceil",
+            3.2
+          ],
+          [
+            "math.round",
+            3.5
+          ]
         ]
       ]
     ]
@@ -165,100 +171,103 @@
       "string predicates and replacement build slugs"
     ],
     [
-      "assert.equal",
+      "assert",
       [
-        "obj",
-        [
-          "str",
-          "slug"
-        ],
-        [
-          "str",
-          "ada-lovelace"
-        ],
-        [
-          "str",
-          "has"
-        ],
-        true,
-        [
-          "str",
-          "starts"
-        ],
-        true,
-        [
-          "str",
-          "ends"
-        ],
-        true,
-        [
-          "str",
-          "is-number-string"
-        ],
-        false
-      ],
-      [
-        "let",
-        [
-          "slug",
-          [
-            "normalize-name",
-            [
-              "str",
-              "  Ada Lovelace  "
-            ]
-          ]
-        ],
+        "=",
         [
           "obj",
           [
             "str",
             "slug"
           ],
-          "slug",
+          [
+            "str",
+            "ada-lovelace"
+          ],
           [
             "str",
             "has"
           ],
-          [
-            "str.has",
-            "slug",
-            [
-              "str",
-              "love"
-            ]
-          ],
+          true,
           [
             "str",
             "starts"
           ],
-          [
-            "str.starts",
-            "slug",
-            [
-              "str",
-              "ada"
-            ]
-          ],
+          true,
           [
             "str",
             "ends"
           ],
-          [
-            "str.ends",
-            "slug",
-            [
-              "str",
-              "lace"
-            ]
-          ],
+          true,
           [
             "str",
             "is-number-string"
           ],
+          false
+        ],
+        [
+          "let",
           [
-            "str.is",
-            42
+            "slug",
+            [
+              "normalize-name",
+              [
+                "str",
+                "  Ada Lovelace  "
+              ]
+            ]
+          ],
+          [
+            "obj",
+            [
+              "str",
+              "slug"
+            ],
+            "slug",
+            [
+              "str",
+              "has"
+            ],
+            [
+              "str.has",
+              "slug",
+              [
+                "str",
+                "love"
+              ]
+            ],
+            [
+              "str",
+              "starts"
+            ],
+            [
+              "str.starts",
+              "slug",
+              [
+                "str",
+                "ada"
+              ]
+            ],
+            [
+              "str",
+              "ends"
+            ],
+            [
+              "str.ends",
+              "slug",
+              [
+                "str",
+                "lace"
+              ]
+            ],
+            [
+              "str",
+              "is-number-string"
+            ],
+            [
+              "str.is",
+              42
+            ]
           ]
         ]
       ]
@@ -271,18 +280,21 @@
       "string split join and conversion cooperate"
     ],
     [
-      "assert.equal",
+      "assert",
       [
-        "str",
-        "1,2,3"
-      ],
-      [
-        "csv-row",
+        "=",
         [
-          "list",
-          1,
-          2,
-          3
+          "str",
+          "1,2,3"
+        ],
+        [
+          "csv-row",
+          [
+            "list",
+            1,
+            2,
+            3
+          ]
         ]
       ]
     ]
@@ -294,38 +306,41 @@
       "string templates interpolate and splice"
     ],
     [
-      "assert.equal",
+      "assert",
       [
-        "str",
-        "hello ADA and Lin"
-      ],
-      [
-        "str",
+        "=",
         [
           "str",
-          "hello "
+          "hello ADA and Lin"
         ],
         [
-          ",",
+          "str",
           [
-            "str.upper",
+            "str",
+            "hello "
+          ],
+          [
+            ",",
             [
-              "str",
-              "ada"
+              "str.upper",
+              [
+                "str",
+                "ada"
+              ]
             ]
-          ]
-        ],
-        [
-          "str",
-          " and "
-        ],
-        [
-          ",@",
+          ],
           [
-            "list",
+            "str",
+            " and "
+          ],
+          [
+            ",@",
             [
-              "str",
-              "Lin"
+              "list",
+              [
+                "str",
+                "Lin"
+              ]
             ]
           ]
         ]
@@ -339,28 +354,31 @@
       "string lines splice list items with newlines"
     ],
     [
-      "assert.equal",
+      "assert",
       [
-        "str",
-        "one\ntwo\nthree"
-      ],
-      [
-        "str.lines",
+        "=",
         [
           "str",
-          "one"
+          "one\ntwo\nthree"
         ],
         [
-          ",@",
+          "str.lines",
           [
-            "str.split",
+            "str",
+            "one"
+          ],
+          [
+            ",@",
             [
-              "str",
-              "two,three"
-            ],
-            [
-              "str",
-              ","
+              "str.split",
+              [
+                "str",
+                "two,three"
+              ],
+              [
+                "str",
+                ","
+              ]
             ]
           ]
         ]
@@ -374,43 +392,46 @@
       "string slice returns ok or err values"
     ],
     [
-      "assert.equal",
+      "assert",
       [
-        "list",
+        "=",
         [
-          "ok",
+          "list",
           [
-            "str",
-            "bcd"
+            "ok",
+            [
+              "str",
+              "bcd"
+            ]
+          ],
+          [
+            "err",
+            [
+              "str",
+              "string slice is out of bounds"
+            ]
           ]
         ],
         [
-          "err",
+          "list",
           [
-            "str",
-            "string slice is out of bounds"
+            "str.slice",
+            [
+              "str",
+              "abcdef"
+            ],
+            1,
+            4
+          ],
+          [
+            "str.slice",
+            [
+              "str",
+              "abc"
+            ],
+            0,
+            9
           ]
-        ]
-      ],
-      [
-        "list",
-        [
-          "str.slice",
-          [
-            "str",
-            "abcdef"
-          ],
-          1,
-          4
-        ],
-        [
-          "str.slice",
-          [
-            "str",
-            "abc"
-          ],
-          0,
-          9
         ]
       ]
     ]

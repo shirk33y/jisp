@@ -8,21 +8,21 @@
     [fn, [values], [list.fold, [fn, [total, value], [+, total, value]], 0, values]],
   ],
   [defn, fact, [n], [if, [=, n, 0], 1, [*, n, [fact, [-, n, 1]]]]],
-  [test, "closures capture lexical bindings", [assert.equal, 18, [[make-adder, 11], 7]]],
+  [test, "closures capture lexical bindings", [assert, [=, 18, [[make-adder, 11], 7]]]],
   [
     test,
     "higher order functions accept returned closures",
-    [assert.equal, 14, [apply-twice, [make-adder, 4], 6]],
+    [assert, [=, 14, [apply-twice, [make-adder, 4], 6]]],
   ],
   [
     test,
     "variadic functions bind remaining arguments as a list",
-    [assert.equal, [list, 1, 2, 3, 4], [pack, 1, 2, 3, 4]],
+    [assert, [=, [list, 1, 2, 3, 4], [pack, 1, 2, 3, 4]]],
   ],
-  [test, "recursive definitions work with typed modules", [assert.equal, 720, [fact, 6]]],
+  [test, "recursive definitions work with typed modules", [assert, [=, 720, [fact, 6]]]],
   [
     test,
     "folded helper keeps accumulator and item types distinct",
-    [assert.equal, 15, [sum-list, [list, 1, 2, 3, 4, 5]]],
+    [assert, [=, 15, [sum-list, [list, 1, 2, 3, 4, 5]]]],
   ],
 ]

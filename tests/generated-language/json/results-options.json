@@ -223,35 +223,38 @@
       "result map transforms ok and preserves err"
     ],
     [
-      "assert.equal",
+      "assert",
       [
-        "list",
+        "=",
         [
-          "ok",
-          4
-        ],
-        [
-          "err",
+          "list",
           [
-            "str",
-            "bad-count:many"
-          ]
-        ]
-      ],
-      [
-        "list",
-        [
-          "double-count",
+            "ok",
+            4
+          ],
           [
-            "str",
-            "two"
+            "err",
+            [
+              "str",
+              "bad-count:many"
+            ]
           ]
         ],
         [
-          "double-count",
+          "list",
           [
-            "str",
-            "many"
+            "double-count",
+            [
+              "str",
+              "two"
+            ]
+          ],
+          [
+            "double-count",
+            [
+              "str",
+              "many"
+            ]
           ]
         ]
       ]
@@ -264,38 +267,41 @@
       "result try chains ok and short circuits err"
     ],
     [
-      "assert.equal",
+      "assert",
       [
-        "list",
+        "=",
         [
-          "ok",
+          "list",
           [
-            "str",
-            "count:1"
+            "ok",
+            [
+              "str",
+              "count:1"
+            ]
+          ],
+          [
+            "err",
+            [
+              "str",
+              "bad-count:nope"
+            ]
           ]
         ],
         [
-          "err",
+          "list",
           [
-            "str",
-            "bad-count:nope"
-          ]
-        ]
-      ],
-      [
-        "list",
-        [
-          "label-count",
+            "label-count",
+            [
+              "str",
+              "one"
+            ]
+          ],
           [
-            "str",
-            "one"
-          ]
-        ],
-        [
-          "label-count",
-          [
-            "str",
-            "nope"
+            "label-count",
+            [
+              "str",
+              "nope"
+            ]
           ]
         ]
       ]
@@ -308,32 +314,35 @@
       "result map-err and recover normalize failures"
     ],
     [
-      "assert.equal",
+      "assert",
       [
-        "list",
+        "=",
         [
-          "ok",
-          2
-        ],
-        [
-          "ok",
-          14
-        ]
-      ],
-      [
-        "list",
-        [
-          "normalize-count",
+          "list",
           [
-            "str",
-            "two"
+            "ok",
+            2
+          ],
+          [
+            "ok",
+            14
           ]
         ],
         [
-          "normalize-count",
+          "list",
           [
-            "str",
-            "many"
+            "normalize-count",
+            [
+              "str",
+              "two"
+            ]
+          ],
+          [
+            "normalize-count",
+            [
+              "str",
+              "many"
+            ]
           ]
         ]
       ]
@@ -346,33 +355,36 @@
       "option constructors participate in exhaustive case"
     ],
     [
-      "assert.equal",
+      "assert",
       [
-        "list",
+        "=",
         [
-          "str",
-          "Ada"
-        ],
-        [
-          "str",
-          "anonymous"
-        ]
-      ],
-      [
-        "list",
-        [
-          "render-name",
+          "list",
           [
-            "some",
-            [
-              "str",
-              "Ada"
-            ]
+            "str",
+            "Ada"
+          ],
+          [
+            "str",
+            "anonymous"
           ]
         ],
         [
-          "render-name",
-          "none"
+          "list",
+          [
+            "render-name",
+            [
+              "some",
+              [
+                "str",
+                "Ada"
+              ]
+            ]
+          ],
+          [
+            "render-name",
+            "none"
+          ]
         ]
       ]
     ]
@@ -384,30 +396,33 @@
       "use desugars callback-last result propagation"
     ],
     [
-      "assert.equal",
+      "assert",
       [
-        "ok",
-        3
-      ],
-      [
-        "use",
-        "value",
-        [
-          "result.try",
-          [
-            "parse-count",
-            [
-              "str",
-              "two"
-            ]
-          ]
-        ],
+        "=",
         [
           "ok",
+          3
+        ],
+        [
+          "use",
+          "value",
           [
-            "+",
-            "value",
-            1
+            "result.try",
+            [
+              "parse-count",
+              [
+                "str",
+                "two"
+              ]
+            ]
+          ],
+          [
+            "ok",
+            [
+              "+",
+              "value",
+              1
+            ]
           ]
         ]
       ]
@@ -420,21 +435,24 @@
       "use supports callback functions with multiple bindings"
     ],
     [
-      "assert.equal",
-      7,
+      "assert",
       [
-        "use",
+        "=",
+        7,
         [
-          "left",
-          "right"
-        ],
-        [
-          "with-pair"
-        ],
-        [
-          "+",
-          "left",
-          "right"
+          "use",
+          [
+            "left",
+            "right"
+          ],
+          [
+            "with-pair"
+          ],
+          [
+            "+",
+            "left",
+            "right"
+          ]
         ]
       ]
     ]

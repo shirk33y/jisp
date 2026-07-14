@@ -38,13 +38,13 @@
         (str ,name ":inactive")))))
 
 (test "field access reads statically known object keys"
-  (assert.equal
+  (assert (=
     (obj "id" 7 "name" "Ada" "active" true)
     (let (user (base-user))
-      (obj "id" (. user "id") "name" (. user "name") "active" (. user "active")))))
+      (obj "id" (. user "id") "name" (. user "name") "active" (. user "active"))))))
 
 (test "object set and delete are immutable data transforms"
-  (assert.equal
+  (assert (=
     (obj "original" "Ada" "renamed" "Grace" "has-score" false)
     (let (original (base-user)
           renamed (rename-user original "Grace")
@@ -52,47 +52,47 @@
       (obj
         "original" (. original "name")
         "renamed" (. renamed "name")
-        "has-score" (obj.has public "score")))))
+        "has-score" (obj.has public "score"))))))
 
 (test "object get returns ok and missing key err values"
-  (assert.equal
+  (assert (=
     (list (ok 41) (err "object has no key `missing`"))
     (let (user (base-user))
       (list
         (obj.get user "score")
-        (obj.get user "missing")))))
+        (obj.get user "missing"))))))
 
 (test "object cat overlays later keys"
-  (assert.equal
+  (assert (=
     (obj "name" "Ada" "role" "admin" "active" false)
     (obj.cat
       (obj "name" "Ada" "role" "guest")
-      (obj "role" "admin" "active" false))))
+      (obj "role" "admin" "active" false)))))
 
 (test "object keys and values preserve insertion order"
-  (assert.equal
+  (assert (=
     (obj "keys" (list "first" "second" "third") "values" (list 1 2 3))
     (let (value (obj "first" 1 "second" 2 "third" 3))
-      (obj "keys" (obj.keys value) "values" (obj.values value)))))
+      (obj "keys" (obj.keys value) "values" (obj.values value))))))
 
 (test "homogeneous objects convert explicitly to dynamic maps"
-  (assert.equal
+  (assert (=
     (obj "has-primary" false "secondary" (ok 2))
     (let (scores (obj.to-map (obj "primary" 1 "secondary" 2))
           without-primary (map.del scores "primary"))
       (obj
         "has-primary" (map.has without-primary "primary")
-        "secondary" (map.get without-primary "secondary")))))
+        "secondary" (map.get without-primary "secondary"))))))
 
 (test "object patterns refine boolean fields"
-  (assert.equal
+  (assert (=
     (list "Ada:41:active" "Lin:inactive")
     (list
       (summarize-user (base-user))
-      (summarize-user (obj "name" "Lin" "active" false "score" 9)))))
+      (summarize-user (obj "name" "Lin" "active" false "score" 9))))))
 
 (test "ui shaped objects keep utility classes as boolean maps"
-  (assert.equal
+  (assert (=
     (obj
       "tag" "button"
       "class" (obj
@@ -104,4 +104,4 @@
         "title" "Ada")
       "children" (list
         (obj "tag" "text" "value" "Ada")))
-    (button-view (base-user))))
+    (button-view (base-user)))))

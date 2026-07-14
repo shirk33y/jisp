@@ -27,8 +27,8 @@ is compiled by the test harness.
 The runner parses, expands quote/user macros, lowers, type-checks, evaluates,
 and requires the assertion condition to be exactly `true`. This makes the
 fixture language useful beyond equality as more boolean predicates arrive.
-`assert.equal` remains temporarily accepted for old fixtures, but new tests
-must use `assert` and ordinary Jisp predicates. Negative tests use
+Use `assert` and ordinary Jisp predicates; there is no special equality
+assertion. Negative tests use
 `(test-error "name" "expected message substring" expr)`; the runner inserts
 `expr` into a temporary export and expects lowering or type-checking to fail
 with a diagnostic containing that substring. To test top-level rejections,
@@ -57,8 +57,11 @@ steps are deliberately data and renderer neutral:
 ```
 
 `dispatch` passes a portable action value to the declared reducer. Assertions
-can observe `(ui.test.state)`, the escaped static `(ui.test.html)`, or the raw
-renderer-neutral `(ui.test.tree)`. Each assertion also compares the reference
+can observe `(ui.test.state)`, the escaped static `(ui.test.html)`, the raw
+renderer-neutral `(ui.test.tree)`, reducer-declared `(ui.test.commands)`, or
+reducer-declared `(ui.test.subscriptions)`. The resource accessors report the
+declarations from the most recent `dispatch`; they never invoke a host
+capability. Each assertion also compares the reference
 component value with the compiled JUIR execution, so a passing test covers both
 the reducer and renderer contract without a browser. Keep pure helper tests in
 ordinary `(test ...)` fixtures; UI scenarios should only exercise the

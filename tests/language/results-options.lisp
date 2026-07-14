@@ -41,41 +41,41 @@
     (callback 2 5)))
 
 (test "result map transforms ok and preserves err"
-  (assert.equal
+  (assert (=
     (list (ok 4) (err "bad-count:many"))
     (list
       (double-count "two")
-      (double-count "many"))))
+      (double-count "many")))))
 
 (test "result try chains ok and short circuits err"
-  (assert.equal
+  (assert (=
     (list (ok "count:1") (err "bad-count:nope"))
     (list
       (label-count "one")
-      (label-count "nope"))))
+      (label-count "nope")))))
 
 (test "result map-err and recover normalize failures"
-  (assert.equal
+  (assert (=
     (list (ok 2) (ok 14))
     (list
       (normalize-count "two")
-      (normalize-count "many"))))
+      (normalize-count "many")))))
 
 (test "option constructors participate in exhaustive case"
-  (assert.equal
+  (assert (=
     (list "Ada" "anonymous")
     (list
       (render-name (some "Ada"))
-      (render-name none))))
+      (render-name none)))))
 
 (test "use desugars callback-last result propagation"
-  (assert.equal
+  (assert (=
     (ok 3)
     (use value (result.try (parse-count "two"))
-      (ok (+ value 1)))))
+      (ok (+ value 1))))))
 
 (test "use supports callback functions with multiple bindings"
-  (assert.equal
+  (assert (=
     7
     (use (left right) (with-pair)
-      (+ left right))))
+      (+ left right)))))

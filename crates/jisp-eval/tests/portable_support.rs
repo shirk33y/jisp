@@ -12,11 +12,6 @@ enum PortableTest {
         name: String,
         condition: String,
     },
-    Equal {
-        name: String,
-        expected: String,
-        actual: String,
-    },
     Error {
         name: String,
         expected_message: String,
@@ -37,9 +32,6 @@ pub fn run_portable_test(file: &str, source: &str, test_index: usize, test_name:
         PortableTest::Assert { condition, .. } => {
             run_assert_test(&context, &module_nodes, &condition)
         }
-        PortableTest::Equal {
-            expected, actual, ..
-        } => run_equal_test(&context, &module_nodes, &expected, &actual),
         PortableTest::Error {
             expected_message, ..
         } => run_error_test(&context, &module_nodes, &expected_message),
@@ -67,9 +59,7 @@ fn parse_fixture(file: &str, source: &str) -> Result<Vec<Node>, String> {
 impl PortableTest {
     fn name(&self) -> &str {
         match self {
-            PortableTest::Assert { name, .. }
-            | PortableTest::Equal { name, .. }
-            | PortableTest::Error { name, .. } => name,
+            PortableTest::Assert { name, .. } | PortableTest::Error { name, .. } => name,
         }
     }
 }
@@ -92,36 +82,6 @@ fn run_assert_test(context: &str, module_nodes: &[Node], condition: &str) {
         matches!(condition, jisp_eval::Value::Bool(true)),
         "{context}: assertion failed: expected true, got {}",
         condition.display_string()
-    );
-}
-
-fn run_equal_test(context: &str, module_nodes: &[Node], expected: &str, actual: &str) {
-    let module = Lowerer
-        .lower_module(module_nodes)
-        .unwrap_or_else(|error| panic!("{context}: lower failed: {error}"));
-    Inferencer::with_prelude()
-        .infer_module(&module)
-        .unwrap_or_else(|error| panic!("{context}: type check failed: {error}"));
-    let loaded = Evaluator::new()
-        .load_module(&module)
-        .unwrap_or_else(|error| panic!("{context}: evaluation failed: {error}"));
-
-    let expected = loaded
-        .exports
-        .get(expected)
-        .unwrap_or_else(|| panic!("{context}: missing export {expected}"));
-    let actual = loaded
-        .exports
-        .get(actual)
-        .unwrap_or_else(|| panic!("{context}: missing export {actual}"));
-    let equal = expected
-        .structurally_equal(actual)
-        .unwrap_or_else(|error| panic!("{context}: assertion failed: {error}"));
-    assert!(
-        equal,
-        "{context}: assertion failed: expected {}, got {}",
-        expected.display_string(),
-        actual.display_string()
     );
 }
 
@@ -224,28 +184,7 @@ fn lower_test_form(
         return Ok(PortableTest::Assert { name, condition });
     }
 
-    // Keep existing fixtures readable while the canonical suite moves to the
-    // general `(assert (= expected actual))` form. New tests must use `assert`.
-    if assertion.first().and_then(Node::as_symbol) != Some("assert.equal") {
-        return Err(format!("{name}: test body must be `(assert condition)`"));
-    }
-    if assertion.len() != 3 {
-        return Err(format!(
-            "{name}: assert.equal expects expected and actual, got {} item(s)",
-            assertion.len()
-        ));
-    }
-
-    let expected = format!("__jisp_test_{index}_expected");
-    let actual = format!("__jisp_test_{index}_actual");
-    module_nodes.push(export_node(&expected, assertion[1].clone(), node));
-    module_nodes.push(export_node(&actual, assertion[2].clone(), node));
-
-    Ok(PortableTest::Equal {
-        name,
-        expected,
-        actual,
-    })
+    Err(format!("{name}: test body must be `(assert condition)`"))
 }
 
 fn lower_test_error_form(

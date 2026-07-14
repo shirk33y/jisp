@@ -181,55 +181,58 @@
       "if and boolean forms do not evaluate dead divide-by-zero branches"
     ],
     [
-      "assert.equal",
+      "assert",
       [
-        "obj",
+        "=",
         [
-          "str",
-          "if-false"
-        ],
-        99,
-        [
-          "str",
-          "and-false"
-        ],
-        false,
-        [
-          "str",
-          "or-true"
-        ],
-        true
-      ],
-      [
-        "obj",
-        [
-          "str",
-          "if-false"
-        ],
-        [
-          "maybe-divide",
+          "obj",
+          [
+            "str",
+            "if-false"
+          ],
+          99,
+          [
+            "str",
+            "and-false"
+          ],
           false,
-          1,
-          0
+          [
+            "str",
+            "or-true"
+          ],
+          true
         ],
         [
-          "str",
-          "and-false"
-        ],
-        [
-          "divides-to-two",
-          4,
-          0
-        ],
-        [
-          "str",
-          "or-true"
-        ],
-        [
-          "prefer-cached",
-          true,
-          1,
-          0
+          "obj",
+          [
+            "str",
+            "if-false"
+          ],
+          [
+            "maybe-divide",
+            false,
+            1,
+            0
+          ],
+          [
+            "str",
+            "and-false"
+          ],
+          [
+            "divides-to-two",
+            4,
+            0
+          ],
+          [
+            "str",
+            "or-true"
+          ],
+          [
+            "prefer-cached",
+            true,
+            1,
+            0
+          ]
         ]
       ]
     ]
@@ -241,48 +244,15 @@
       "result callbacks are not evaluated on preserved branches"
     ],
     [
-      "assert.equal",
+      "assert",
       [
-        "obj",
+        "=",
         [
-          "str",
-          "map"
-        ],
-        [
-          "err",
+          "obj",
           [
             "str",
-            "nope"
-          ]
-        ],
-        [
-          "str",
-          "try"
-        ],
-        [
-          "err",
-          [
-            "str",
-            "nope"
-          ]
-        ],
-        [
-          "str",
-          "recover"
-        ],
-        [
-          "ok",
-          12
-        ]
-      ],
-      [
-        "obj",
-        [
-          "str",
-          "map"
-        ],
-        [
-          "result.map",
+            "map"
+          ],
           [
             "err",
             [
@@ -291,23 +261,9 @@
             ]
           ],
           [
-            "fn",
-            [
-              "value"
-            ],
-            [
-              "/",
-              "value",
-              0
-            ]
-          ]
-        ],
-        [
-          "str",
-          "try"
-        ],
-        [
-          "result.try",
+            "str",
+            "try"
+          ],
           [
             "err",
             [
@@ -316,41 +272,91 @@
             ]
           ],
           [
-            "fn",
+            "str",
+            "recover"
+          ],
+          [
+            "ok",
+            12
+          ]
+        ],
+        [
+          "obj",
+          [
+            "str",
+            "map"
+          ],
+          [
+            "result.map",
             [
-              "value"
+              "err",
+              [
+                "str",
+                "nope"
+              ]
             ],
             [
-              "ok",
+              "fn",
+              [
+                "value"
+              ],
               [
                 "/",
                 "value",
                 0
               ]
             ]
-          ]
-        ],
-        [
-          "str",
-          "recover"
-        ],
-        [
-          "result.recover",
-          [
-            "ok",
-            12
           ],
           [
-            "fn",
+            "str",
+            "try"
+          ],
+          [
+            "result.try",
             [
-              "message"
+              "err",
+              [
+                "str",
+                "nope"
+              ]
             ],
             [
-              "ok",
+              "fn",
               [
-                "/",
-                1,
-                0
+                "value"
+              ],
+              [
+                "ok",
+                [
+                  "/",
+                  "value",
+                  0
+                ]
+              ]
+            ]
+          ],
+          [
+            "str",
+            "recover"
+          ],
+          [
+            "result.recover",
+            [
+              "ok",
+              12
+            ],
+            [
+              "fn",
+              [
+                "message"
+              ],
+              [
+                "ok",
+                [
+                  "/",
+                  1,
+                  0
+                ]
               ]
             ]
           ]
@@ -365,117 +371,120 @@
       "unicode string length and slice use character boundaries"
     ],
     [
-      "assert.equal",
+      "assert",
       [
-        "obj",
-        [
-          "str",
-          "len"
-        ],
-        6,
-        [
-          "str",
-          "slice"
-        ],
-        [
-          "ok",
-          [
-            "str",
-            "żó"
-          ]
-        ],
-        [
-          "str",
-          "empty"
-        ],
-        [
-          "ok",
-          [
-            "str",
-            ""
-          ]
-        ],
-        [
-          "str",
-          "reverse"
-        ],
-        [
-          "err",
-          [
-            "str",
-            "string slice is out of bounds"
-          ]
-        ],
-        [
-          "str",
-          "negative"
-        ],
-        [
-          "err",
-          [
-            "str",
-            "string slice indices cannot be negative"
-          ]
-        ]
-      ],
-      [
-        "let",
-        [
-          "value",
-          [
-            "str",
-            "zażółć"
-          ]
-        ],
+        "=",
         [
           "obj",
           [
             "str",
             "len"
           ],
-          [
-            "str.len",
-            "value"
-          ],
+          6,
           [
             "str",
             "slice"
           ],
           [
-            "str.slice",
-            "value",
-            2,
-            4
+            "ok",
+            [
+              "str",
+              "żó"
+            ]
           ],
           [
             "str",
             "empty"
           ],
           [
-            "str.slice",
-            "value",
-            3,
-            3
+            "ok",
+            [
+              "str",
+              ""
+            ]
           ],
           [
             "str",
             "reverse"
           ],
           [
-            "str.slice",
-            "value",
-            4,
-            2
+            "err",
+            [
+              "str",
+              "string slice is out of bounds"
+            ]
           ],
           [
             "str",
             "negative"
           ],
           [
-            "str.slice",
+            "err",
+            [
+              "str",
+              "string slice indices cannot be negative"
+            ]
+          ]
+        ],
+        [
+          "let",
+          [
             "value",
-            -1,
-            2
+            [
+              "str",
+              "zażółć"
+            ]
+          ],
+          [
+            "obj",
+            [
+              "str",
+              "len"
+            ],
+            [
+              "str.len",
+              "value"
+            ],
+            [
+              "str",
+              "slice"
+            ],
+            [
+              "str.slice",
+              "value",
+              2,
+              4
+            ],
+            [
+              "str",
+              "empty"
+            ],
+            [
+              "str.slice",
+              "value",
+              3,
+              3
+            ],
+            [
+              "str",
+              "reverse"
+            ],
+            [
+              "str.slice",
+              "value",
+              4,
+              2
+            ],
+            [
+              "str",
+              "negative"
+            ],
+            [
+              "str.slice",
+              "value",
+              -1,
+              2
+            ]
           ]
         ]
       ]
@@ -488,64 +497,9 @@
       "list bounds distinguish negative reverse and empty-at-end slices"
     ],
     [
-      "assert.equal",
+      "assert",
       [
-        "obj",
-        [
-          "str",
-          "negative-get"
-        ],
-        [
-          "err",
-          [
-            "str",
-            "list index cannot be negative"
-          ]
-        ],
-        [
-          "str",
-          "negative-slice"
-        ],
-        [
-          "err",
-          [
-            "str",
-            "list slice indices cannot be negative"
-          ]
-        ],
-        [
-          "str",
-          "reverse-slice"
-        ],
-        [
-          "err",
-          [
-            "str",
-            "list slice is out of bounds"
-          ]
-        ],
-        [
-          "str",
-          "empty-at-end"
-        ],
-        [
-          "ok",
-          [
-            "list"
-          ]
-        ]
-      ],
-      [
-        "let",
-        [
-          "values",
-          [
-            "list",
-            1,
-            2,
-            3
-          ]
-        ],
+        "=",
         [
           "obj",
           [
@@ -553,39 +507,97 @@
             "negative-get"
           ],
           [
-            "list.get",
-            "values",
-            -1
+            "err",
+            [
+              "str",
+              "list index cannot be negative"
+            ]
           ],
           [
             "str",
             "negative-slice"
           ],
           [
-            "list.slice",
-            "values",
-            -1,
-            2
+            "err",
+            [
+              "str",
+              "list slice indices cannot be negative"
+            ]
           ],
           [
             "str",
             "reverse-slice"
           ],
           [
-            "list.slice",
-            "values",
-            2,
-            1
+            "err",
+            [
+              "str",
+              "list slice is out of bounds"
+            ]
           ],
           [
             "str",
             "empty-at-end"
           ],
           [
-            "list.slice",
+            "ok",
+            [
+              "list"
+            ]
+          ]
+        ],
+        [
+          "let",
+          [
             "values",
-            3,
-            3
+            [
+              "list",
+              1,
+              2,
+              3
+            ]
+          ],
+          [
+            "obj",
+            [
+              "str",
+              "negative-get"
+            ],
+            [
+              "list.get",
+              "values",
+              -1
+            ],
+            [
+              "str",
+              "negative-slice"
+            ],
+            [
+              "list.slice",
+              "values",
+              -1,
+              2
+            ],
+            [
+              "str",
+              "reverse-slice"
+            ],
+            [
+              "list.slice",
+              "values",
+              2,
+              1
+            ],
+            [
+              "str",
+              "empty-at-end"
+            ],
+            [
+              "list.slice",
+              "values",
+              3,
+              3
+            ]
           ]
         ]
       ]
@@ -598,84 +610,87 @@
       "variadic functions and rest patterns bind empty tails"
     ],
     [
-      "assert.equal",
+      "assert",
       [
-        "obj",
-        [
-          "str",
-          "function"
-        ],
+        "=",
         [
           "obj",
           [
             "str",
-            "head"
+            "function"
+          ],
+          [
+            "obj",
+            [
+              "str",
+              "head"
+            ],
+            [
+              "str",
+              "solo"
+            ],
+            [
+              "str",
+              "tail"
+            ],
+            [
+              "list"
+            ],
+            [
+              "str",
+              "tail-len"
+            ],
+            0
           ],
           [
             "str",
-            "solo"
+            "pattern"
           ],
           [
-            "str",
-            "tail"
-          ],
-          [
-            "list"
-          ],
-          [
-            "str",
-            "tail-len"
-          ],
-          0
-        ],
-        [
-          "str",
-          "pattern"
-        ],
-        [
-          "obj",
-          [
-            "str",
-            "first"
-          ],
-          10,
-          [
-            "str",
-            "second"
-          ],
-          20,
-          [
-            "str",
-            "tail"
-          ],
-          [
-            "list"
-          ]
-        ]
-      ],
-      [
-        "obj",
-        [
-          "str",
-          "function"
-        ],
-        [
-          "collect-tail",
-          [
-            "str",
-            "solo"
-          ]
-        ],
-        [
-          "str",
-          "pattern"
-        ],
-        [
-          "pair-tail",
-          [
-            "list",
+            "obj",
+            [
+              "str",
+              "first"
+            ],
             10,
-            20
+            [
+              "str",
+              "second"
+            ],
+            20,
+            [
+              "str",
+              "tail"
+            ],
+            [
+              "list"
+            ]
+          ]
+        ],
+        [
+          "obj",
+          [
+            "str",
+            "function"
+          ],
+          [
+            "collect-tail",
+            [
+              "str",
+              "solo"
+            ]
+          ],
+          [
+            "str",
+            "pattern"
+          ],
+          [
+            "pair-tail",
+            [
+              "list",
+              10,
+              20
+            ]
           ]
         ]
       ]
@@ -688,60 +703,44 @@
       "object updates keep order and missing deletes are no-ops"
     ],
     [
-      "assert.equal",
+      "assert",
       [
-        "obj",
-        [
-          "str",
-          "keys"
-        ],
-        [
-          "list",
-          [
-            "str",
-            "a"
-          ],
-          [
-            "str",
-            "b"
-          ],
-          [
-            "str",
-            "c"
-          ]
-        ],
-        [
-          "str",
-          "values"
-        ],
-        [
-          "list",
-          9,
-          22,
-          3
-        ],
-        [
-          "str",
-          "missing-delete"
-        ],
+        "=",
         [
           "obj",
           [
             "str",
-            "a"
+            "keys"
           ],
-          1,
+          [
+            "list",
+            [
+              "str",
+              "a"
+            ],
+            [
+              "str",
+              "b"
+            ],
+            [
+              "str",
+              "c"
+            ]
+          ],
           [
             "str",
-            "b"
+            "values"
           ],
-          2
-        ]
-      ],
-      [
-        "let",
-        [
-          "base",
+          [
+            "list",
+            9,
+            22,
+            3
+          ],
+          [
+            "str",
+            "missing-delete"
+          ],
           [
             "obj",
             [
@@ -754,62 +753,81 @@
               "b"
             ],
             2
-          ],
-          "updated",
-          [
-            "obj.set",
-            [
-              "obj.cat",
-              "base",
-              [
-                "obj",
-                [
-                  "str",
-                  "b"
-                ],
-                22,
-                [
-                  "str",
-                  "c"
-                ],
-                3
-              ]
-            ],
-            [
-              "str",
-              "a"
-            ],
-            9
           ]
         ],
         [
-          "obj",
+          "let",
           [
-            "str",
-            "keys"
-          ],
-          [
-            "obj.keys",
-            "updated"
-          ],
-          [
-            "str",
-            "values"
-          ],
-          [
-            "obj.values",
-            "updated"
-          ],
-          [
-            "str",
-            "missing-delete"
-          ],
-          [
-            "obj.del",
             "base",
             [
+              "obj",
+              [
+                "str",
+                "a"
+              ],
+              1,
+              [
+                "str",
+                "b"
+              ],
+              2
+            ],
+            "updated",
+            [
+              "obj.set",
+              [
+                "obj.cat",
+                "base",
+                [
+                  "obj",
+                  [
+                    "str",
+                    "b"
+                  ],
+                  22,
+                  [
+                    "str",
+                    "c"
+                  ],
+                  3
+                ]
+              ],
+              [
+                "str",
+                "a"
+              ],
+              9
+            ]
+          ],
+          [
+            "obj",
+            [
               "str",
-              "missing"
+              "keys"
+            ],
+            [
+              "obj.keys",
+              "updated"
+            ],
+            [
+              "str",
+              "values"
+            ],
+            [
+              "obj.values",
+              "updated"
+            ],
+            [
+              "str",
+              "missing-delete"
+            ],
+            [
+              "obj.del",
+              "base",
+              [
+                "str",
+                "missing"
+              ]
             ]
           ]
         ]

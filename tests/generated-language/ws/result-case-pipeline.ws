@@ -22,7 +22,8 @@ def finish
           + value 2
 
 test "case dispatch and result propagation"
-  assert.equal
-    ok 43
-    finish
-      cached 41
+  assert
+    =
+      ok 43
+      finish
+        cached 41

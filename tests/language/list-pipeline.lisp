@@ -7,11 +7,11 @@
     (+ value 1)))
 
 (test "map, filter, and fold compose"
-  (assert.equal
+  (assert (=
     12
     (list.fold
       (fn (total value) (+ total value))
       0
       (list.filter
         (fn (value) (> value 2))
-        (list.map inc (numbers))))))
+        (list.map inc (numbers)))))))

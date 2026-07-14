@@ -26,19 +26,22 @@ def rest-pattern
       _ 0
 
 test "ws layout continuation preserves parent source order"
-  assert.equal
-    obj "kind" "nested"
-      ... "value" (list 3 7 11)
-      ... "tail-a" "A"
-      ... "tail-b" "B"
-      ... "done" (list "done")
-    (continuation-order-sample)
+  assert
+    =
+      obj "kind" "nested"
+        ... "value" (list 3 7 11)
+        ... "tail-a" "A"
+        ... "tail-b" "B"
+        ... "done" (list "done")
+      (continuation-order-sample)
 
 test "ws inline ellipsis remains rest parameter syntax"
-  assert.equal 6
-    inline-rest-params "head" "a" "b"
+  assert
+    = 6
+      inline-rest-params "head" "a" "b"
 
 test "ws inline ellipsis remains rest pattern syntax"
-  assert.equal 5
-    rest-pattern
-      list 1 2 3 4
+  assert
+    = 5
+      rest-pattern
+        list 1 2 3 4

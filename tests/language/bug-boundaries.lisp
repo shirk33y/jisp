@@ -31,7 +31,7 @@
       (_ (obj "first" 0 "second" 0 "tail" (list))))))
 
 (test "if and boolean forms do not evaluate dead divide-by-zero branches"
-  (assert.equal
+  (assert (=
     (obj
       "if-false" 99
       "and-false" false
@@ -39,10 +39,10 @@
     (obj
       "if-false" (maybe-divide false 1 0)
       "and-false" (divides-to-two 4 0)
-      "or-true" (prefer-cached true 1 0))))
+      "or-true" (prefer-cached true 1 0)))))
 
 (test "result callbacks are not evaluated on preserved branches"
-  (assert.equal
+  (assert (=
     (obj
       "map" (err "nope")
       "try" (err "nope")
@@ -59,10 +59,10 @@
       "recover" (result.recover
         (ok 12)
         (fn (message)
-          (ok (/ 1 0)))))))
+          (ok (/ 1 0))))))))
 
 (test "unicode string length and slice use character boundaries"
-  (assert.equal
+  (assert (=
     (obj
       "len" 6
       "slice" (ok "żó")
@@ -75,10 +75,10 @@
         "slice" (str.slice value 2 4)
         "empty" (str.slice value 3 3)
         "reverse" (str.slice value 4 2)
-        "negative" (str.slice value -1 2)))))
+        "negative" (str.slice value -1 2))))))
 
 (test "list bounds distinguish negative reverse and empty-at-end slices"
-  (assert.equal
+  (assert (=
     (obj
       "negative-get" (err "list index cannot be negative")
       "negative-slice" (err "list slice indices cannot be negative")
@@ -89,19 +89,19 @@
         "negative-get" (list.get values -1)
         "negative-slice" (list.slice values -1 2)
         "reverse-slice" (list.slice values 2 1)
-        "empty-at-end" (list.slice values 3 3)))))
+        "empty-at-end" (list.slice values 3 3))))))
 
 (test "variadic functions and rest patterns bind empty tails"
-  (assert.equal
+  (assert (=
     (obj
       "function" (obj "head" "solo" "tail" (list) "tail-len" 0)
       "pattern" (obj "first" 10 "second" 20 "tail" (list)))
     (obj
       "function" (collect-tail "solo")
-      "pattern" (pair-tail (list 10 20)))))
+      "pattern" (pair-tail (list 10 20))))))
 
 (test "object updates keep order and missing deletes are no-ops"
-  (assert.equal
+  (assert (=
     (obj
       "keys" (list "a" "b" "c")
       "values" (list 9 22 3)
@@ -114,4 +114,4 @@
       (obj
         "keys" (obj.keys updated)
         "values" (obj.values updated)
-        "missing-delete" (obj.del base "missing")))))
+        "missing-delete" (obj.del base "missing"))))))

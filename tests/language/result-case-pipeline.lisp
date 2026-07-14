@@ -18,6 +18,6 @@
       (fn (value) (ok (+ value 2))))))
 
 (test "case dispatch and result propagation"
-  (assert.equal
+  (assert (=
     (ok 43)
-    (finish (cached 41))))
+    (finish (cached 41)))))

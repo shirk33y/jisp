@@ -25,33 +25,33 @@
       (+ start 7))))
 
 (test "let bindings are sequential and inner scopes shadow"
-  (assert.equal
+  (assert (=
     15
-    (shadow-score 5)))
+    (shadow-score 5))))
 
 (test "do returns the last expression"
-  (assert.equal
+  (assert (=
     10
-    (run-steps 3)))
+    (run-steps 3))))
 
 (test "boolean forms compose inside conditionals"
-  (assert.equal
+  (assert (=
     (list "large" "maybe" "small")
     (list
       (select-label true 12)
       (select-label true 4)
-      (select-label false 4))))
+      (select-label false 4)))))
 
 (test "not only flips boolean truth"
-  (assert.equal
+  (assert (=
     (list true false)
-    (list (not false) (not true))))
+    (list (not false) (not true)))))
 
 (test "only false and null are falsey"
-  (assert.equal
+  (assert (=
     (list "truthy" "truthy" "falsey" "falsey")
     (list
       (describe-truth 0)
       (describe-truth "")
       (describe-truth false)
-      (describe-truth null))))
+      (describe-truth null)))))

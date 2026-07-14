@@ -7,7 +7,7 @@
     (str.from value)))
 
 (test "bigint constructor preserves values beyond int range"
-  (assert.equal
+  (assert (=
     (obj
       "value" "32849384983498230592309502398509388908203986232306"
       "negative" "-9223372036854775809"
@@ -15,10 +15,10 @@
     (obj
       "value" (decimal (huge "32849384983498230592309502398509388908203986232306"))
       "negative" (decimal (huge "-9223372036854775809"))
-      "equal" (= (huge "9223372036854775808") (huge "9223372036854775808")))))
+      "equal" (= (huge "9223372036854775808") (huge "9223372036854775808"))))))
 
 (test "bigint arithmetic stays arbitrary precision"
-  (assert.equal
+  (assert (=
     (obj
       "sum" "1000000000000000000000000000003"
       "diff" "999999999999999999999999999997"
@@ -30,10 +30,10 @@
         "sum" (decimal (+ left right))
         "diff" (decimal (- left right))
         "product" (decimal (* left right))
-        "quotient" (decimal (/ left right))))))
+        "quotient" (decimal (/ left right)))))))
 
 (test "bigint euclidean division and modulo match int semantics"
-  (assert.equal
+  (assert (=
     (obj
       "neg-div" "-3"
       "neg-mod" "2"
@@ -46,10 +46,10 @@
         "neg-div" (decimal (// negative divisor))
         "neg-mod" (decimal (% negative divisor))
         "pos-div" (decimal (// positive divisor))
-        "pos-mod" (decimal (% positive divisor))))))
+        "pos-mod" (decimal (% positive divisor)))))))
 
 (test "bigint comparisons and math helpers use bigint ordering"
-  (assert.equal
+  (assert (=
     (obj
       "less" true
       "greater" true
@@ -63,10 +63,10 @@
         "greater" (> large small)
         "min" (decimal (math.min small large))
         "max" (decimal (math.max small large))
-        "abs" (decimal (math.abs (huge "-9223372036854775809")))))))
+        "abs" (decimal (math.abs (huge "-9223372036854775809"))))))))
 
 (test "bigints compose inside lists objects and conditionals"
-  (assert.equal
+  (assert (=
     (obj
       "first" (ok (bigint "9223372036854775808"))
       "has" true
@@ -78,4 +78,4 @@
         "has" (list.has values value)
         "branch" (if (> value (huge "0"))
           "large"
-          "zero")))))
+          "zero"))))))

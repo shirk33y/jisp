@@ -14,7 +14,9 @@
 //! Every assertion first checks that the reference component value and the
 //! compiled JUIR execution are structurally equal. The narrow accessor set is
 //! intentional: it gives tests stable, portable observations now and leaves a
-//! future browser E2E host free to replay the same action trace.
+//! future browser E2E host free to replay the same action trace. Tests can
+//! also inspect the commands and subscriptions declared by the most recent
+//! dispatch without executing a host capability.
 
 use jisp_core::{Node, Span};
 use jisp_eval::{normalize_update_result, Evaluator, Value};
@@ -53,6 +55,8 @@ enum UiTestActual {
     State,
     Html,
     Tree,
+    Commands,
+    Subscriptions,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -215,7 +219,7 @@ fn parse_assert(name: &str, node: &Node, items: &[Node]) -> Result<UiTestStep, U
     })?;
     if equal.len() != 3 || equal.first().and_then(Node::as_symbol) != Some("=") {
         return Err(UiTestError(format!(
-            "{name}: ui.test assertions must use `(assert (= expected (ui.test.state|html|tree)))`"
+            "{name}: ui.test assertions must use `(assert (= expected (ui.test.state|html|tree|commands|subscriptions)))`"
         )));
     }
     let left = actual_accessor(&equal[1]);
@@ -245,6 +249,8 @@ fn actual_accessor(node: &Node) -> Option<UiTestActual> {
         Some("ui.test.state") => Some(UiTestActual::State),
         Some("ui.test.html") => Some(UiTestActual::Html),
         Some("ui.test.tree") => Some(UiTestActual::Tree),
+        Some("ui.test.commands") => Some(UiTestActual::Commands),
+        Some("ui.test.subscriptions") => Some(UiTestActual::Subscriptions),
         _ => None,
     }
 }
@@ -330,6 +336,8 @@ fn run_one(
     app_span: Span,
 ) -> UiTestOutcome {
     let mut state = init.clone();
+    let mut commands = vec![];
+    let mut subscriptions = vec![];
     let mut assertions = 0;
     for step in &test.steps {
         let result = match step {
@@ -343,7 +351,11 @@ fn run_one(
                     .and_then(|result| {
                         normalize_update_result(result, *span).map_err(runtime_error)
                     })
-                    .map(|result| state = result.state)
+                    .map(|result| {
+                        commands = result.commands;
+                        subscriptions = result.subscriptions;
+                        state = result.state;
+                    })
             }
             PreparedStep::Assert {
                 expected,
@@ -360,6 +372,8 @@ fn run_one(
                         UiTestActual::State => state.clone(),
                         UiTestActual::Html => rendered.html,
                         UiTestActual::Tree => rendered.tree,
+                        UiTestActual::Commands => Value::List(commands.clone()),
+                        UiTestActual::Subscriptions => Value::List(subscriptions.clone()),
                     };
                     let equal = expected
                         .structurally_equal(&actual)

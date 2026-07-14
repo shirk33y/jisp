@@ -247,11 +247,14 @@ Fixture-only `ui.test` scenarios exercise the declared `ui.app` without a DOM:
 ```
 
 `dispatch` sends a plain Jisp action to `update`. Assertions observe the next
-state, static HTML, or the renderer-neutral `ui.test.tree`; each observation
-also verifies that the reference component value and JUIR agree. These forms
-are removed before an app is rendered, and the same runner is available from
-the playground's **Run tests** button. See [TESTING.md](TESTING.md) for fixture
-locations and cross-syntax generation.
+state, static HTML, renderer-neutral `ui.test.tree`, or the commands and
+subscriptions declared by the most recent dispatch through
+`ui.test.commands` and `ui.test.subscriptions`. Resource assertions do not
+execute capabilities. Each observation also verifies that the reference
+component value and JUIR agree. These forms are removed before an app is
+rendered, and the same runner is available from the playground's **Run tests**
+button. See [TESTING.md](TESTING.md) for fixture locations and cross-syntax
+generation.
 
 This is a declarative UI language with a deliberately small interactive host
 contract, not yet a React-equivalent runtime. Effect/lifecycle semantics,

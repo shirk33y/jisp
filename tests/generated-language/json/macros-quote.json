@@ -94,44 +94,9 @@
       "portable runner expands quote and user macros before lowering"
     ],
     [
-      "assert.equal",
+      "assert",
       [
-        "obj",
-        [
-          "str",
-          "unless"
-        ],
-        [
-          "str",
-          "chosen"
-        ],
-        [
-          "str",
-          "hygiene"
-        ],
-        42,
-        [
-          "str",
-          "quote"
-        ],
-        [
-          "list",
-          [
-            "str",
-            "left"
-          ],
-          [
-            "str",
-            "right"
-          ]
-        ]
-      ],
-      [
-        "let",
-        [
-          "value",
-          42
-        ],
+        "=",
         [
           "obj",
           [
@@ -139,33 +104,71 @@
             "unless"
           ],
           [
-            "unless",
-            false,
-            [
-              "str",
-              "chosen"
-            ],
-            [
-              "str",
-              "skipped"
-            ]
+            "str",
+            "chosen"
           ],
           [
             "str",
             "hygiene"
           ],
-          [
-            "preserve-caller",
-            "value"
-          ],
+          42,
           [
             "str",
             "quote"
           ],
           [
-            "pair",
-            1,
-            2
+            "list",
+            [
+              "str",
+              "left"
+            ],
+            [
+              "str",
+              "right"
+            ]
+          ]
+        ],
+        [
+          "let",
+          [
+            "value",
+            42
+          ],
+          [
+            "obj",
+            [
+              "str",
+              "unless"
+            ],
+            [
+              "unless",
+              false,
+              [
+                "str",
+                "chosen"
+              ],
+              [
+                "str",
+                "skipped"
+              ]
+            ],
+            [
+              "str",
+              "hygiene"
+            ],
+            [
+              "preserve-caller",
+              "value"
+            ],
+            [
+              "str",
+              "quote"
+            ],
+            [
+              "pair",
+              1,
+              2
+            ]
           ]
         ]
       ]

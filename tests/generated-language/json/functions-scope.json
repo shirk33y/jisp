@@ -117,14 +117,17 @@
       "closures capture lexical bindings"
     ],
     [
-      "assert.equal",
-      18,
+      "assert",
       [
+        "=",
+        18,
         [
-          "make-adder",
-          11
-        ],
-        7
+          [
+            "make-adder",
+            11
+          ],
+          7
+        ]
       ]
     ]
   ],
@@ -135,15 +138,18 @@
       "higher order functions accept returned closures"
     ],
     [
-      "assert.equal",
-      14,
+      "assert",
       [
-        "apply-twice",
+        "=",
+        14,
         [
-          "make-adder",
-          4
-        ],
-        6
+          "apply-twice",
+          [
+            "make-adder",
+            4
+          ],
+          6
+        ]
       ]
     ]
   ],
@@ -154,20 +160,23 @@
       "variadic functions bind remaining arguments as a list"
     ],
     [
-      "assert.equal",
+      "assert",
       [
-        "list",
-        1,
-        2,
-        3,
-        4
-      ],
-      [
-        "pack",
-        1,
-        2,
-        3,
-        4
+        "=",
+        [
+          "list",
+          1,
+          2,
+          3,
+          4
+        ],
+        [
+          "pack",
+          1,
+          2,
+          3,
+          4
+        ]
       ]
     ]
   ],
@@ -178,11 +187,14 @@
       "recursive definitions work with typed modules"
     ],
     [
-      "assert.equal",
-      720,
+      "assert",
       [
-        "fact",
-        6
+        "=",
+        720,
+        [
+          "fact",
+          6
+        ]
       ]
     ]
   ],
@@ -193,17 +205,20 @@
       "folded helper keeps accumulator and item types distinct"
     ],
     [
-      "assert.equal",
-      15,
+      "assert",
       [
-        "sum-list",
+        "=",
+        15,
         [
-          "list",
-          1,
-          2,
-          3,
-          4,
-          5
+          "sum-list",
+          [
+            "list",
+            1,
+            2,
+            3,
+            4,
+            5
+          ]
         ]
       ]
     ]

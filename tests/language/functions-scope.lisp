@@ -25,26 +25,26 @@
     (* n (fact (- n 1)))))
 
 (test "closures capture lexical bindings"
-  (assert.equal
+  (assert (=
     18
-    ((make-adder 11) 7)))
+    ((make-adder 11) 7))))
 
 (test "higher order functions accept returned closures"
-  (assert.equal
+  (assert (=
     14
-    (apply-twice (make-adder 4) 6)))
+    (apply-twice (make-adder 4) 6))))
 
 (test "variadic functions bind remaining arguments as a list"
-  (assert.equal
+  (assert (=
     (list 1 2 3 4)
-    (pack 1 2 3 4)))
+    (pack 1 2 3 4))))
 
 (test "recursive definitions work with typed modules"
-  (assert.equal
+  (assert (=
     720
-    (fact 6)))
+    (fact 6))))
 
 (test "folded helper keeps accumulator and item types distinct"
-  (assert.equal
+  (assert (=
     15
-    (sum-list (list 1 2 3 4 5))))
+    (sum-list (list 1 2 3 4 5)))))

@@ -136,57 +136,60 @@
       "ws layout continuation preserves parent source order"
     ],
     [
-      "assert.equal",
+      "assert",
       [
-        "obj",
+        "=",
         [
-          "str",
-          "kind"
-        ],
-        [
-          "str",
-          "nested"
-        ],
-        [
-          "str",
-          "value"
-        ],
-        [
-          "list",
-          3,
-          7,
-          11
-        ],
-        [
-          "str",
-          "tail-a"
-        ],
-        [
-          "str",
-          "A"
-        ],
-        [
-          "str",
-          "tail-b"
-        ],
-        [
-          "str",
-          "B"
-        ],
-        [
-          "str",
-          "done"
-        ],
-        [
-          "list",
+          "obj",
+          [
+            "str",
+            "kind"
+          ],
+          [
+            "str",
+            "nested"
+          ],
+          [
+            "str",
+            "value"
+          ],
+          [
+            "list",
+            3,
+            7,
+            11
+          ],
+          [
+            "str",
+            "tail-a"
+          ],
+          [
+            "str",
+            "A"
+          ],
+          [
+            "str",
+            "tail-b"
+          ],
+          [
+            "str",
+            "B"
+          ],
           [
             "str",
             "done"
+          ],
+          [
+            "list",
+            [
+              "str",
+              "done"
+            ]
           ]
+        ],
+        [
+          "continuation-order-sample"
         ]
-      ],
-      [
-        "continuation-order-sample"
       ]
     ]
   ],
@@ -197,21 +200,24 @@
       "ws inline ellipsis remains rest parameter syntax"
     ],
     [
-      "assert.equal",
-      6,
+      "assert",
       [
-        "inline-rest-params",
+        "=",
+        6,
         [
-          "str",
-          "head"
-        ],
-        [
-          "str",
-          "a"
-        ],
-        [
-          "str",
-          "b"
+          "inline-rest-params",
+          [
+            "str",
+            "head"
+          ],
+          [
+            "str",
+            "a"
+          ],
+          [
+            "str",
+            "b"
+          ]
         ]
       ]
     ]
@@ -223,16 +229,19 @@
       "ws inline ellipsis remains rest pattern syntax"
     ],
     [
-      "assert.equal",
-      5,
+      "assert",
       [
-        "rest-pattern",
+        "=",
+        5,
         [
-          "list",
-          1,
-          2,
-          3,
-          4
+          "rest-pattern",
+          [
+            "list",
+            1,
+            2,
+            3,
+            4
+          ]
         ]
       ]
     ]

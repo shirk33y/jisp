@@ -294,72 +294,75 @@
       "field access reads statically known object keys"
     ],
     [
-      "assert.equal",
+      "assert",
       [
-        "obj",
-        [
-          "str",
-          "id"
-        ],
-        7,
-        [
-          "str",
-          "name"
-        ],
-        [
-          "str",
-          "Ada"
-        ],
-        [
-          "str",
-          "active"
-        ],
-        true
-      ],
-      [
-        "let",
-        [
-          "user",
-          [
-            "base-user"
-          ]
-        ],
+        "=",
         [
           "obj",
           [
             "str",
             "id"
           ],
-          [
-            ".",
-            "user",
-            [
-              "str",
-              "id"
-            ]
-          ],
+          7,
           [
             "str",
             "name"
           ],
           [
-            ".",
-            "user",
-            [
-              "str",
-              "name"
-            ]
+            "str",
+            "Ada"
           ],
           [
             "str",
             "active"
           ],
+          true
+        ],
+        [
+          "let",
           [
-            ".",
             "user",
+            [
+              "base-user"
+            ]
+          ],
+          [
+            "obj",
+            [
+              "str",
+              "id"
+            ],
+            [
+              ".",
+              "user",
+              [
+                "str",
+                "id"
+              ]
+            ],
+            [
+              "str",
+              "name"
+            ],
+            [
+              ".",
+              "user",
+              [
+                "str",
+                "name"
+              ]
+            ],
             [
               "str",
               "active"
+            ],
+            [
+              ".",
+              "user",
+              [
+                "str",
+                "active"
+              ]
             ]
           ]
         ]
@@ -373,53 +376,9 @@
       "object set and delete are immutable data transforms"
     ],
     [
-      "assert.equal",
+      "assert",
       [
-        "obj",
-        [
-          "str",
-          "original"
-        ],
-        [
-          "str",
-          "Ada"
-        ],
-        [
-          "str",
-          "renamed"
-        ],
-        [
-          "str",
-          "Grace"
-        ],
-        [
-          "str",
-          "has-score"
-        ],
-        false
-      ],
-      [
-        "let",
-        [
-          "original",
-          [
-            "base-user"
-          ],
-          "renamed",
-          [
-            "rename-user",
-            "original",
-            [
-              "str",
-              "Grace"
-            ]
-          ],
-          "public",
-          [
-            "public-user",
-            "renamed"
-          ]
-        ],
+        "=",
         [
           "obj",
           [
@@ -427,35 +386,82 @@
             "original"
           ],
           [
-            ".",
-            "original",
-            [
-              "str",
-              "name"
-            ]
+            "str",
+            "Ada"
           ],
           [
             "str",
             "renamed"
           ],
           [
-            ".",
-            "renamed",
-            [
-              "str",
-              "name"
-            ]
+            "str",
+            "Grace"
           ],
           [
             "str",
             "has-score"
           ],
+          false
+        ],
+        [
+          "let",
           [
-            "obj.has",
+            "original",
+            [
+              "base-user"
+            ],
+            "renamed",
+            [
+              "rename-user",
+              "original",
+              [
+                "str",
+                "Grace"
+              ]
+            ],
             "public",
             [
+              "public-user",
+              "renamed"
+            ]
+          ],
+          [
+            "obj",
+            [
               "str",
-              "score"
+              "original"
+            ],
+            [
+              ".",
+              "original",
+              [
+                "str",
+                "name"
+              ]
+            ],
+            [
+              "str",
+              "renamed"
+            ],
+            [
+              ".",
+              "renamed",
+              [
+                "str",
+                "name"
+              ]
+            ],
+            [
+              "str",
+              "has-score"
+            ],
+            [
+              "obj.has",
+              "public",
+              [
+                "str",
+                "score"
+              ]
             ]
           ]
         ]
@@ -469,45 +475,48 @@
       "object get returns ok and missing key err values"
     ],
     [
-      "assert.equal",
+      "assert",
       [
-        "list",
-        [
-          "ok",
-          41
-        ],
-        [
-          "err",
-          [
-            "str",
-            "object has no key `missing`"
-          ]
-        ]
-      ],
-      [
-        "let",
-        [
-          "user",
-          [
-            "base-user"
-          ]
-        ],
+        "=",
         [
           "list",
           [
-            "obj.get",
-            "user",
+            "ok",
+            41
+          ],
+          [
+            "err",
             [
               "str",
-              "score"
+              "object has no key `missing`"
+            ]
+          ]
+        ],
+        [
+          "let",
+          [
+            "user",
+            [
+              "base-user"
             ]
           ],
           [
-            "obj.get",
-            "user",
+            "list",
             [
-              "str",
-              "missing"
+              "obj.get",
+              "user",
+              [
+                "str",
+                "score"
+              ]
+            ],
+            [
+              "obj.get",
+              "user",
+              [
+                "str",
+                "missing"
+              ]
             ]
           ]
         ]
@@ -521,33 +530,9 @@
       "object cat overlays later keys"
     ],
     [
-      "assert.equal",
+      "assert",
       [
-        "obj",
-        [
-          "str",
-          "name"
-        ],
-        [
-          "str",
-          "Ada"
-        ],
-        [
-          "str",
-          "role"
-        ],
-        [
-          "str",
-          "admin"
-        ],
-        [
-          "str",
-          "active"
-        ],
-        false
-      ],
-      [
-        "obj.cat",
+        "=",
         [
           "obj",
           [
@@ -564,17 +549,6 @@
           ],
           [
             "str",
-            "guest"
-          ]
-        ],
-        [
-          "obj",
-          [
-            "str",
-            "role"
-          ],
-          [
-            "str",
             "admin"
           ],
           [
@@ -582,6 +556,44 @@
             "active"
           ],
           false
+        ],
+        [
+          "obj.cat",
+          [
+            "obj",
+            [
+              "str",
+              "name"
+            ],
+            [
+              "str",
+              "Ada"
+            ],
+            [
+              "str",
+              "role"
+            ],
+            [
+              "str",
+              "guest"
+            ]
+          ],
+          [
+            "obj",
+            [
+              "str",
+              "role"
+            ],
+            [
+              "str",
+              "admin"
+            ],
+            [
+              "str",
+              "active"
+            ],
+            false
+          ]
         ]
       ]
     ]
@@ -593,62 +605,9 @@
       "object keys and values preserve insertion order"
     ],
     [
-      "assert.equal",
+      "assert",
       [
-        "obj",
-        [
-          "str",
-          "keys"
-        ],
-        [
-          "list",
-          [
-            "str",
-            "first"
-          ],
-          [
-            "str",
-            "second"
-          ],
-          [
-            "str",
-            "third"
-          ]
-        ],
-        [
-          "str",
-          "values"
-        ],
-        [
-          "list",
-          1,
-          2,
-          3
-        ]
-      ],
-      [
-        "let",
-        [
-          "value",
-          [
-            "obj",
-            [
-              "str",
-              "first"
-            ],
-            1,
-            [
-              "str",
-              "second"
-            ],
-            2,
-            [
-              "str",
-              "third"
-            ],
-            3
-          ]
-        ],
+        "=",
         [
           "obj",
           [
@@ -656,16 +615,72 @@
             "keys"
           ],
           [
-            "obj.keys",
-            "value"
+            "list",
+            [
+              "str",
+              "first"
+            ],
+            [
+              "str",
+              "second"
+            ],
+            [
+              "str",
+              "third"
+            ]
           ],
           [
             "str",
             "values"
           ],
           [
-            "obj.values",
-            "value"
+            "list",
+            1,
+            2,
+            3
+          ]
+        ],
+        [
+          "let",
+          [
+            "value",
+            [
+              "obj",
+              [
+                "str",
+                "first"
+              ],
+              1,
+              [
+                "str",
+                "second"
+              ],
+              2,
+              [
+                "str",
+                "third"
+              ],
+              3
+            ]
+          ],
+          [
+            "obj",
+            [
+              "str",
+              "keys"
+            ],
+            [
+              "obj.keys",
+              "value"
+            ],
+            [
+              "str",
+              "values"
+            ],
+            [
+              "obj.values",
+              "value"
+            ]
           ]
         ]
       ]
@@ -678,77 +693,80 @@
       "homogeneous objects convert explicitly to dynamic maps"
     ],
     [
-      "assert.equal",
+      "assert",
       [
-        "obj",
-        [
-          "str",
-          "has-primary"
-        ],
-        false,
-        [
-          "str",
-          "secondary"
-        ],
-        [
-          "ok",
-          2
-        ]
-      ],
-      [
-        "let",
-        [
-          "scores",
-          [
-            "obj.to-map",
-            [
-              "obj",
-              [
-                "str",
-                "primary"
-              ],
-              1,
-              [
-                "str",
-                "secondary"
-              ],
-              2
-            ]
-          ],
-          "without-primary",
-          [
-            "map.del",
-            "scores",
-            [
-              "str",
-              "primary"
-            ]
-          ]
-        ],
+        "=",
         [
           "obj",
           [
             "str",
             "has-primary"
           ],
-          [
-            "map.has",
-            "without-primary",
-            [
-              "str",
-              "primary"
-            ]
-          ],
+          false,
           [
             "str",
             "secondary"
           ],
           [
-            "map.get",
+            "ok",
+            2
+          ]
+        ],
+        [
+          "let",
+          [
+            "scores",
+            [
+              "obj.to-map",
+              [
+                "obj",
+                [
+                  "str",
+                  "primary"
+                ],
+                1,
+                [
+                  "str",
+                  "secondary"
+                ],
+                2
+              ]
+            ],
             "without-primary",
+            [
+              "map.del",
+              "scores",
+              [
+                "str",
+                "primary"
+              ]
+            ]
+          ],
+          [
+            "obj",
+            [
+              "str",
+              "has-primary"
+            ],
+            [
+              "map.has",
+              "without-primary",
+              [
+                "str",
+                "primary"
+              ]
+            ],
             [
               "str",
               "secondary"
+            ],
+            [
+              "map.get",
+              "without-primary",
+              [
+                "str",
+                "secondary"
+              ]
             ]
           ]
         ]
@@ -762,48 +780,51 @@
       "object patterns refine boolean fields"
     ],
     [
-      "assert.equal",
+      "assert",
       [
-        "list",
+        "=",
         [
-          "str",
-          "Ada:41:active"
-        ],
-        [
-          "str",
-          "Lin:inactive"
-        ]
-      ],
-      [
-        "list",
-        [
-          "summarize-user",
+          "list",
           [
-            "base-user"
+            "str",
+            "Ada:41:active"
+          ],
+          [
+            "str",
+            "Lin:inactive"
           ]
         ],
         [
-          "summarize-user",
+          "list",
           [
-            "obj",
+            "summarize-user",
             [
-              "str",
-              "name"
-            ],
+              "base-user"
+            ]
+          ],
+          [
+            "summarize-user",
             [
-              "str",
-              "Lin"
-            ],
-            [
-              "str",
-              "active"
-            ],
-            false,
-            [
-              "str",
-              "score"
-            ],
-            9
+              "obj",
+              [
+                "str",
+                "name"
+              ],
+              [
+                "str",
+                "Lin"
+              ],
+              [
+                "str",
+                "active"
+              ],
+              false,
+              [
+                "str",
+                "score"
+              ],
+              9
+            ]
           ]
         ]
       ]
@@ -816,93 +837,96 @@
       "ui shaped objects keep utility classes as boolean maps"
     ],
     [
-      "assert.equal",
+      "assert",
       [
-        "obj",
-        [
-          "str",
-          "tag"
-        ],
-        [
-          "str",
-          "button"
-        ],
-        [
-          "str",
-          "class"
-        ],
+        "=",
         [
           "obj",
           [
             "str",
-            "px-2"
-          ],
-          true,
-          [
-            "str",
-            "opacity-50"
-          ],
-          false,
-          [
-            "str",
-            "text-green"
-          ],
-          true
-        ],
-        [
-          "str",
-          "attrs"
-        ],
-        [
-          "obj",
-          [
-            "str",
-            "id"
+            "tag"
           ],
           [
             "str",
-            "user-7"
+            "button"
           ],
           [
             "str",
-            "title"
+            "class"
           ],
-          [
-            "str",
-            "Ada"
-          ]
-        ],
-        [
-          "str",
-          "children"
-        ],
-        [
-          "list",
           [
             "obj",
             [
               "str",
-              "tag"
+              "px-2"
+            ],
+            true,
+            [
+              "str",
+              "opacity-50"
+            ],
+            false,
+            [
+              "str",
+              "text-green"
+            ],
+            true
+          ],
+          [
+            "str",
+            "attrs"
+          ],
+          [
+            "obj",
+            [
+              "str",
+              "id"
             ],
             [
               "str",
-              "text"
+              "user-7"
             ],
             [
               "str",
-              "value"
+              "title"
             ],
             [
               "str",
               "Ada"
             ]
+          ],
+          [
+            "str",
+            "children"
+          ],
+          [
+            "list",
+            [
+              "obj",
+              [
+                "str",
+                "tag"
+              ],
+              [
+                "str",
+                "text"
+              ],
+              [
+                "str",
+                "value"
+              ],
+              [
+                "str",
+                "Ada"
+              ]
+            ]
           ]
-        ]
-      ],
-      [
-        "button-view",
+        ],
         [
-          "base-user"
+          "button-view",
+          [
+            "base-user"
+          ]
         ]
       ]
     ]

@@ -201,47 +201,50 @@
       "list shape helpers return values and result edges"
     ],
     [
-      "assert.equal",
+      "assert",
       [
-        "obj",
+        "=",
         [
-          "str",
-          "len"
+          "obj",
+          [
+            "str",
+            "len"
+          ],
+          3,
+          [
+            "str",
+            "first"
+          ],
+          [
+            "ok",
+            4
+          ],
+          [
+            "str",
+            "last"
+          ],
+          [
+            "ok",
+            8
+          ],
+          [
+            "str",
+            "rest"
+          ],
+          [
+            "list",
+            6,
+            8
+          ]
         ],
-        3,
         [
-          "str",
-          "first"
-        ],
-        [
-          "ok",
-          4
-        ],
-        [
-          "str",
-          "last"
-        ],
-        [
-          "ok",
-          8
-        ],
-        [
-          "str",
-          "rest"
-        ],
-        [
-          "list",
-          6,
-          8
-        ]
-      ],
-      [
-        "summarize-list",
-        [
-          "list",
-          4,
-          6,
-          8
+          "summarize-list",
+          [
+            "list",
+            4,
+            6,
+            8
+          ]
         ]
       ]
     ]
@@ -253,48 +256,51 @@
       "empty list first and last return err values"
     ],
     [
-      "assert.equal",
+      "assert",
       [
-        "obj",
+        "=",
         [
-          "str",
-          "len"
-        ],
-        0,
-        [
-          "str",
-          "first"
-        ],
-        [
-          "err",
+          "obj",
           [
             "str",
-            "list is empty"
+            "len"
+          ],
+          0,
+          [
+            "str",
+            "first"
+          ],
+          [
+            "err",
+            [
+              "str",
+              "list is empty"
+            ]
+          ],
+          [
+            "str",
+            "last"
+          ],
+          [
+            "err",
+            [
+              "str",
+              "list is empty"
+            ]
+          ],
+          [
+            "str",
+            "rest"
+          ],
+          [
+            "list"
           ]
         ],
         [
-          "str",
-          "last"
-        ],
-        [
-          "err",
+          "summarize-list",
           [
-            "str",
-            "list is empty"
+            "list"
           ]
-        ],
-        [
-          "str",
-          "rest"
-        ],
-        [
-          "list"
-        ]
-      ],
-      [
-        "summarize-list",
-        [
-          "list"
         ]
       ]
     ]
@@ -306,86 +312,89 @@
       "list get and slice report bounds as result values"
     ],
     [
-      "assert.equal",
+      "assert",
       [
-        "obj",
+        "=",
         [
-          "str",
-          "hit"
-        ],
-        [
-          "ok",
-          20
-        ],
-        [
-          "str",
-          "miss"
-        ],
-        [
-          "err",
+          "obj",
           [
             "str",
-            "list index is out of bounds"
-          ]
-        ],
-        [
-          "str",
-          "slice"
-        ],
-        [
-          "ok",
-          [
-            "list",
-            20,
-            30
-          ]
-        ]
-      ],
-      [
-        "obj",
-        [
-          "str",
-          "hit"
-        ],
-        [
-          "list.get",
-          [
-            "list",
-            10,
-            20,
-            30,
-            40
+            "hit"
           ],
-          1
-        ],
-        [
-          "str",
-          "miss"
-        ],
-        [
-          "list.get",
           [
-            "list",
-            10,
+            "ok",
             20
           ],
-          7
-        ],
-        [
-          "str",
-          "slice"
-        ],
-        [
-          "list.slice",
           [
-            "list",
-            10,
-            20,
-            30,
-            40
+            "str",
+            "miss"
           ],
-          1,
-          3
+          [
+            "err",
+            [
+              "str",
+              "list index is out of bounds"
+            ]
+          ],
+          [
+            "str",
+            "slice"
+          ],
+          [
+            "ok",
+            [
+              "list",
+              20,
+              30
+            ]
+          ]
+        ],
+        [
+          "obj",
+          [
+            "str",
+            "hit"
+          ],
+          [
+            "list.get",
+            [
+              "list",
+              10,
+              20,
+              30,
+              40
+            ],
+            1
+          ],
+          [
+            "str",
+            "miss"
+          ],
+          [
+            "list.get",
+            [
+              "list",
+              10,
+              20
+            ],
+            7
+          ],
+          [
+            "str",
+            "slice"
+          ],
+          [
+            "list.slice",
+            [
+              "list",
+              10,
+              20,
+              30,
+              40
+            ],
+            1,
+            3
+          ]
         ]
       ]
     ]
@@ -397,35 +406,38 @@
       "list concatenation prepend and append preserve order"
     ],
     [
-      "assert.equal",
+      "assert",
       [
-        "list",
-        0,
-        1,
-        2,
-        3,
-        4,
-        5
-      ],
-      [
-        "list.cat",
+        "=",
         [
-          "list.prepend",
+          "list",
           0,
-          [
-            "list",
-            1,
-            2
-          ]
+          1,
+          2,
+          3,
+          4,
+          5
         ],
         [
-          "list.append",
+          "list.cat",
           [
-            "list",
-            3,
-            4
+            "list.prepend",
+            0,
+            [
+              "list",
+              1,
+              2
+            ]
           ],
-          5
+          [
+            "list.append",
+            [
+              "list",
+              3,
+              4
+            ],
+            5
+          ]
         ]
       ]
     ]
@@ -437,57 +449,60 @@
       "list updates do not mutate an aliased input"
     ],
     [
-      "assert.equal",
+      "assert",
       [
-        "obj",
-        [
-          "str",
-          "original"
-        ],
-        [
-          "list",
-          1,
-          2
-        ],
-        [
-          "str",
-          "updated"
-        ],
-        [
-          "list",
-          1,
-          2,
-          3
-        ]
-      ],
-      [
-        "let",
-        [
-          "original",
-          [
-            "list",
-            1,
-            2
-          ],
-          "updated",
-          [
-            "list.append",
-            "original",
-            3
-          ]
-        ],
+        "=",
         [
           "obj",
           [
             "str",
             "original"
           ],
-          "original",
+          [
+            "list",
+            1,
+            2
+          ],
           [
             "str",
             "updated"
           ],
-          "updated"
+          [
+            "list",
+            1,
+            2,
+            3
+          ]
+        ],
+        [
+          "let",
+          [
+            "original",
+            [
+              "list",
+              1,
+              2
+            ],
+            "updated",
+            [
+              "list.append",
+              "original",
+              3
+            ]
+          ],
+          [
+            "obj",
+            [
+              "str",
+              "original"
+            ],
+            "original",
+            [
+              "str",
+              "updated"
+            ],
+            "updated"
+          ]
         ]
       ]
     ]
@@ -499,73 +514,76 @@
       "list predicates use structural equality"
     ],
     [
-      "assert.equal",
+      "assert",
       [
-        "list",
-        true,
-        true,
-        false
-      ],
-      [
-        "list",
+        "=",
         [
-          "list.has",
+          "list",
+          true,
+          true,
+          false
+        ],
+        [
+          "list",
           [
-            "list",
+            "list.has",
+            [
+              "list",
+              [
+                "list",
+                1,
+                2
+              ],
+              [
+                "list",
+                3
+              ]
+            ],
             [
               "list",
               1,
               2
+            ]
+          ],
+          [
+            "list.some",
+            [
+              "fn",
+              [
+                "value"
+              ],
+              [
+                ">",
+                "value",
+                3
+              ]
             ],
             [
               "list",
-              3
+              1,
+              4,
+              2
             ]
           ],
           [
-            "list",
-            1,
-            2
-          ]
-        ],
-        [
-          "list.some",
-          [
-            "fn",
+            "list.every",
             [
-              "value"
+              "fn",
+              [
+                "value"
+              ],
+              [
+                "<",
+                "value",
+                3
+              ]
             ],
             [
-              ">",
-              "value",
+              "list",
+              1,
+              2,
               3
             ]
-          ],
-          [
-            "list",
-            1,
-            4,
-            2
-          ]
-        ],
-        [
-          "list.every",
-          [
-            "fn",
-            [
-              "value"
-            ],
-            [
-              "<",
-              "value",
-              3
-            ]
-          ],
-          [
-            "list",
-            1,
-            2,
-            3
           ]
         ]
       ]
@@ -578,45 +596,48 @@
       "list case supports empty exact and rest patterns"
     ],
     [
-      "assert.equal",
+      "assert",
       [
-        "list",
+        "=",
         [
-          "str",
-          "empty"
-        ],
-        [
-          "str",
-          "single:7"
-        ],
-        [
-          "str",
-          "many:1:2:2"
-        ]
-      ],
-      [
-        "list",
-        [
-          "classify-list",
+          "list",
           [
-            "list"
+            "str",
+            "empty"
+          ],
+          [
+            "str",
+            "single:7"
+          ],
+          [
+            "str",
+            "many:1:2:2"
           ]
         ],
         [
-          "classify-list",
+          "list",
           [
-            "list",
-            7
-          ]
-        ],
-        [
-          "classify-list",
+            "classify-list",
+            [
+              "list"
+            ]
+          ],
           [
-            "list",
-            1,
-            2,
-            3,
-            4
+            "classify-list",
+            [
+              "list",
+              7
+            ]
+          ],
+          [
+            "classify-list",
+            [
+              "list",
+              1,
+              2,
+              3,
+              4
+            ]
           ]
         ]
       ]
@@ -629,18 +650,21 @@
       "list pipeline combines map filter and fold"
     ],
     [
-      "assert.equal",
-      56,
+      "assert",
       [
-        "square-evens-total",
+        "=",
+        56,
         [
-          "list",
-          1,
-          2,
-          3,
-          4,
-          5,
-          6
+          "square-evens-total",
+          [
+            "list",
+            1,
+            2,
+            3,
+            4,
+            5,
+            6
+          ]
         ]
       ]
     ]

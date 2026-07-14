@@ -101,16 +101,19 @@
       "case dispatch and result propagation"
     ],
     [
-      "assert.equal",
+      "assert",
       [
-        "ok",
-        43
-      ],
-      [
-        "finish",
+        "=",
         [
-          "cached",
-          41
+          "ok",
+          43
+        ],
+        [
+          "finish",
+          [
+            "cached",
+            41
+          ]
         ]
       ]
     ]

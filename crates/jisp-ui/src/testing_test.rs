@@ -35,6 +35,37 @@ fn ui_tests_cover_state_html_and_juir_tree_after_dispatches() {
 }
 
 #[test]
+fn ui_tests_observe_reducer_declared_resources_without_running_them() {
+    let outcomes = run_ui_tests(suite(
+        r#"
+(type Action (Save))
+(def init 0)
+(defn update (state action)
+  (ui.result
+    state
+    (list
+      (ui.command "save:1" "storage.write" 1 (obj "key" "draft") true
+        (ui.action-result "Saved" (list))
+        (ui.action-error "SaveFailed" (list))))
+    (list)))
+(component app (state) (button (text (str.from state))))
+(ui.app init update app)
+(ui.test "declares save resource"
+  (assert (= (list) (ui.test.commands)))
+  (assert (= (list) (ui.test.subscriptions)))
+  (dispatch Save)
+  (assert (= (list (ui.command "save:1" "storage.write" 1 (obj "key" "draft") true (ui.action-result "Saved" (list)) (ui.action-error "SaveFailed" (list))) (ui.test.commands)))
+  (assert (= (list) (ui.test.subscriptions))))
+"#,
+    ))
+    .unwrap();
+
+    assert_eq!(outcomes.len(), 1);
+    assert!(outcomes[0].passed(), "{:?}", outcomes[0].failure);
+    assert_eq!(outcomes[0].assertions, 4);
+}
+
+#[test]
 fn ui_tests_report_failing_expectations_without_hiding_other_scenarios() {
     let outcomes = run_ui_tests(suite(
         r#"

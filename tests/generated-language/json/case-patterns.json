@@ -358,60 +358,63 @@
       "variant case binds payload fields"
     ],
     [
-      "assert.equal",
+      "assert",
       [
-        "list",
+        "=",
         [
-          "str",
-          "/"
-        ],
-        [
-          "str",
-          "/users/42/posts"
-        ],
-        [
-          "str",
-          "/search?q=jisp"
-        ],
-        [
-          "str",
-          "404:/old"
-        ]
-      ],
-      [
-        "list",
-        [
-          "render-route",
-          "home"
-        ],
-        [
-          "render-route",
+          "list",
           [
-            "profile",
-            42,
-            [
-              "str",
-              "posts"
-            ]
+            "str",
+            "/"
+          ],
+          [
+            "str",
+            "/users/42/posts"
+          ],
+          [
+            "str",
+            "/search?q=jisp"
+          ],
+          [
+            "str",
+            "404:/old"
           ]
         ],
         [
-          "render-route",
+          "list",
           [
-            "search",
+            "render-route",
+            "home"
+          ],
+          [
+            "render-route",
             [
-              "str",
-              "jisp"
+              "profile",
+              42,
+              [
+                "str",
+                "posts"
+              ]
             ]
-          ]
-        ],
-        [
-          "render-route",
+          ],
           [
-            "missing",
+            "render-route",
             [
-              "str",
-              "/old"
+              "search",
+              [
+                "str",
+                "jisp"
+              ]
+            ]
+          ],
+          [
+            "render-route",
+            [
+              "missing",
+              [
+                "str",
+                "/old"
+              ]
             ]
           ]
         ]
@@ -425,50 +428,53 @@
       "list patterns can nest and bind rest"
     ],
     [
-      "assert.equal",
+      "assert",
       [
-        "list",
-        5,
-        0,
-        -1
-      ],
-      [
-        "list",
+        "=",
         [
-          "nested-list-score",
+          "list",
+          5,
+          0,
+          -1
+        ],
+        [
+          "list",
           [
-            "list",
+            "nested-list-score",
             [
               "list",
-              1,
-              3
-            ],
-            [
-              "list",
-              9,
-              9
-            ],
-            [
-              "list",
-              10,
-              10
+              [
+                "list",
+                1,
+                3
+              ],
+              [
+                "list",
+                9,
+                9
+              ],
+              [
+                "list",
+                10,
+                10
+              ]
             ]
-          ]
-        ],
-        [
-          "nested-list-score",
+          ],
           [
-            "list"
-          ]
-        ],
-        [
-          "nested-list-score",
+            "nested-list-score",
+            [
+              "list"
+            ]
+          ],
           [
-            "list",
+            "nested-list-score",
             [
               "list",
-              2,
-              3
+              [
+                "list",
+                2,
+                3
+              ]
             ]
           ]
         ]
@@ -482,149 +488,152 @@
       "object patterns can nest and refine literals"
     ],
     [
-      "assert.equal",
+      "assert",
       [
-        "list",
+        "=",
         [
-          "str",
-          "trusted:3"
-        ],
-        [
-          "str",
-          "blocked"
-        ],
-        [
-          "str",
-          "loaded"
-        ],
-        [
-          "str",
-          "ignored"
-        ]
-      ],
-      [
-        "list",
-        [
-          "nested-object-state",
+          "list",
           [
-            "obj",
-            [
-              "str",
-              "kind"
-            ],
-            [
-              "str",
-              "click"
-            ],
-            [
-              "str",
-              "meta"
-            ],
-            [
-              "obj",
-              [
-                "str",
-                "trusted"
-              ],
-              true,
-              [
-                "str",
-                "count"
-              ],
-              3
-            ]
+            "str",
+            "trusted:3"
+          ],
+          [
+            "str",
+            "blocked"
+          ],
+          [
+            "str",
+            "loaded"
+          ],
+          [
+            "str",
+            "ignored"
           ]
         ],
         [
-          "nested-object-state",
+          "list",
           [
-            "obj",
-            [
-              "str",
-              "kind"
-            ],
-            [
-              "str",
-              "click"
-            ],
-            [
-              "str",
-              "meta"
-            ],
+            "nested-object-state",
             [
               "obj",
               [
                 "str",
-                "trusted"
+                "kind"
               ],
-              false,
               [
                 "str",
-                "count"
+                "click"
               ],
-              2
+              [
+                "str",
+                "meta"
+              ],
+              [
+                "obj",
+                [
+                  "str",
+                  "trusted"
+                ],
+                true,
+                [
+                  "str",
+                  "count"
+                ],
+                3
+              ]
             ]
-          ]
-        ],
-        [
-          "nested-object-state",
+          ],
           [
-            "obj",
-            [
-              "str",
-              "kind"
-            ],
-            [
-              "str",
-              "load"
-            ],
-            [
-              "str",
-              "meta"
-            ],
+            "nested-object-state",
             [
               "obj",
               [
                 "str",
-                "trusted"
+                "kind"
               ],
-              true,
               [
                 "str",
-                "count"
+                "click"
               ],
-              0
+              [
+                "str",
+                "meta"
+              ],
+              [
+                "obj",
+                [
+                  "str",
+                  "trusted"
+                ],
+                false,
+                [
+                  "str",
+                  "count"
+                ],
+                2
+              ]
             ]
-          ]
-        ],
-        [
-          "nested-object-state",
+          ],
           [
-            "obj",
-            [
-              "str",
-              "kind"
-            ],
-            [
-              "str",
-              "hover"
-            ],
-            [
-              "str",
-              "meta"
-            ],
+            "nested-object-state",
             [
               "obj",
               [
                 "str",
-                "trusted"
+                "kind"
               ],
-              true,
               [
                 "str",
-                "count"
+                "load"
               ],
-              0
+              [
+                "str",
+                "meta"
+              ],
+              [
+                "obj",
+                [
+                  "str",
+                  "trusted"
+                ],
+                true,
+                [
+                  "str",
+                  "count"
+                ],
+                0
+              ]
+            ]
+          ],
+          [
+            "nested-object-state",
+            [
+              "obj",
+              [
+                "str",
+                "kind"
+              ],
+              [
+                "str",
+                "hover"
+              ],
+              [
+                "str",
+                "meta"
+              ],
+              [
+                "obj",
+                [
+                  "str",
+                  "trusted"
+                ],
+                true,
+                [
+                  "str",
+                  "count"
+                ],
+                0
+              ]
             ]
           ]
         ]
@@ -638,35 +647,38 @@
       "literal and wildcard branches keep case exhaustive"
     ],
     [
-      "assert.equal",
+      "assert",
       [
-        "list",
+        "=",
         [
-          "str",
-          "zero"
+          "list",
+          [
+            "str",
+            "zero"
+          ],
+          [
+            "str",
+            "one"
+          ],
+          [
+            "str",
+            "many"
+          ]
         ],
         [
-          "str",
-          "one"
-        ],
-        [
-          "str",
-          "many"
-        ]
-      ],
-      [
-        "list",
-        [
-          "literal-match",
-          0
-        ],
-        [
-          "literal-match",
-          1
-        ],
-        [
-          "literal-match",
-          9
+          "list",
+          [
+            "literal-match",
+            0
+          ],
+          [
+            "literal-match",
+            1
+          ],
+          [
+            "literal-match",
+            9
+          ]
         ]
       ]
     ]
@@ -678,35 +690,38 @@
       "case guards dispatch before unguarded fallback"
     ],
     [
-      "assert.equal",
+      "assert",
       [
-        "list",
+        "=",
         [
-          "str",
-          "high"
+          "list",
+          [
+            "str",
+            "high"
+          ],
+          [
+            "str",
+            "pass"
+          ],
+          [
+            "str",
+            "retry"
+          ]
         ],
         [
-          "str",
-          "pass"
-        ],
-        [
-          "str",
-          "retry"
-        ]
-      ],
-      [
-        "list",
-        [
-          "guarded-grade",
-          99
-        ],
-        [
-          "guarded-grade",
-          75
-        ],
-        [
-          "guarded-grade",
-          40
+          "list",
+          [
+            "guarded-grade",
+            99
+          ],
+          [
+            "guarded-grade",
+            75
+          ],
+          [
+            "guarded-grade",
+            40
+          ]
         ]
       ]
     ]
@@ -718,51 +733,54 @@
       "or patterns share payload bindings across alternatives"
     ],
     [
-      "assert.equal",
-      8,
+      "assert",
       [
-        "case",
+        "=",
+        8,
         [
-          "search",
+          "case",
           [
-            "str",
-            "ignored"
-          ]
-        ],
-        [
-          [
-            "or",
+            "search",
             [
-              "search",
-              "value"
-            ],
-            [
-              "missing",
-              "value"
+              "str",
+              "ignored"
             ]
           ],
           [
-            "+",
             [
-              "str.len",
-              "value"
+              "or",
+              [
+                "search",
+                "value"
+              ],
+              [
+                "missing",
+                "value"
+              ]
             ],
-            1
+            [
+              "+",
+              [
+                "str.len",
+                "value"
+              ],
+              1
+            ]
+          ],
+          [
+            [
+              "home"
+            ],
+            0
+          ],
+          [
+            [
+              "profile",
+              "_",
+              "_"
+            ],
+            0
           ]
-        ],
-        [
-          [
-            "home"
-          ],
-          0
-        ],
-        [
-          [
-            "profile",
-            "_",
-            "_"
-          ],
-          0
         ]
       ]
     ]

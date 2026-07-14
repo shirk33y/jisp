@@ -20,21 +20,21 @@
         0))))
 
 (test "ws layout continuation preserves parent source order"
-  (assert.equal
+  (assert (=
     (obj
       "kind" "nested"
       "value" (list 3 7 11)
       "tail-a" "A"
       "tail-b" "B"
       "done" (list "done"))
-    (continuation-order-sample)))
+    (continuation-order-sample))))
 
 (test "ws inline ellipsis remains rest parameter syntax"
-  (assert.equal
+  (assert (=
     6
-    (inline-rest-params "head" "a" "b")))
+    (inline-rest-params "head" "a" "b"))))
 
 (test "ws inline ellipsis remains rest pattern syntax"
-  (assert.equal
+  (assert (=
     5
-    (rest-pattern (list 1 2 3 4))))
+    (rest-pattern (list 1 2 3 4)))))
