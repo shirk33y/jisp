@@ -362,13 +362,13 @@ impl PlaygroundSession {
                 .clone()
                 .ok_or_else(|| "JUIR runtime has no serializable SSR tree".to_owned())?;
             let html = render_ssr_html(&tree)?;
-            return serde_json::to_string(&json!({
+            serde_json::to_string(&json!({
                 "protocol": "jisp-ui-ssr/1",
                 "html": html,
                 "state": json_value(&runtime.state)?,
                 "tree": tree,
             }))
-            .map_err(|error| error.to_string());
+            .map_err(|error| error.to_string())
         }
         #[cfg(not(feature = "juir"))]
         Err("SSR payloads require the `juir` feature".to_owned())

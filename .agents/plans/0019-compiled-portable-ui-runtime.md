@@ -32,10 +32,12 @@ M4's pre-implementation ownership and capability contract is documented in
 [`docs/UI_EFFECTS.md`](../../docs/UI_EFFECTS.md): effects remain reducer data,
 carry stable owner/id/generation identity, and require deterministic fake-host
 tests before a source-level command API is introduced. `jisp-ui::effects`
-now implements the command-only deterministic fake host: it reconciles desired
-commands by owner/id, validates versioned capabilities, cancels/replaces work,
-and ignores late generations. Source-level reducer results, subscriptions, and
-component-local ownership remain subsequent M4 work.
+now implements a deterministic command/subscription fake host: it reconciles
+the whole desired resource set atomically by kind/owner/id, validates versioned
+capabilities, cancels/replaces work, preserves JSON-shaped success/failure
+deliveries, ignores late generations, and disposes every resource owned by a
+keyed component instance exactly once. Source-level reducer results and
+component-local state remain subsequent M4 work.
 M6 now has a first WIT package at
 [`wit/jisp-ui-capabilities.wit`](../../wit/jisp-ui-capabilities.wit), limited to
 coarse versioned storage/timer/navigation capabilities; binding generation and

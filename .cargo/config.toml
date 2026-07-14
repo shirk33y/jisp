@@ -1,0 +1,5 @@
+[build]
+# Workspace crates change frequently. Their incremental object graph can grow by
+# gigabytes in long-lived development environments, while Cargo's normal target
+# cache still reuses compiled dependencies. CI uses the same policy.
+incremental = false

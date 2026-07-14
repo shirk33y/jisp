@@ -1,8 +1,8 @@
 # UI commands, subscriptions, and ownership
 
-> Design contract. `jisp-ui::effects::FakeHost` implements the deterministic
-> command-reconciliation subset for host tests; Jisp source syntax and runtime
-> command execution are still intentionally not implemented.
+> Design contract. `jisp-ui::effects::FakeHost` implements deterministic
+> command and subscription reconciliation for host tests; Jisp source syntax
+> and runtime command execution are still intentionally not implemented.
 
 Jisp UI keeps Model–View–Update: `view` is pure and `(update state action)`
 calculates the next immutable state. Effects are data emitted by `update`; they
@@ -27,6 +27,9 @@ Every command has a stable program-provided `id`, lifecycle `owner`, versioned
 `capability`, JSON-shaped schema-validated `request`, `on-ok`/`on-error` action
 data, and explicit timeout/retry/replacement policy. The model normally creates
 ids with a request counter; the host never supplies hidden randomness.
+
+An `id` is unique within `(kind, owner)`: a command and a subscription may use
+the same text id because their lifecycle kinds are separate.
 
 ```json
 {
@@ -88,15 +91,21 @@ deliver(owner, id, generation, result)
 dispose(owner)
 ```
 
-`FakeHost` currently implements `start`, `cancel`, and delivery/late-delivery
-classification for commands. It validates versioned capabilities, rejects
-duplicate `(owner, id)` pairs atomically, preserves equal active requests,
-requires explicit replacement permission, and ignores a completion whose
-generation is no longer active. It is an in-memory reference implementation,
-not a browser or native capability provider.
+`FakeHost` implements `start`, `cancel`, and delivery/late-delivery
+classification for commands and subscriptions. It preserves explicit
+JSON-shaped success/failure deliveries, validates versioned capabilities,
+rejects duplicate `(kind, owner, id)` triples atomically, preserves equal active
+requests, requires explicit replacement permission, and ignores a completion
+whose generation is no longer active. `reconcile_resources` validates both
+desired lists before changing either one. `dispose(owner)` cancels every command
+and subscription of exactly that keyed component/app owner and is idempotent.
+It is an in-memory reference implementation, not a browser or native capability
+provider.
 
-Test success, failure, timeout, duplicate id, replacement, late completion,
-owner disposal, keyed-item removal/reorder, and unsupported capability.
+Tests cover success/failure, duplicate id, replacement, late completion,
+owner disposal, subscription removal, cross-kind atomic validation, and
+unsupported capability. Timeout and real host cancellation remain capability
+provider behavior to add when source-level commands exist.
 
 ## WIT boundary prototype
 

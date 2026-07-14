@@ -20,6 +20,9 @@ permissions:
   pages: write
   id-token: write
 
+env:
+  CARGO_INCREMENTAL: 0
+
 jobs:
   deploy:
     environment:
@@ -29,7 +32,15 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - uses: actions/configure-pages@v5
-      - run: rustup target add wasm32-unknown-unknown
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.96.1
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: jisp-rust-1.96.1
+          cache-targets: "true"
+          save-if: ${{ github.ref == 'refs/heads/master' }}
       - uses: jetli/wasm-pack-action@v0.4.0
       - run: wasm-pack build crates/jisp-wasm --target web --release --out-dir ../../playground/pkg --out-name jisp_wasm
       - run: printf '{"build":"%s"}\n' "${GITHUB_SHA}" > playground/version.json

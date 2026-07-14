@@ -1,8 +1,8 @@
 //! Deterministic reference host for the planned data-only UI effect protocol.
 //!
-//! This is intentionally not wired into Jisp source syntax yet. It gives host
-//! adapters one testable ownership/reconciliation contract before `update`
-//! gains commands or subscriptions.
+//! It deliberately has no Jisp source syntax or real side effects.  Hosts can
+//! use it to prove reconciliation, cancellation, completion, and disposal
+//! semantics before reducers are allowed to return commands or subscriptions.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -11,7 +11,12 @@ use serde_json::Value;
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Owner {
     App,
-    Component { template: String, key: String },
+    /// An identified component instance. This is a lifecycle identity only;
+    /// component-local Jisp state is not implemented yet.
+    Component {
+        template: String,
+        key: String,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -23,30 +28,81 @@ pub struct Command {
     pub replace: bool,
 }
 
+/// A desired long-lived source of actions. It is reconciled independently from
+/// a one-shot command, so the same `(owner, id)` may appear once in each kind.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Subscription {
+    pub id: String,
+    pub owner: Owner,
+    pub capability: Capability,
+    pub request: Value,
+    pub replace: bool,
+}
+
+/// The complete desired effect set produced by one future reducer turn.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct DesiredResources {
+    pub commands: Vec<Command>,
+    pub subscriptions: Vec<Subscription>,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Capability {
     pub name: String,
     pub version: u32,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ResourceKind {
+    Command,
+    Subscription,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
+pub enum HostErrorCode {
+    UnsupportedCapability,
+    PermissionDenied,
+    InvalidRequest,
+    Cancelled,
+    HostFailure,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct HostError {
+    pub code: HostErrorCode,
+    pub message: String,
+}
+
+/// A serializable completion passed back into the future reducer boundary.
+#[derive(Clone, Debug, PartialEq)]
+pub enum Delivery {
+    Ok(Value),
+    Err(HostError),
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub enum Trace {
     Start {
+        kind: ResourceKind,
         owner: Owner,
         id: String,
         generation: u64,
     },
     Cancel {
+        kind: ResourceKind,
         owner: Owner,
         id: String,
         generation: u64,
     },
     Deliver {
+        kind: ResourceKind,
         owner: Owner,
         id: String,
         generation: u64,
+        result: Delivery,
     },
     IgnoreLate {
+        kind: ResourceKind,
         owner: Owner,
         id: String,
         generation: u64,
@@ -55,22 +111,32 @@ pub enum Trace {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Error {
-    Duplicate { owner: Owner, id: String },
+    Duplicate {
+        kind: ResourceKind,
+        owner: Owner,
+        id: String,
+    },
     UnsupportedCapability(Capability),
-    ReplacementForbidden { owner: Owner, id: String },
+    ReplacementForbidden {
+        kind: ResourceKind,
+        owner: Owner,
+        id: String,
+    },
 }
 
 impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Duplicate { owner, id } => write!(f, "duplicate command `{id}` for {owner:?}"),
+            Self::Duplicate { kind, owner, id } => {
+                write!(f, "duplicate {kind:?} `{id}` for {owner:?}")
+            }
             Self::UnsupportedCapability(capability) => write!(
                 f,
                 "host does not support capability {}@{}",
                 capability.name, capability.version
             ),
-            Self::ReplacementForbidden { owner, id } => {
-                write!(f, "command `{id}` for {owner:?} forbids replacement")
+            Self::ReplacementForbidden { kind, owner, id } => {
+                write!(f, "{kind:?} `{id}` for {owner:?} forbids replacement")
             }
         }
     }
@@ -78,18 +144,70 @@ impl std::fmt::Display for Error {
 
 impl std::error::Error for Error {}
 
+type ResourceKey = (Owner, String);
+
 #[derive(Default)]
 pub struct FakeHost {
     capabilities: BTreeSet<Capability>,
-    active: BTreeMap<(Owner, String), Active>,
+    commands: BTreeMap<ResourceKey, Active<Command>>,
+    subscriptions: BTreeMap<ResourceKey, Active<Subscription>>,
     next_generation: u64,
     pub trace: Vec<Trace>,
 }
 
 #[derive(Clone)]
-struct Active {
-    command: Command,
+struct Active<T> {
+    resource: T,
     generation: u64,
+}
+
+trait Resource: Clone + PartialEq {
+    const KIND: ResourceKind;
+
+    fn id(&self) -> &str;
+    fn owner(&self) -> &Owner;
+    fn capability(&self) -> &Capability;
+    fn replace(&self) -> bool;
+}
+
+impl Resource for Command {
+    const KIND: ResourceKind = ResourceKind::Command;
+
+    fn id(&self) -> &str {
+        &self.id
+    }
+
+    fn owner(&self) -> &Owner {
+        &self.owner
+    }
+
+    fn capability(&self) -> &Capability {
+        &self.capability
+    }
+
+    fn replace(&self) -> bool {
+        self.replace
+    }
+}
+
+impl Resource for Subscription {
+    const KIND: ResourceKind = ResourceKind::Subscription;
+
+    fn id(&self) -> &str {
+        &self.id
+    }
+
+    fn owner(&self) -> &Owner {
+        &self.owner
+    }
+
+    fn capability(&self) -> &Capability {
+        &self.capability
+    }
+
+    fn replace(&self) -> bool {
+        self.replace
+    }
 }
 
 impl FakeHost {
@@ -100,89 +218,212 @@ impl FakeHost {
         }
     }
 
-    /// Reconcile desired commands by `(owner, id)`. Equal commands are
-    /// retained; removed commands cancel; changed commands replace only with
-    /// explicit permission. Returned errors leave the current host untouched.
+    /// Backwards-compatible command-only reconciliation. Existing
+    /// subscriptions are retained; use [`Self::reconcile_resources`] for a
+    /// reducer's whole desired set.
     pub fn reconcile(&mut self, desired: Vec<Command>) -> Result<(), Error> {
+        self.reconcile_commands(desired)
+    }
+
+    pub fn reconcile_commands(&mut self, desired: Vec<Command>) -> Result<(), Error> {
+        let next = self.validate(desired, &self.commands)?;
+        Self::reconcile_map(
+            &mut self.commands,
+            next,
+            &mut self.next_generation,
+            &mut self.trace,
+        );
+        Ok(())
+    }
+
+    pub fn reconcile_subscriptions(&mut self, desired: Vec<Subscription>) -> Result<(), Error> {
+        let next = self.validate(desired, &self.subscriptions)?;
+        Self::reconcile_map(
+            &mut self.subscriptions,
+            next,
+            &mut self.next_generation,
+            &mut self.trace,
+        );
+        Ok(())
+    }
+
+    /// Reconciles both resource kinds atomically. A duplicate, unsupported
+    /// capability, or forbidden replacement in either list leaves every active
+    /// command/subscription and the trace unchanged.
+    pub fn reconcile_resources(&mut self, desired: DesiredResources) -> Result<(), Error> {
+        let commands = self.validate(desired.commands, &self.commands)?;
+        let subscriptions = self.validate(desired.subscriptions, &self.subscriptions)?;
+        Self::reconcile_map(
+            &mut self.commands,
+            commands,
+            &mut self.next_generation,
+            &mut self.trace,
+        );
+        Self::reconcile_map(
+            &mut self.subscriptions,
+            subscriptions,
+            &mut self.next_generation,
+            &mut self.trace,
+        );
+        Ok(())
+    }
+
+    /// Delivers a command result if that exact generation remains current.
+    /// A successful delivery does not implicitly remove the desired command:
+    /// the next reducer result owns that decision.
+    pub fn deliver_command(
+        &mut self,
+        owner: Owner,
+        id: impl Into<String>,
+        generation: u64,
+        result: Delivery,
+    ) -> bool {
+        Self::record_delivery(
+            &self.commands,
+            &mut self.trace,
+            ResourceKind::Command,
+            owner,
+            id.into(),
+            generation,
+            result,
+        )
+    }
+
+    /// Compatibility helper for an empty successful command completion.
+    pub fn deliver(&mut self, owner: Owner, id: impl Into<String>, generation: u64) -> bool {
+        self.deliver_command(owner, id, generation, Delivery::Ok(Value::Null))
+    }
+
+    /// Subscriptions stay active after delivery and may produce many results.
+    pub fn deliver_subscription(
+        &mut self,
+        owner: Owner,
+        id: impl Into<String>,
+        generation: u64,
+        result: Delivery,
+    ) -> bool {
+        Self::record_delivery(
+            &self.subscriptions,
+            &mut self.trace,
+            ResourceKind::Subscription,
+            owner,
+            id.into(),
+            generation,
+            result,
+        )
+    }
+
+    /// Cancels every resource owned by precisely this app/component instance.
+    /// It is idempotent, so unmount paths can call it exactly once without
+    /// needing host-specific bookkeeping.
+    pub fn dispose(&mut self, owner: &Owner) {
+        Self::dispose_map(&mut self.commands, owner, &mut self.trace);
+        Self::dispose_map(&mut self.subscriptions, owner, &mut self.trace);
+    }
+
+    fn validate<T: Resource>(
+        &self,
+        desired: Vec<T>,
+        active: &BTreeMap<ResourceKey, Active<T>>,
+    ) -> Result<BTreeMap<ResourceKey, T>, Error> {
         let mut next = BTreeMap::new();
-        for command in desired {
-            let key = (command.owner.clone(), command.id.clone());
-            if next.insert(key.clone(), command).is_some() {
+        for resource in desired {
+            let key = (resource.owner().clone(), resource.id().to_owned());
+            if next.insert(key.clone(), resource).is_some() {
                 return Err(Error::Duplicate {
+                    kind: T::KIND,
                     owner: key.0,
                     id: key.1,
                 });
             }
         }
-        for command in next.values() {
-            if !self.capabilities.contains(&command.capability) {
-                return Err(Error::UnsupportedCapability(command.capability.clone()));
+        for resource in next.values() {
+            if !self.capabilities.contains(resource.capability()) {
+                return Err(Error::UnsupportedCapability(resource.capability().clone()));
             }
         }
-        for (key, command) in &next {
-            if let Some(active) = self.active.get(key) {
-                if active.command != *command && !command.replace {
-                    return Err(Error::ReplacementForbidden {
-                        owner: key.0.clone(),
-                        id: key.1.clone(),
-                    });
-                }
+        for (key, resource) in &next {
+            if active
+                .get(key)
+                .is_some_and(|current| current.resource != *resource && !resource.replace())
+            {
+                return Err(Error::ReplacementForbidden {
+                    kind: T::KIND,
+                    owner: key.0.clone(),
+                    id: key.1.clone(),
+                });
             }
         }
-        let removed = self
-            .active
+        Ok(next)
+    }
+
+    fn reconcile_map<T: Resource>(
+        active: &mut BTreeMap<ResourceKey, Active<T>>,
+        next: BTreeMap<ResourceKey, T>,
+        next_generation: &mut u64,
+        trace: &mut Vec<Trace>,
+    ) {
+        let removed = active
             .keys()
             .filter(|key| !next.contains_key(*key))
             .cloned()
             .collect::<Vec<_>>();
         for key in removed {
-            self.cancel(&key);
+            Self::cancel(active, &key, trace);
         }
-        for (key, command) in next {
-            if self
-                .active
+        for (key, resource) in next {
+            if active
                 .get(&key)
-                .is_some_and(|active| active.command == command)
+                .is_some_and(|current| current.resource == resource)
             {
                 continue;
             }
-            if self.active.contains_key(&key) {
-                self.cancel(&key);
+            if active.contains_key(&key) {
+                Self::cancel(active, &key, trace);
             }
-            self.next_generation += 1;
-            let generation = self.next_generation;
-            self.trace.push(Trace::Start {
+            *next_generation += 1;
+            let generation = *next_generation;
+            trace.push(Trace::Start {
+                kind: T::KIND,
                 owner: key.0.clone(),
                 id: key.1.clone(),
                 generation,
             });
-            self.active.insert(
+            active.insert(
                 key,
                 Active {
-                    command,
+                    resource,
                     generation,
                 },
             );
         }
-        Ok(())
     }
 
-    pub fn deliver(&mut self, owner: Owner, id: impl Into<String>, generation: u64) -> bool {
-        let id = id.into();
+    fn record_delivery<T: Resource>(
+        active: &BTreeMap<ResourceKey, Active<T>>,
+        trace: &mut Vec<Trace>,
+        kind: ResourceKind,
+        owner: Owner,
+        id: String,
+        generation: u64,
+        result: Delivery,
+    ) -> bool {
         let key = (owner.clone(), id.clone());
-        if self
-            .active
+        if active
             .get(&key)
-            .is_some_and(|active| active.generation == generation)
+            .is_some_and(|current| current.generation == generation)
         {
-            self.trace.push(Trace::Deliver {
+            trace.push(Trace::Deliver {
+                kind,
                 owner,
                 id,
                 generation,
+                result,
             });
             true
         } else {
-            self.trace.push(Trace::IgnoreLate {
+            trace.push(Trace::IgnoreLate {
+                kind,
                 owner,
                 id,
                 generation,
@@ -191,100 +432,37 @@ impl FakeHost {
         }
     }
 
-    pub fn dispose(&mut self, owner: &Owner) {
-        let keys = self
-            .active
+    fn dispose_map<T: Resource>(
+        active: &mut BTreeMap<ResourceKey, Active<T>>,
+        owner: &Owner,
+        trace: &mut Vec<Trace>,
+    ) {
+        let keys = active
             .keys()
-            .filter(|(active, _)| active == owner)
+            .filter(|(active_owner, _)| active_owner == owner)
             .cloned()
             .collect::<Vec<_>>();
         for key in keys {
-            self.cancel(&key);
+            Self::cancel(active, &key, trace);
         }
     }
 
-    fn cancel(&mut self, key: &(Owner, String)) {
-        if let Some(active) = self.active.remove(key) {
-            self.trace.push(Trace::Cancel {
+    fn cancel<T: Resource>(
+        active: &mut BTreeMap<ResourceKey, Active<T>>,
+        key: &ResourceKey,
+        trace: &mut Vec<Trace>,
+    ) {
+        if let Some(current) = active.remove(key) {
+            trace.push(Trace::Cancel {
+                kind: T::KIND,
                 owner: key.0.clone(),
                 id: key.1.clone(),
-                generation: active.generation,
+                generation: current.generation,
             });
         }
     }
 }
 
 #[cfg(test)]
-mod test {
-    use serde_json::json;
-
-    use super::{Capability, Command, Error, FakeHost, Owner, Trace};
-
-    fn storage() -> Capability {
-        Capability {
-            name: "storage.write".to_owned(),
-            version: 1,
-        }
-    }
-
-    fn command(value: &str, replace: bool) -> Command {
-        Command {
-            id: "save:1".to_owned(),
-            owner: Owner::App,
-            capability: storage(),
-            request: json!({ "value": value }),
-            replace,
-        }
-    }
-
-    #[test]
-    fn reconciles_replacement_cancellation_and_late_completion() {
-        let mut host = FakeHost::with_capabilities([storage()]);
-        host.reconcile(vec![command("one", true)]).unwrap();
-        host.reconcile(vec![command("two", true)]).unwrap();
-
-        assert_eq!(
-            host.trace[0],
-            Trace::Start {
-                owner: Owner::App,
-                id: "save:1".to_owned(),
-                generation: 1
-            }
-        );
-        assert_eq!(
-            host.trace[1],
-            Trace::Cancel {
-                owner: Owner::App,
-                id: "save:1".to_owned(),
-                generation: 1
-            }
-        );
-        assert!(!host.deliver(Owner::App, "save:1", 1));
-        assert!(host.deliver(Owner::App, "save:1", 2));
-    }
-
-    #[test]
-    fn rejects_duplicates_unsupported_capabilities_and_unapproved_replacement() {
-        let mut host = FakeHost::with_capabilities([storage()]);
-        assert!(matches!(
-            host.reconcile(vec![command("one", true), command("two", true)]),
-            Err(Error::Duplicate { .. })
-        ));
-        let unsupported = Command {
-            capability: Capability {
-                name: "network.fetch".to_owned(),
-                version: 1,
-            },
-            ..command("one", true)
-        };
-        assert!(matches!(
-            host.reconcile(vec![unsupported]),
-            Err(Error::UnsupportedCapability(_))
-        ));
-        host.reconcile(vec![command("one", true)]).unwrap();
-        assert!(matches!(
-            host.reconcile(vec![command("two", false)]),
-            Err(Error::ReplacementForbidden { .. })
-        ));
-    }
-}
+#[path = "effects_test.rs"]
+mod effects_test;

@@ -447,7 +447,11 @@ fn incremental_executor_matches_full_execution_across_block_updates() {
         .unwrap();
         let span = typed.module.definitions[1].span;
         let incremental_html = evaluator
-            .apply(ui_html.clone(), &[incremental.value.clone()], span)
+            .apply(
+                ui_html.clone(),
+                std::slice::from_ref(&incremental.value),
+                span,
+            )
             .unwrap()
             .display_string();
         let full_html = evaluator
@@ -520,7 +524,7 @@ fn cached_incremental_executor_reuses_unchanged_each_items_after_a_list_update()
         evaluator
             .apply(
                 ui_html.clone(),
-                &[second.value.clone()],
+                std::slice::from_ref(&second.value),
                 typed.module.definitions[1].span
             )
             .unwrap()

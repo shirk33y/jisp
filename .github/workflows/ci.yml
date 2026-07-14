@@ -11,6 +11,11 @@ concurrency:
 permissions:
   contents: read
 
+env:
+  # `rust-cache` keeps compiled dependencies, not workspace incremental state.
+  # Keep local and CI build-space behaviour aligned.
+  CARGO_INCREMENTAL: 0
+
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -21,6 +26,12 @@ jobs:
           toolchain: 1.96.1
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
+        with:
+          # One Rust version and lockfile family shares a bounded dependency
+          # cache across jobs; the action prunes incremental/workspace artifacts.
+          shared-key: jisp-rust-1.96.1
+          cache-targets: "true"
+          save-if: ${{ github.ref == 'refs/heads/master' }}
       - run: cargo fmt --all -- --check
       - run: cargo clippy --workspace --all-targets -- -D warnings
       - run: cargo test --workspace --exclude jisp-macros --quiet

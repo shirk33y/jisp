@@ -33,7 +33,7 @@ pub struct Component {
 #[derive(Clone, Debug)]
 pub enum Node {
     Text(Slot),
-    Element(Element),
+    Element(Box<Element>),
     If {
         condition: Expr,
         dependencies: Vec<Dependency>,
@@ -341,7 +341,16 @@ pub fn execute_incremental(
     changes: &ChangeSet,
 ) -> Result<Execution, ExecuteError> {
     execute_incremental_inner(
-        program, evaluator, module_env, component, arguments, previous, None, changes,
+        program,
+        evaluator,
+        module_env,
+        component,
+        arguments,
+        IncrementalInputs {
+            previous,
+            previous_each_cache: None,
+            changes,
+        },
     )
 }
 
@@ -363,10 +372,18 @@ pub fn execute_incremental_cached(
         module_env,
         component,
         arguments,
-        previous.map(|execution| &execution.value),
-        previous.map(|execution| &execution.each_cache),
-        changes,
+        IncrementalInputs {
+            previous: previous.map(|execution| &execution.value),
+            previous_each_cache: previous.map(|execution| &execution.each_cache),
+            changes,
+        },
     )
+}
+
+struct IncrementalInputs<'a> {
+    previous: Option<&'a Value>,
+    previous_each_cache: Option<&'a BTreeMap<String, Vec<CachedEachItem>>>,
+    changes: &'a ChangeSet,
 }
 
 fn execute_incremental_inner(
@@ -375,20 +392,18 @@ fn execute_incremental_inner(
     module_env: &Env,
     component: &str,
     arguments: &[Value],
-    previous: Option<&Value>,
-    previous_each_cache: Option<&BTreeMap<String, Vec<CachedEachItem>>>,
-    changes: &ChangeSet,
+    inputs: IncrementalInputs<'_>,
 ) -> Result<Execution, ExecuteError> {
     let mut executor = Executor {
         program,
         evaluator,
         module_env,
-        changes,
+        changes: inputs.changes,
         stats: ExecutionStats::default(),
-        previous_each_cache,
+        previous_each_cache: inputs.previous_each_cache,
         each_cache: BTreeMap::new(),
     };
-    let value = executor.component(component, arguments, previous, "root")?;
+    let value = executor.component(component, arguments, inputs.previous, "root")?;
     Ok(Execution {
         value,
         stats: executor.stats,
@@ -458,7 +473,7 @@ impl Compiler<'_> {
                 self.slot(required_field(&fields, "value", span)?, parameters)?,
             ));
         }
-        Ok(Node::Element(Element {
+        Ok(Node::Element(Box::new(Element {
             tag,
             attrs: self.slots(fields.get("attrs"), parameters)?,
             props: self.slots(fields.get("props"), parameters)?,
@@ -474,7 +489,7 @@ impl Compiler<'_> {
                 .transpose()?
                 .unwrap_or_default(),
             span,
-        }))
+        })))
     }
 
     fn children(&self, expr: &Expr, parameters: &[String]) -> Result<Vec<Node>, CompileError> {
@@ -1326,9 +1341,7 @@ fn dependency_path(expr: &Expr, parameters: &[String]) -> Option<(String, Vec<St
     }
 }
 
-fn object_fields<'a>(
-    fields: &'a [(Expr, Expr)],
-) -> Result<BTreeMap<String, &'a Expr>, CompileError> {
+fn object_fields(fields: &[(Expr, Expr)]) -> Result<BTreeMap<String, &Expr>, CompileError> {
     fields
         .iter()
         .map(|(key, value)| Ok((static_string(key)?, value)))
