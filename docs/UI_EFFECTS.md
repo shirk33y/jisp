@@ -186,10 +186,17 @@ or individual patch writes. Each request is typed by its named capability; the
 storage payload is canonical JSON selected and validated by that capability,
 not a universal evaluator `Value` ABI.
 
-This WIT package is a source-of-truth prototype. Binding generation for two
-real host languages and a component-toolchain validation gate remain M6 work;
-the in-memory `FakeHost` exercises the same capability/version discipline but
-is not a generated WIT binding.
+`jisp-wit-check` is the local/CI conformance gate for this package. Its build
+script generates independent Rust and C bindings for the exported
+`jisp-ui-host` world into Cargo's `OUT_DIR`; its test verifies that both carry
+the three operations and stable unsupported/permission error codes. The
+generated sources are deliberately ephemeral: WIT, not a checked-in binding,
+is the source of truth. `FakeHost` exercises the same capability/version
+discipline at runtime, but is not itself a generated WIT binding.
+
+This is a generator-compatibility gate, not yet a packaged Wasm Component or a
+cross-language execution test. Component packaging and invoking the contract
+from two real host runtimes remain M6 work.
 
 ## Deferred decisions
 
@@ -198,7 +205,7 @@ is not a generated WIT binding.
   and providers beyond the two narrow playground capabilities.
 - Capability serialization choices for SSR/resume beyond the current
   JSON-shaped descriptors and completion templates.
-- Generated WIT bindings and a component-toolchain validation gate. WIT
+- Component packaging and execution tests in two real host runtimes. WIT
   describes this coarse capability boundary, never DOM patch operations.
 
 The browser Wasm session exposes the most recent declarations through

@@ -1,0 +1,10 @@
+[package]
+name = "jisp-wit-check"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[build-dependencies]
+wit-bindgen-c = "0.59.0"
+wit-bindgen-core = "0.59.0"
+wit-bindgen-rust = "0.59.0"

@@ -75,8 +75,13 @@ embedding protocol. Browser I/O beyond those two demonstrator capabilities and
 component-local ownership remain subsequent M4 work.
 M6 now has a first WIT package at
 [`wit/jisp-ui-capabilities.wit`](../../wit/jisp-ui-capabilities.wit), limited to
-coarse versioned storage/timer/navigation capabilities; binding generation and
-component-toolchain validation remain deliberately unclaimed.
+coarse versioned storage/timer/navigation capabilities. The workspace's
+`jisp-wit-check` build gate generates Rust and C bindings for the exported
+host world from that single WIT source on every normal test build and asserts
+their operations plus the stable unsupported/permission error diagnostics.
+The generated sources live only in `OUT_DIR`, so there is no hand-maintained
+parallel ABI. Component packaging and execution through two real host runtimes
+remain deliberately unclaimed.
 M5 has a versioned SSR payload (`jisp-ui-ssr/1`) containing escaped HTML,
 serializable state, and the structural tree. Its generated `data-jisp-path` and
 `data-jisp-key` markers provide stable element anchors without allowing source
