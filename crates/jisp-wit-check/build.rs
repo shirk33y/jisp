@@ -1,5 +1,6 @@
 use std::fs;
 use std::path::Path;
+use std::process::Command;
 
 use wit_bindgen_core::{wit_parser::Resolve, Files, WorldGenerator};
 
@@ -11,6 +12,7 @@ fn main() {
     let output = std::env::var("OUT_DIR").expect("Cargo sets OUT_DIR");
     let output = Path::new(&output);
     println!("cargo:rerun-if-changed={}", wit.display());
+    println!("cargo:rerun-if-env-changed=JISP_VERIFY_C_BINDING");
     generate(
         Box::new(wit_bindgen_rust::Opts::default().build()),
         &wit,
@@ -21,6 +23,9 @@ fn main() {
         &wit,
         &output.join("c"),
     );
+    if std::env::var_os("JISP_VERIFY_C_BINDING").is_some() {
+        compile_c_binding(&output.join("c"));
+    }
 }
 
 fn generate(mut generator: Box<dyn WorldGenerator>, wit: &Path, output: &Path) {
@@ -45,4 +50,25 @@ fn generate(mut generator: Box<dyn WorldGenerator>, wit: &Path, output: &Path) {
         }
         fs::write(path, contents).expect("could not write generated binding");
     }
+}
+
+fn compile_c_binding(output: &Path) {
+    let compiler = std::env::var_os("CC").unwrap_or_else(|| "cc".into());
+    let source = output.join("jisp_ui_host.c");
+    let status = Command::new(&compiler)
+        .args(["-std=c11", "-fsyntax-only", "-Wno-attributes", "-I"])
+        .arg(output)
+        .arg(&source)
+        .status()
+        .unwrap_or_else(|error| {
+            panic!(
+                "could not run C compiler `{}` for generated binding: {error}",
+                Path::new(&compiler).display()
+            )
+        });
+    assert!(
+        status.success(),
+        "C compiler rejected generated binding {}",
+        source.display()
+    );
 }

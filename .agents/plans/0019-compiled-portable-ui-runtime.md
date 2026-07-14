@@ -79,8 +79,9 @@ coarse versioned storage/timer/navigation capabilities. The workspace's
 `jisp-wit-check` build gate generates Rust and C bindings for the exported
 host world from that single WIT source on every normal test build and asserts
 their operations plus the stable unsupported/permission error diagnostics.
-The generated sources live only in `OUT_DIR`, so there is no hand-maintained
-parallel ABI. `jisp-ui-capability-component` additionally compiles a
+CI syntax-checks the generated C source as well. The generated sources live
+only in `OUT_DIR`, so there is no hand-maintained parallel ABI.
+`jisp-ui-capability-component` additionally compiles a
 deterministic implementation of that host world to a real `wasm32-wasip2`
 Component; CI installs the target and builds it as an ABI/package gate. The
 fixture validates `storage.write@1` and `timer.sleep@1` requests and explicitly

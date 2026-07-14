@@ -189,7 +189,8 @@ not a universal evaluator `Value` ABI.
 `jisp-wit-check` is the local/CI conformance gate for this package. Its build
 script generates independent Rust and C bindings for the exported
 `jisp-ui-host` world into Cargo's `OUT_DIR`; its test verifies that both carry
-the three operations and stable unsupported/permission error codes. The
+the three operations and stable unsupported/permission error codes. CI also
+asks the configured C compiler to syntax-check the generated C source. The
 generated sources are deliberately ephemeral: WIT, not a checked-in binding,
 is the source of truth. `FakeHost` exercises the same capability/version
 discipline at runtime, but is not itself a generated WIT binding.
