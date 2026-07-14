@@ -153,8 +153,9 @@ ordinary updates. The structural tree remains the semantic oracle and recovery
 snapshot while the compiled JUIR runtime evolves.
 
 Effects, subscriptions, async commands, persistence, lifecycle boundaries, and
-native widget adapters are still undefined; a UI component must remain a pure
-function of its supplied state and props.
+native widget adapters are not implemented; their proposed ownership and
+capability contract lives in [UI_EFFECTS.md](UI_EFFECTS.md). A UI component
+remains a pure function of its supplied state and props.
 
 For development diagnostics, `PlaygroundSession.metrics()` reports render
 counts plus the latest JUIR slot, block, and component reuse counts. The

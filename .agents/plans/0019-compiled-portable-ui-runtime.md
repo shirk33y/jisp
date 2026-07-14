@@ -26,6 +26,10 @@ browser host. Browser event updates now receive a batched structural patch
 protocol rather than a complete tree; a full snapshot is reserved for initial
 mount and recovery. Per-item keyed-block invalidation remains the next M3
 milestone.
+M4's pre-implementation ownership and capability contract is documented in
+[`docs/UI_EFFECTS.md`](../../docs/UI_EFFECTS.md): effects remain reducer data,
+carry stable owner/id/generation identity, and require deterministic fake-host
+tests before a source-level command API is introduced.
 
 ## Goal
 

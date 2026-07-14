@@ -16,9 +16,11 @@ Repository-root files remain deliberately small and operational:
   behaviour, and example.
 - [Declarative UI](UI.md): default component/host-element syntax, lowering
   contract, static HTML behavior, and the update-driven interactive host.
+- [UI commands and ownership](UI_EFFECTS.md): proposed portable command,
+  subscription, cancellation, and capability contract before effects are added.
 - [UI playground](../playground/index.html): a GitHub Pages preview with
   editable examples that runs the real interpreter in WebAssembly; its host is
-  intentionally limited to full-tree update rendering and browser event
+  intentionally limited to structural JUIR patch application and browser event
   forwarding.
 - [Architecture](ARCHITECTURE.md): crate boundaries and non-negotiable design
   invariants.
