@@ -17,8 +17,9 @@ parameter field paths are compared with immutable reducer changes; opaque,
 local, and module-level expressions are explicitly `Unknown` and therefore
 cannot be skipped. The browser Wasm executor retains the previous structural
 value, so this path is exercised by the playground rather than only by unit
-tests. Per-item keyed-block invalidation and direct DOM patch emission remain
-later milestones.
+tests. Component calls with unaffected, statically tracked inputs are skipped
+as whole subtrees. Per-item keyed-block invalidation, skip diagnostics, and
+direct DOM patch emission remain later milestones.
 
 ## Goal
 

@@ -48,6 +48,7 @@ pub enum Node {
     ComponentCall {
         name: String,
         arguments: Vec<Expr>,
+        dependencies: Vec<Dependency>,
         span: Span,
     },
     Dynamic {
@@ -308,6 +309,7 @@ pub struct ExecutionStats {
     pub evaluated_slots: usize,
     pub reused_slots: usize,
     pub reused_blocks: usize,
+    pub reused_components: usize,
 }
 
 pub struct Execution {
@@ -374,6 +376,10 @@ impl Compiler<'_> {
             return Ok(Node::ComponentCall {
                 name: name.to_owned(),
                 arguments: arguments.to_vec(),
+                dependencies: arguments
+                    .iter()
+                    .flat_map(|argument| expression_dependencies(argument, parameters))
+                    .collect(),
                 span: expr.span,
             });
         }
@@ -601,8 +607,17 @@ impl Executor<'_> {
                     .map(Value::List)
             }
             Node::ComponentCall {
-                name, arguments, ..
+                name,
+                arguments,
+                dependencies,
+                ..
             } => {
+                if !self.changes.affects(dependencies) {
+                    if let Some(previous) = previous {
+                        self.stats.reused_components += 1;
+                        return Ok(previous.clone());
+                    }
+                }
                 let values = arguments
                     .iter()
                     .map(|argument| self.evaluator.eval_in(argument, env).map_err(Into::into))
@@ -1158,6 +1173,7 @@ fn render_static_node(
             name,
             arguments,
             span,
+            ..
         } => {
             if !arguments.is_empty() {
                 return Err(dynamic_error(*span, "JUIR node is dynamic"));

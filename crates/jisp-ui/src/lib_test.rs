@@ -125,13 +125,17 @@ fn preserves_component_boundaries() {
         panic!("expected a list template");
     };
     let [Node::ComponentCall {
-        name, arguments, ..
+        name,
+        arguments,
+        dependencies,
+        ..
     }] = list.children.as_slice()
     else {
         panic!("expected a component boundary");
     };
     assert_eq!(name, "row");
     assert!(arguments.is_empty());
+    assert!(dependencies.is_empty());
     assert_eq!(
         render_static_html(&program, "app").unwrap(),
         "<ul><li>Row</li></ul>"
@@ -470,6 +474,58 @@ fn compiles_a_conditional_component_root() {
         .unwrap()
         .display_string();
     assert_eq!(html, "<div>Hidden</div>");
+}
+
+#[test]
+fn incremental_executor_skips_a_component_with_unaffected_inputs() {
+    let typed = typed(
+        r#"
+(component app-header (title)
+  (header (text title)))
+
+(component app (state)
+  (main
+    (app-header (. state "title"))
+    (text (. state "count"))))
+"#,
+    );
+    let program = compile(&typed).unwrap();
+    let before = Value::Obj(indexmap::IndexMap::from([
+        ("title".to_owned(), Value::string("Plan")),
+        ("count".to_owned(), Value::Int(1)),
+    ]));
+    let after = Value::Obj(indexmap::IndexMap::from([
+        ("title".to_owned(), Value::string("Plan")),
+        ("count".to_owned(), Value::Int(2)),
+    ]));
+    let mut evaluator = Evaluator::new();
+    let loaded = evaluator.load_module(&typed.module).unwrap();
+    let first = execute_incremental(
+        &program,
+        &mut evaluator,
+        &loaded.env,
+        "app",
+        std::slice::from_ref(&before),
+        None,
+        &ChangeSet {
+            unknown: true,
+            ..ChangeSet::default()
+        },
+    )
+    .unwrap();
+    let second = execute_incremental(
+        &program,
+        &mut evaluator,
+        &loaded.env,
+        "app",
+        std::slice::from_ref(&after),
+        Some(&first.value),
+        &changed_paths("state", &before, &after),
+    )
+    .unwrap();
+
+    assert_eq!(second.stats.reused_components, 1);
+    assert_eq!(second.stats.evaluated_slots, 1);
 }
 
 fn app_state(title: &str, show: bool, items: &[&str]) -> Value {
