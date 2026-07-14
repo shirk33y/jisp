@@ -859,23 +859,46 @@ impl Executor<'_> {
             let previous_children = previous_fields
                 .and_then(|fields| fields.get("children"))
                 .and_then(list_value);
-            fields.insert(
-                "children".to_owned(),
-                element
-                    .children
-                    .iter()
-                    .enumerate()
-                    .map(|(index, child)| {
-                        self.node(
-                            child,
-                            env,
-                            previous_children.and_then(|children| children.get(index)),
-                            &format!("{path}.child.{index}"),
-                        )
-                    })
-                    .collect::<Result<Vec<_>, _>>()
-                    .map(Value::List)?,
-            );
+            let mut previous_offset = 0;
+            let mut previous_alignment_safe = true;
+            let mut children = vec![];
+            for (index, child) in element.children.iter().enumerate() {
+                let child_path = format!("{path}.child.{index}");
+                let previous_child = if previous_alignment_safe {
+                    match child {
+                        Node::Each { .. } => self
+                            .previous_each_cache
+                            .and_then(|cache| cache.get(&child_path))
+                            .map(|items| {
+                                Value::List(
+                                    items.iter().map(|item| item.rendered.clone()).collect(),
+                                )
+                            }),
+                        _ => previous_children
+                            .and_then(|children| children.get(previous_offset))
+                            .cloned(),
+                    }
+                } else {
+                    None
+                };
+                let previous_width = match &previous_child {
+                    Some(Value::List(children)) if matches!(child, Node::Each { .. }) => {
+                        children.len()
+                    }
+                    Some(_) => 1,
+                    None => 0,
+                };
+                let rendered = self.node(child, env, previous_child.as_ref(), &child_path)?;
+                append_flattened_child(rendered, &mut children);
+                previous_offset += previous_width;
+                if matches!(child, Node::Dynamic { .. } | Node::If { .. }) {
+                    // A dynamic expression can contribute any number of
+                    // flattened children. Do not risk reusing a later sibling
+                    // at a shifted position; conservatively re-evaluate it.
+                    previous_alignment_safe = false;
+                }
+            }
+            fields.insert("children".to_owned(), Value::List(children));
         }
         Ok(Value::Obj(fields))
     }
@@ -925,6 +948,21 @@ impl Executor<'_> {
                 self.evaluator.eval_in(expression, env).map_err(Into::into)
             }
         }
+    }
+}
+
+/// UI child lists are transparent containers in the source semantics: `for`,
+/// `list.cat`, and a dynamic list contribute their items, not an extra node.
+/// The executor must preserve that invariant before any browser/native/test
+/// host sees the structural tree.
+fn append_flattened_child(value: Value, output: &mut Vec<Value>) {
+    match value {
+        Value::List(values) => {
+            for value in values {
+                append_flattened_child(value, output);
+            }
+        }
+        value => output.push(value),
     }
 }
 

@@ -28,6 +28,10 @@ mount and recovery. Keyed `for` blocks also retain rows whose immutable item
 value is unchanged when a collection changes or reorders; a changed external
 dependency still conservatively rerenders every affected row. The cache is
 internal to the JUIR executor and does not alter the structural-tree contract.
+Portable differential scenarios now cover keyed `for` rows, dynamic properties
+and classes, conditional branches, and nested component calls in all four
+source syntaxes; they compare the reference structural value to JUIR after
+each reducer action, including flattened dynamic child lists.
 M4's pre-implementation ownership and capability contract is documented in
 [`docs/UI_EFFECTS.md`](../../docs/UI_EFFECTS.md): effects remain reducer data,
 carry stable owner/id/generation identity, and require deterministic fake-host

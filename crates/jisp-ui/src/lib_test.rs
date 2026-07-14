@@ -238,6 +238,10 @@ fn executor_matches_the_reference_evaluator_for_components_and_each() {
         )
         .unwrap();
     let rendered = execute(&program, &mut evaluator, &loaded.env, "app", &[state]).unwrap();
+    assert!(
+        reference.structurally_equal(&rendered).unwrap(),
+        "JUIR must flatten `for` children to the reference structural tree"
+    );
     let ui_html = evaluator.root_env().lookup("ui.html").unwrap();
     let reference_html = evaluator
         .apply(ui_html.clone(), &[reference], span)
