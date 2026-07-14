@@ -141,9 +141,10 @@ metadata that lets each host keep the same execution contract.
 The browser playground currently uses this contract. On each event it calls
 the selected Jisp handler with a small JSON-shaped event object, calls
 `update(state, action)`, then evaluates the typed JUIR plan for
-`app(next-state)` through the canonical Jisp evaluator. That executor currently
-materializes the existing structural-tree contract as the semantic reference;
-the initial mount sends that tree once, while later events send a batch of
+`app(next-state)` through the canonical Jisp evaluator. The initial client-only
+mount receives a versioned static JUIR skeleton plus the current structural
+values for dynamic slots/blocks; the browser creates matching static elements
+directly and never evaluates a Jisp expression. Later events send a batch of
 text, element-metadata, child-list, or replacement patches. The browser host
 applies those patches in place: it updates changed text, attributes,
 properties, classes, and handlers, and retains/moves keyed sibling nodes. It
@@ -180,6 +181,13 @@ list indices. A browser, native host, or editor can attach diagnostics to the
 original source without parsing/evaluating Jisp or treating transient host nodes
 as source identity.
 
+`PlaygroundSession.mount_plan()` returns `jisp-ui-mount-plan/1`: a static
+skeleton of elements/text plus explicit dynamic holes for `if`, `for`, component
+calls, and opaque node values. Static attributes, properties, and class tokens
+are included for inspection. The plan contains no expression code, closures, or
+host objects; a host combines it with the initial structural value returned by
+the canonical executor and falls back to that value for every dynamic hole.
+
 ### Native adapter prototype
 
 `jisp-ui::native` is an in-memory reference adapter for a deliberately small
@@ -207,10 +215,11 @@ When a matching SSR tree already exists, the playground host attaches paths,
 properties, and listeners in place; it does not overwrite `innerHTML`, replace
 matching nodes, or reset browser-entered `value`/`checked` control state during
 that first attachment. A later reducer update still writes a changed declared
-property as usual. The playground seeds its empty iframe from the payload only
-to emulate a server document. A mismatching server tree is rejected and
-recovered through the ordinary full-tree mount rather than silently claiming
-hydration succeeded.
+property as usual. The playground's ordinary preview is client-only and mounts
+the compiled static skeleton directly; an embedding server may instead seed a
+matching SSR payload before invoking the same hydration path. A mismatching
+server tree is rejected and recovered through the ordinary full-tree mount
+rather than silently claiming hydration succeeded.
 
 This proves the hydration contract locally; a production server-delivery
 adapter, block-level SSR anchors, and resumability remain future work.
@@ -243,17 +252,16 @@ locations and cross-syntax generation.
 
 This is a declarative UI language with a deliberately small interactive host
 contract, not yet a React-equivalent runtime. Effect/lifecycle semantics,
-subscriptions, async commands, direct static-template DOM mounting, native
-widget registries, and Tailwind-style token validation remain future runtime
-work. The static `ui.html` renderer still preserves neither event handlers nor
-keys; it rejects inline `on*` attributes, so portable events must use the `on`
-directive.
+subscriptions, async commands, native widget registries, and Tailwind-style
+token validation remain future runtime work. The static `ui.html` renderer
+still preserves neither event handlers nor keys; it rejects inline `on*`
+attributes, so portable events must use the `on` directive.
 
 The GitHub Pages playground runs this same interpreter through the
-`jisp-wasm` WebAssembly entry point. JavaScript loads the module, renders the
-returned structural tree in an isolated preview, and forwards browser events;
-it does not parse or evaluate a second UI language, and it does not implement
-the update function. Its Lisp, JSON, YAML, and indentation-based WS selector
-converts the parsed module before reloading it through the selected reader.
-Comments are not part of the shared syntax tree, so conversion intentionally
-drops them.
+`jisp-wasm` WebAssembly entry point. JavaScript consumes a JUIR static mount
+skeleton plus renderer-neutral dynamic values in an isolated preview and
+forwards browser events; it does not parse or evaluate a second UI language,
+and it does not implement the update function. Its Lisp, JSON, YAML, and
+indentation-based WS selector converts the parsed module before reloading it
+through the selected reader. Comments are not part of the shared syntax tree,
+so conversion intentionally drops them.

@@ -12,8 +12,10 @@ and structural executor enabled by the browser Wasm crate's default `juir`
 feature. It evaluates Jisp expressions through the canonical evaluator and
 materializes the existing structural-tree contract before the DOM reconciler.
 Event descriptors retain explicit synchronous `prevent-default`,
-`stop-propagation`, and `capture` policy for the browser host; direct
-static-template DOM mount remains the next M2 increment.
+`stop-propagation`, and `capture` policy for the browser host. The playground
+now mounts the versioned `jisp-ui-mount-plan/1` static skeleton directly through
+DOM APIs, while Jisp/Wasm supplies values for every dynamic slot/block; the
+structural tree remains the conformance oracle and recovery format.
 The compiled plan now also carries a stable `jisp-ui-source-map/1` manifest for
 template nodes, dynamic slots, event descriptors, blocks, and source
 expressions. It is exposed through Wasm for diagnostics/tooling without making

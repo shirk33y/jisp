@@ -221,6 +221,36 @@ fn update_session_exposes_compiled_juir_source_map() {
     }));
 }
 
+#[cfg(feature = "juir")]
+#[test]
+fn update_session_exposes_static_mount_plan_without_expression_code() {
+    let mut session = PlaygroundSession::new();
+    session
+        .load_source(
+            r#"
+(def init (obj "title" "Plan"))
+(defn update (state action) state)
+(component app (state)
+  (main
+    (class "shell")
+    (h1 (text "Tasks"))
+    (if (. state "title")
+      (p (text (. state "title")))
+      (p (text "Empty")))))
+(ui.app init update app)
+"#,
+        )
+        .unwrap();
+
+    let plan: Value = serde_json::from_str(&session.mount_plan_json().unwrap()).unwrap();
+    assert_eq!(plan["protocol"], "jisp-ui-mount-plan/1");
+    assert_eq!(plan["root"]["tag"], "main");
+    assert_eq!(plan["root"]["staticClasses"][0], "shell");
+    assert_eq!(plan["root"]["children"][0]["tag"], "h1");
+    assert_eq!(plan["root"]["children"][1]["kind"], "dynamic");
+    assert!(!plan.to_string().contains("expression"));
+}
+
 #[test]
 fn update_session_emits_local_tree_patches() {
     let mut session = PlaygroundSession::new();

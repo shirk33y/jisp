@@ -12,6 +12,7 @@ use jisp_core::Span;
 use jisp_eval::{Env, Evaluator, RuntimeError, Value};
 use jisp_ir::{Definition, Expr, ExprKind, Literal, StringPart};
 use jisp_types::{Type, TypedModule};
+use serde_json::{json, Map as JsonMap, Value as JsonValue};
 
 pub mod effects;
 pub mod native;
@@ -345,6 +346,28 @@ pub fn render_static_html(program: &Program, component: &str) -> Result<String, 
     let mut output = String::new();
     render_static_node(program, &component.root, &mut output)?;
     Ok(output)
+}
+
+/// Serialize the static shape of one compiled component for a host's initial
+/// DOM/native mount. Dynamic nodes deliberately become explicit holes: their
+/// current renderer-neutral value still comes from [`execute`], so this plan
+/// never requires a host to evaluate Jisp expressions.
+///
+/// The result is a compact implementation protocol. It does not replace the
+/// structural tree oracle or define user-facing source syntax.
+pub fn mount_plan(program: &Program, component: &str) -> Result<JsonValue, CompileError> {
+    let component =
+        program
+            .components
+            .get(component)
+            .ok_or_else(|| CompileError::UnknownComponent {
+                name: component.to_owned(),
+            })?;
+    Ok(json!({
+        "protocol": "jisp-ui-mount-plan/1",
+        "component": component.name,
+        "root": mount_plan_node(&component.root),
+    }))
 }
 
 /// Execute a compiled UI component to the existing renderer-neutral Jisp UI
@@ -1349,6 +1372,65 @@ fn source_map_entry(
         kind,
         span,
     });
+}
+
+fn mount_plan_node(node: &Node) -> JsonValue {
+    match node {
+        Node::Text(text) => json!({
+            "kind": "text",
+            "staticValue": static_slot_json(&text.value),
+        }),
+        Node::Element(element) => json!({
+            "kind": "element",
+            "tag": element.tag,
+            "staticAttrs": static_slots_json(&element.attrs),
+            "staticProps": static_slots_json(&element.props),
+            "staticClasses": static_classes_json(&element.classes),
+            "events": element.events.keys().collect::<Vec<_>>(),
+            "children": element.children.iter().map(mount_plan_node).collect::<Vec<_>>(),
+        }),
+        // These plan nodes have no invariant initial host shape. Their current
+        // structural value is mounted as a single dynamic region by the host.
+        Node::If { .. } => json!({ "kind": "dynamic", "block": "if" }),
+        Node::Each { .. } => json!({ "kind": "dynamic", "block": "each" }),
+        Node::ComponentCall { .. } => json!({ "kind": "dynamic", "block": "component" }),
+        Node::Dynamic { .. } => json!({ "kind": "dynamic", "block": "value" }),
+    }
+}
+
+fn static_slots_json(slots: &IndexMap<String, Slot>) -> JsonValue {
+    slots
+        .iter()
+        .filter_map(|(name, slot)| static_slot_json(slot).map(|value| (name.clone(), value)))
+        .collect::<JsonMap<_, _>>()
+        .into()
+}
+
+fn static_classes_json(classes: &IndexMap<String, Slot>) -> JsonValue {
+    JsonValue::Array(
+        classes
+            .iter()
+            .filter_map(|(name, slot)| {
+                matches!(slot, Slot::Static(Scalar::Bool(true)))
+                    .then_some(JsonValue::String(name.clone()))
+            })
+            .collect(),
+    )
+}
+
+fn static_slot_json(slot: &Slot) -> Option<JsonValue> {
+    let Slot::Static(value) = slot else {
+        return None;
+    };
+    Some(match value {
+        Scalar::Null => JsonValue::Null,
+        Scalar::Bool(value) => JsonValue::Bool(*value),
+        Scalar::Int(value) => JsonValue::Number((*value).into()),
+        Scalar::Float(value) => serde_json::Number::from_f64(*value)
+            .map(JsonValue::Number)
+            .expect("Jisp source float literals are finite"),
+        Scalar::Str(value) => JsonValue::String(value.clone()),
+    })
 }
 
 fn append_node_dependencies(node: &Node, output: &mut Vec<Dependency>) {

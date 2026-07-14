@@ -93,6 +93,7 @@ let session = null;
 let hostMetrics = null;
 let previewHydrated = false;
 let latestSsrPayload = null;
+let latestMountPlan = null;
 const language = new Compartment();
 const clojureLanguage = StreamLanguage.define(clojure);
 const jsonLanguage = json();
@@ -267,6 +268,29 @@ function createNode(tree, path) {
   return element;
 }
 
+function createPlannedNode(plan, tree, path) {
+  if (plan?.kind === "text" && tree?.kind === "text") {
+    hostMetrics.mounts += 1;
+    return document.createTextNode(String(tree.value ?? ""));
+  }
+  if (plan?.kind !== "element" || !isElementTree(tree) || plan.tag !== tree.tag) {
+    return createNode(tree, path);
+  }
+  hostMetrics.mounts += 1;
+  const element = document.createElement(plan.tag);
+  mountElementMetadata(element, tree, path);
+  const plannedChildren = Array.isArray(plan.children) ? plan.children : [];
+  const children = Array.isArray(tree.children) ? tree.children : [];
+  if (plannedChildren.length !== children.length) {
+    for (const [index, child] of children.entries()) element.append(createNode(child, path + "." + index));
+    return element;
+  }
+  for (const [index, child] of children.entries()) {
+    element.append(createPlannedNode(plannedChildren[index], child, path + "." + index));
+  }
+  return element;
+}
+
 function patchNode(parent, existing, tree, path, options = {}) {
   if (!matchesTree(existing, tree)) {
     if (options.hydrating) return null;
@@ -292,12 +316,16 @@ function patchNode(parent, existing, tree, path, options = {}) {
 
 function patchElement(element, tree, path, options = {}) {
   hostMetrics.elementPatches += 1;
+  mountElementMetadata(element, tree, path, options);
+  reconcileChildren(element, tree.children || [], path, options);
+}
+
+function mountElementMetadata(element, tree, path, options = {}) {
   element.dataset.jispPath = path;
   syncAttributes(element, tree.attrs || {});
   syncProperties(element, tree.props || {}, null, options.hydrating);
   syncClasses(element, tree.classes || []);
   syncEvents(element, tree.events || {});
-  reconcileChildren(element, tree.children || [], path, options);
   element.__jispKey = treeKey(tree);
 }
 
@@ -522,6 +550,11 @@ function hydrateTree(payload, preserveBrowserState) {
   return true;
 }
 
+function mountPlan(tree, plan) {
+  root.replaceChildren(createPlannedNode(plan?.root, tree, "0"));
+  reportHostMetrics();
+}
+
 function matchesHydrationTree(existing, tree) {
   if (!matchesTree(existing, tree)) return false;
   if (tree?.kind === "text") return true;
@@ -543,6 +576,10 @@ addEventListener("message", (message) => {
     reportHostMetrics();
     return;
   }
+  if (message.data?.type === "jisp-mount") {
+    mountPlan(message.data.tree, message.data.plan);
+    return;
+  }
   if (message.data?.type === "jisp-hydrate") {
     if (!hydrateTree(message.data.payload, message.data.preserveBrowserState === true)) {
       parent.postMessage({ type: "jisp-recover" }, "*");
@@ -559,7 +596,15 @@ addEventListener("message", (message) => {
 function postTree(tree) {
   latestTree = tree;
   latestSsrPayload = null;
+  latestMountPlan = null;
   preview.contentWindow?.postMessage({ type: "jisp-render", tree }, "*");
+}
+
+function postMount(tree, plan) {
+  latestTree = tree;
+  latestSsrPayload = null;
+  latestMountPlan = plan;
+  preview.contentWindow?.postMessage({ type: "jisp-mount", tree, plan }, "*");
 }
 
 function postPatches(patches, sequence) {
@@ -586,8 +631,9 @@ function renderPreview() {
   if (!ready) return;
   try {
     session = new PlaygroundSession();
-    session.load_syntax(sourceText(), syntax);
-    postHydrate(JSON.parse(session.ssr()));
+    const tree = JSON.parse(session.load_syntax(sourceText(), syntax));
+    const plan = JSON.parse(session.mount_plan());
+    postMount(tree, plan);
     error.classList.add("hidden");
     setRuntimeStatus("Update ready");
   } catch (reason) {
@@ -675,6 +721,7 @@ async function loadExample(path) {
 preview.addEventListener("load", () => {
   previewHydrated = false;
   if (latestSsrPayload) postHydrate(latestSsrPayload);
+  else if (latestTree && latestMountPlan) postMount(latestTree, latestMountPlan);
   else if (latestTree) postTree(latestTree);
   else if (session) postTree(JSON.parse(session.snapshot()));
 });

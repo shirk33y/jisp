@@ -6,7 +6,7 @@ use jisp_types::{Inferencer, TypedModule};
 
 use crate::native::{self, NativeError, NativeScalar, NativeWidgetKind};
 use crate::{
-    changed_paths, compile, execute, execute_incremental, execute_incremental_cached,
+    changed_paths, compile, execute, execute_incremental, execute_incremental_cached, mount_plan,
     render_static_html, ChangeSet, Dependency, DependencyPath, Node, Scalar, Slot,
 };
 
@@ -242,6 +242,34 @@ fn compiled_program_keeps_stable_source_map_entries_for_templates_and_slots() {
             && entry.path == "root.children.0.else.children.0"
             && entry.kind == crate::SourceMapKind::Text
     }));
+}
+
+#[test]
+fn mount_plan_retains_static_template_shape_and_marks_dynamic_blocks() {
+    let program = compile(&typed(
+        r#"
+(component app (state)
+  (main
+    (class "shell")
+    (attr "data-app" "tasks")
+    (h1 (text "Tasks"))
+    (if (. state "visible")
+      (p (text (. state "title")))
+      (p (text "Hidden")))))
+"#,
+    ))
+    .unwrap();
+
+    let plan = mount_plan(&program, "app").unwrap();
+    assert_eq!(plan["protocol"], "jisp-ui-mount-plan/1");
+    assert_eq!(plan["component"], "app");
+    assert_eq!(plan["root"]["kind"], "element");
+    assert_eq!(plan["root"]["tag"], "main");
+    assert_eq!(plan["root"]["staticAttrs"]["data-app"], "tasks");
+    assert_eq!(plan["root"]["staticClasses"][0], "shell");
+    assert_eq!(plan["root"]["children"][0]["kind"], "element");
+    assert_eq!(plan["root"]["children"][1]["kind"], "dynamic");
+    assert_eq!(plan["root"]["children"][1]["block"], "if");
 }
 
 #[test]

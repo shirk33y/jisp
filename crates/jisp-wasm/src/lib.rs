@@ -8,8 +8,9 @@ use jisp::jisp_eval::{normalize_update_result, Evaluator, Value};
 use jisp::jisp_types::Inferencer;
 #[cfg(feature = "juir")]
 use jisp::jisp_ui::{
-    changed_paths, compile as compile_juir, execute_incremental_cached, ChangeSet,
-    Execution as JuirExecution, ExecutionStats, Program as JuirProgram,
+    changed_paths, compile as compile_juir, execute_incremental_cached,
+    mount_plan as juir_mount_plan, ChangeSet, Execution as JuirExecution, ExecutionStats,
+    Program as JuirProgram,
 };
 use jisp_syntax_json::JsonParser;
 use jisp_syntax_lisp::LispParser;
@@ -144,6 +145,12 @@ impl PlaygroundSession {
     /// hosts can attach diagnostics without owning Jisp source semantics.
     pub fn source_map(&self) -> Result<String, JsValue> {
         self.source_map_json().map_err(js_error)
+    }
+
+    /// Return a static JUIR mount skeleton for the currently loaded app.
+    /// Dynamic slots/blocks remain values produced by the canonical executor.
+    pub fn mount_plan(&self) -> Result<String, JsValue> {
+        self.mount_plan_json().map_err(js_error)
     }
 
     /// Run fixture-only portable UI scenarios embedded in the current source.
@@ -344,6 +351,23 @@ impl PlaygroundSession {
         }
         #[cfg(not(feature = "juir"))]
         Err("JUIR source maps require the `juir` feature".to_owned())
+    }
+
+    fn mount_plan_json(&self) -> Result<String, String> {
+        #[cfg(feature = "juir")]
+        {
+            let runtime = self
+                .runtime
+                .as_ref()
+                .ok_or_else(|| "load a ui.app program before reading its mount plan".to_owned())?;
+            serde_json::to_string(
+                &juir_mount_plan(&runtime.program, &runtime.component)
+                    .map_err(|error| error.to_string())?,
+            )
+            .map_err(|error| error.to_string())
+        }
+        #[cfg(not(feature = "juir"))]
+        Err("JUIR mount plans require the `juir` feature".to_owned())
     }
 
     fn render(&mut self) -> Result<String, String> {
