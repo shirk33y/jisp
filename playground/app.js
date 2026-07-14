@@ -13,6 +13,7 @@ const { default: init, convert_source, PlaygroundSession } = wasmModule;
 
 const examples = [
   ["Todo updates", "examples/todos.lisp"],
+  ["Counter tests", "examples/counter-tests.lisp"],
   ["Product launch board", "examples/kanban.lisp"],
   ["Tiny rituals", "examples/habits.lisp"],
   ["Personal spend", "examples/finance.lisp"],
@@ -54,9 +55,13 @@ app.innerHTML = `
               <label class="cursor-pointer rounded-md px-2 py-1 text-xs font-semibold text-slate-300 has-[:checked]:bg-cyan-400 has-[:checked]:text-slate-950"><input class="sr-only" type="radio" name="syntax" value="ws"> WS</label>
             </fieldset>
           </div>
-          <button id="reset" class="rounded-md px-2 py-1 text-xs font-semibold text-cyan-300 hover:bg-slate-800">Reset</button>
+          <div class="flex items-center gap-1">
+            <button id="run-tests" class="rounded-md bg-cyan-400 px-2 py-1 text-xs font-bold text-slate-950 hover:bg-cyan-300">Run tests</button>
+            <button id="reset" class="rounded-md px-2 py-1 text-xs font-semibold text-cyan-300 hover:bg-slate-800">Reset</button>
+          </div>
         </div>
         <div id="editor" aria-label="Jisp UI source"></div>
+        <section id="test-results" class="hidden border-t border-slate-800 bg-slate-950 px-4 py-3" aria-live="polite"></section>
       </section>
       <section class="preview-shell overflow-hidden rounded-2xl border border-slate-800 bg-white shadow-2xl">
         <div class="flex items-center justify-between border-b border-slate-200 bg-white px-4 py-3">
@@ -72,6 +77,8 @@ app.innerHTML = `
 
 const select = document.getElementById("example");
 const reset = document.getElementById("reset");
+const runTests = document.getElementById("run-tests");
+const testResults = document.getElementById("test-results");
 const preview = document.getElementById("preview");
 const error = document.getElementById("error");
 const status = document.getElementById("status");
@@ -597,6 +604,46 @@ function setSource(text) {
   editor.dispatch({ changes: { from: 0, to: editor.state.doc.length, insert: text } });
 }
 
+function showTestResults(report) {
+  testResults.replaceChildren();
+  testResults.classList.remove("hidden");
+  const heading = document.createElement("p");
+  heading.className = "mb-2 text-xs font-semibold uppercase tracking-wider text-slate-400";
+  if (!report.tests.length) heading.textContent = "No ui.test scenarios in this example";
+  else heading.textContent = `${report.tests.length} portable UI test${report.tests.length === 1 ? "" : "s"}`;
+  testResults.append(heading);
+  for (const test of report.tests) {
+    const row = document.createElement("div");
+    row.className = `rounded-lg px-3 py-2 text-sm ${test.passed ? "bg-emerald-950/60 text-emerald-200" : "bg-rose-950/60 text-rose-200"}`;
+    const title = document.createElement("strong");
+    title.textContent = `${test.passed ? "PASS" : "FAIL"} · ${test.name} (${test.assertions} assertion${test.assertions === 1 ? "" : "s"})`;
+    row.append(title);
+    if (test.failure) {
+      const detail = document.createElement("pre");
+      detail.className = "mt-2 whitespace-pre-wrap font-mono text-xs";
+      detail.textContent = test.failure;
+      row.append(detail);
+    }
+    testResults.append(row);
+  }
+}
+
+function runPortableTests() {
+  if (!ready) return;
+  try {
+    const runner = new PlaygroundSession();
+    showTestResults(JSON.parse(runner.run_tests(sourceText(), syntax)));
+    error.classList.add("hidden");
+    setStatus("bg-emerald-100 text-emerald-700", "Tests complete");
+  } catch (reason) {
+    testResults.classList.remove("hidden");
+    testResults.textContent = `Test setup error: ${String(reason)}`;
+    error.textContent = String(reason);
+    error.classList.remove("hidden");
+    setStatus("bg-rose-100 text-rose-700", "Test error");
+  }
+}
+
 function setEditorLanguage() {
   const nextLanguage = {
     lisp: clojureLanguage,
@@ -707,6 +754,7 @@ reset.addEventListener("click", () => {
     setStatus("bg-rose-100 text-rose-700", "Reset error");
   }
 });
+runTests.addEventListener("click", runPortableTests);
 
 try {
   await init({ module_or_path: new URL(`./pkg/jisp_wasm_bg.wasm?v=${encodeURIComponent(assetVersion)}`, import.meta.url) });

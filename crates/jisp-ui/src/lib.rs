@@ -15,6 +15,7 @@ use jisp_types::{Type, TypedModule};
 
 pub mod effects;
 pub mod native;
+pub mod testing;
 
 #[derive(Clone, Debug)]
 pub struct Program {
@@ -1496,3 +1497,5 @@ fn scalar_text(value: &Scalar) -> String {
 
 #[cfg(test)]
 mod lib_test;
+#[cfg(test)]
+mod testing_test;

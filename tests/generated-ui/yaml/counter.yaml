@@ -1,0 +1,53 @@
+[
+  [type, Action, [Increment], [Reset]],
+  [def, init, 0],
+  [
+    defn,
+    update,
+    [state, action],
+    [case, action, [[Increment], [+, state, 1]], [[Reset], 0]],
+  ],
+  [
+    component,
+    app,
+    [state],
+    [
+      main,
+      [attr, "aria-label", "Counter"],
+      [h1, [text, "Portable counter"]],
+      [button, [attr, type, "button"], [text, [str.from, state]]],
+    ],
+  ],
+  [ui.app, init, update, app],
+  [
+    ui.test,
+    "counter renders, advances, and resets",
+    [assert, [=, 0, [ui.test.state]]],
+    [
+      assert,
+      [
+        =,
+        "<main aria-label=\"Counter\"><h1>Portable counter</h1><button type=\"button\">0</button></main>",
+        [ui.test.html],
+      ],
+    ],
+    [dispatch, Increment],
+    [dispatch, Increment],
+    [assert, [=, 2, [ui.test.state]]],
+    [
+      assert,
+      [
+        =,
+        "<main aria-label=\"Counter\"><h1>Portable counter</h1><button type=\"button\">2</button></main>",
+        [ui.test.html],
+      ],
+    ],
+    [dispatch, Reset],
+    [assert, [=, 0, [ui.test.state]]],
+  ],
+  [
+    ui.test,
+    "counter exposes a stable renderer-neutral tree",
+    [assert, [=, [app, 0], [ui.test.tree]]],
+  ],
+]

@@ -25,8 +25,34 @@ fn generate_tests() -> Result<(), String> {
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").map_err(|error| {
         format!("failed to read CARGO_MANIFEST_DIR for portable language tests: {error}")
     })?);
-    let canonical_dir = manifest_dir.join("../../tests/language");
-    let generated_dir = manifest_dir.join("../../tests/generated-language");
+    generate_fixture_tests(
+        &manifest_dir,
+        "language",
+        "generated-language",
+        "portable_language_tests.rs",
+        "portable_support",
+        &["test", "test-error"],
+    )?;
+    generate_fixture_tests(
+        &manifest_dir,
+        "ui",
+        "generated-ui",
+        "portable_ui_tests.rs",
+        "portable_ui_support",
+        &["ui.test"],
+    )
+}
+
+fn generate_fixture_tests(
+    manifest_dir: &Path,
+    canonical_name: &str,
+    generated_name: &str,
+    output_name: &str,
+    runner: &str,
+    test_forms: &[&str],
+) -> Result<(), String> {
+    let canonical_dir = manifest_dir.join(format!("../../tests/{canonical_name}"));
+    let generated_dir = manifest_dir.join(format!("../../tests/{generated_name}"));
     println!("cargo:rerun-if-changed={}", canonical_dir.display());
     println!("cargo:rerun-if-changed={}", generated_dir.display());
 
@@ -47,7 +73,7 @@ fn generate_tests() -> Result<(), String> {
         println!("cargo:rerun-if-changed={}", path.display());
         let source = fs::read_to_string(&path)
             .map_err(|error| format!("failed to read {}: {error}", path.display()))?;
-        let tests = discover_tests(&path, &source)?;
+        let tests = discover_tests(&path, &source, test_forms)?;
         let fixture_path = fixture_path(&path)?;
         let module = unique_ident(&mut module_names, &sanitize_ident(&fixture_path));
 
@@ -67,7 +93,7 @@ fn generate_tests() -> Result<(), String> {
             output.push_str("    #[test]\n");
             output.push_str(&format!("    fn {function}() {{\n"));
             output.push_str(&format!(
-                "        crate::portable_support::run_portable_test(FILE, SOURCE, {}, \"{}\");\n",
+                "        crate::{runner}::run_portable_test(FILE, SOURCE, {}, \"{}\");\n",
                 test.index,
                 escape_rust_string(&test.name)
             ));
@@ -81,7 +107,7 @@ fn generate_tests() -> Result<(), String> {
         PathBuf::from(env::var("OUT_DIR").map_err(|error| {
             format!("failed to read OUT_DIR for portable language tests: {error}")
         })?);
-    fs::write(out_dir.join("portable_language_tests.rs"), output)
+    fs::write(out_dir.join(output_name), output)
         .map_err(|error| format!("failed to write generated portable language tests: {error}"))?;
 
     Ok(())
@@ -130,7 +156,11 @@ fn is_portable_fixture(path: &Path, syntaxes: &[Syntax]) -> bool {
     detect_syntax(path).is_some_and(|syntax| syntaxes.contains(&syntax))
 }
 
-fn discover_tests(path: &Path, source: &str) -> Result<Vec<FixtureTest>, String> {
+fn discover_tests(
+    path: &Path,
+    source: &str,
+    test_forms: &[&str],
+) -> Result<Vec<FixtureTest>, String> {
     let nodes = parse_fixture(path, source)?;
     let mut tests = vec![];
 
@@ -138,10 +168,11 @@ fn discover_tests(path: &Path, source: &str) -> Result<Vec<FixtureTest>, String>
         let Some(items) = node.as_form() else {
             continue;
         };
-        if !matches!(
-            items.first().and_then(Node::as_symbol),
-            Some("test" | "test-error")
-        ) {
+        if !items
+            .first()
+            .and_then(Node::as_symbol)
+            .is_some_and(|head| test_forms.contains(&head))
+        {
             continue;
         }
         let name = items
@@ -158,7 +189,7 @@ fn discover_tests(path: &Path, source: &str) -> Result<Vec<FixtureTest>, String>
 
     if tests.is_empty() {
         return Err(format!(
-            "{}: expected at least one top-level test form",
+            "{}: expected at least one supported top-level test form",
             path.display()
         ));
     }

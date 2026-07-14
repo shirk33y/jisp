@@ -1,7 +1,8 @@
 #[cfg(feature = "juir")]
 use super::render_ssr;
 use super::{
-    collect_tree_patches, format_source, parse_source, render_html_source, PlaygroundSession,
+    collect_tree_patches, format_source, parse_source, render_html_source, run_ui_tests_source,
+    source_without_ui_tests, PlaygroundSession,
 };
 use serde_json::{json, Value};
 
@@ -28,6 +29,31 @@ fn renders_a_component_program_with_the_real_interpreter() {
         html,
         "<ul><li class=\"rounded\">Plan</li><li class=\"rounded\">Ship</li></ul>"
     );
+}
+
+#[test]
+fn playground_ui_tests_run_in_wasm_and_are_removed_before_rendering() {
+    let source = r#"
+(type Action (Increment))
+(def init 0)
+(defn update (state action) (+ state 1))
+(component app (state) (button (text (str.from state))))
+(ui.app init update app)
+(ui.test "increments"
+  (assert (= "<button>0</button>" (ui.test.html)))
+  (dispatch Increment)
+  (assert (= 1 (ui.test.state))))
+"#;
+    let report: Value =
+        serde_json::from_str(&run_ui_tests_source(source, "lisp").unwrap()).unwrap();
+    assert_eq!(report["protocol"], "jisp-ui-test/1");
+    assert_eq!(report["tests"][0]["passed"], true);
+    assert_eq!(report["tests"][0]["assertions"], 2);
+
+    let stripped = source_without_ui_tests(source, "lisp").unwrap();
+    assert!(!stripped.contains("ui.test"));
+    let mut session = PlaygroundSession::new();
+    session.load_source(&stripped).unwrap();
 }
 
 #[cfg(feature = "juir")]

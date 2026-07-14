@@ -213,6 +213,24 @@ implementation contract for renderers, not the recommended source syntax.
 `ui.html` renders the tag, attributes, properties, classes, text, and flattened
 children with HTML escaping. It purposefully ignores `events` and `key`.
 
+## Portable UI tests
+
+Fixture-only `ui.test` scenarios exercise the declared `ui.app` without a DOM:
+
+```lisp
+(ui.test "counter updates"
+  (assert (= "<button>0</button>" (ui.test.html)))
+  (dispatch Increment)
+  (assert (= 1 (ui.test.state))))
+```
+
+`dispatch` sends a plain Jisp action to `update`. Assertions observe the next
+state, static HTML, or the renderer-neutral `ui.test.tree`; each observation
+also verifies that the reference component value and JUIR agree. These forms
+are removed before an app is rendered, and the same runner is available from
+the playground's **Run tests** button. See [TESTING.md](TESTING.md) for fixture
+locations and cross-syntax generation.
+
 This is a declarative UI language with a deliberately small interactive host
 contract, not yet a React-equivalent runtime. Effect/lifecycle semantics,
 subscriptions, async commands, direct static-template DOM mounting, native

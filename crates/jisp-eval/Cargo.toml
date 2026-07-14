@@ -27,3 +27,4 @@ jisp-syntax-lisp.workspace = true
 jisp-syntax-ws.workspace = true
 jisp-syntax-yaml.workspace = true
 jisp-types.workspace = true
+jisp-ui.workspace = true

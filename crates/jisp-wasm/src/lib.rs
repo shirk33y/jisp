@@ -137,6 +137,12 @@ impl PlaygroundSession {
     pub fn desired_resources(&self) -> Result<String, JsValue> {
         self.desired_resources_json().map_err(js_error)
     }
+
+    /// Run fixture-only portable UI scenarios embedded in the current source.
+    /// They execute in Wasm but never touch the browser DOM.
+    pub fn run_tests(&self, source: &str, syntax: &str) -> Result<String, JsValue> {
+        run_ui_tests_source(source, syntax).map_err(js_error)
+    }
 }
 
 impl PlaygroundSession {
@@ -147,7 +153,8 @@ impl PlaygroundSession {
     fn load_source_syntax(&mut self, source: &str, syntax: &str) -> Result<String, String> {
         let extension = syntax_extension(syntax)?;
         let name = format!("playground.{extension}");
-        let parsed = jisp::check_detailed(&name, source).map_err(render_module_error)?;
+        let source = source_without_ui_tests(source, syntax)?;
+        let parsed = jisp::check_detailed(&name, &source).map_err(render_module_error)?;
         if !parsed.module.imports.is_empty() {
             return Err("Playground ui.app programs cannot import local files yet".to_owned());
         }
@@ -634,6 +641,37 @@ fn parse_source(source: &str, syntax: &str) -> Result<Vec<Node>, String> {
         _ => unreachable!("syntax_extension returns a closed set"),
     };
     parsed.map_err(|error| error.to_string())
+}
+
+fn source_without_ui_tests(source: &str, syntax: &str) -> Result<String, String> {
+    let nodes = parse_source(source, syntax)?;
+    let expanded = jisp::jisp_expand::expand_module(&nodes).map_err(|error| error.to_string())?;
+    let suite = jisp::jisp_ui::testing::split_ui_tests(expanded.nodes)
+        .map_err(|error| error.to_string())?;
+    if suite.tests.is_empty() {
+        Ok(source.to_owned())
+    } else {
+        format_source(&suite.module_nodes, syntax)
+    }
+}
+
+fn run_ui_tests_source(source: &str, syntax: &str) -> Result<String, String> {
+    let nodes = parse_source(source, syntax)?;
+    let expanded = jisp::jisp_expand::expand_module(&nodes).map_err(|error| error.to_string())?;
+    let suite = jisp::jisp_ui::testing::split_ui_tests(expanded.nodes)
+        .map_err(|error| error.to_string())?;
+    let outcomes =
+        jisp::jisp_ui::testing::run_ui_tests(suite).map_err(|error| error.to_string())?;
+    serde_json::to_string(&json!({
+        "protocol": "jisp-ui-test/1",
+        "tests": outcomes.into_iter().map(|outcome| json!({
+            "name": outcome.name,
+            "assertions": outcome.assertions,
+            "passed": outcome.passed(),
+            "failure": outcome.failure,
+        })).collect::<Vec<_>>(),
+    }))
+    .map_err(|error| error.to_string())
 }
 
 fn format_source(nodes: &[Node], syntax: &str) -> Result<String, String> {

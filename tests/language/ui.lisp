@@ -14,6 +14,6 @@
       (todo-row title))))
 
 (test "ui components render explicit attributes classes and repeated children"
-  (assert.equal
-    "<ul aria-label=\"Tasks\"><li class=\"rounded px-2\" data-id=\"Plan\"><span>Plan</span></li><li class=\"rounded px-2\" data-id=\"Ship\"><span>Ship</span></li></ul>"
-    (ui.html (todo-list (list "Plan" "Ship")))))
+  (assert
+    (= "<ul aria-label=\"Tasks\"><li class=\"rounded px-2\" data-id=\"Plan\"><span>Plan</span></li><li class=\"rounded px-2\" data-id=\"Ship\"><span>Ship</span></li></ul>"
+      (ui.html (todo-list (list "Plan" "Ship"))))))

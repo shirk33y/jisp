@@ -476,7 +476,11 @@ def looks_like_float(text: str) -> bool:
 
 
 def canonical_fixture_paths(root: Path) -> list[Path]:
-    return sorted((root / "tests" / "language").glob("*.lisp"))
+    return sorted(
+        path
+        for directory in ("language", "ui")
+        for path in (root / "tests" / directory).glob("*.lisp")
+    )
 
 
 def read_forms(path: Path) -> list[Datum]:
@@ -486,7 +490,8 @@ def read_forms(path: Path) -> list[Datum]:
 def generated_targets(root: Path, source: Path, forms: list[Datum]) -> dict[Path, str]:
     stem = source.stem
     prefer_ws_continuations = stem == "ws-layout-continuation"
-    generated = root / "tests" / "generated-language"
+    suite = source.parent.name
+    generated = root / "tests" / f"generated-{suite}"
     return {
         generated / "json" / f"{stem}.json": render_json_module(forms),
         generated / "yaml" / f"{stem}.yaml": render_yaml_module(forms),
@@ -497,12 +502,13 @@ def generated_targets(root: Path, source: Path, forms: list[Datum]) -> dict[Path
 
 
 def stale_generated_paths(root: Path, expected: set[Path]) -> list[Path]:
-    generated_root = root / "tests" / "generated-language"
-    if not generated_root.exists():
-        return []
     paths: list[Path] = []
-    for suffix in ("*.json", "*.yaml", "*.yml", "*.ws"):
-        paths.extend(generated_root.glob(f"*/*{suffix[1:]}"))
+    for generated_name in ("generated-language", "generated-ui"):
+        generated_root = root / "tests" / generated_name
+        if not generated_root.exists():
+            continue
+        for suffix in ("*.json", "*.yaml", "*.yml", "*.ws"):
+            paths.extend(generated_root.glob(f"*/*{suffix[1:]}"))
     return sorted(path for path in paths if path not in expected)
 
 

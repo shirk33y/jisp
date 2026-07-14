@@ -282,6 +282,7 @@ dependencies = [
  "jisp-syntax-ws",
  "jisp-syntax-yaml",
  "jisp-types",
+ "jisp-ui",
  "num-bigint",
  "num-traits",
  "thiserror",

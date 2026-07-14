@@ -5,97 +5,75 @@
     false
   ],
   [
-    "def",
-    "active",
-    true
-  ],
-  [
-    "def",
-    "save-button",
+    "component",
+    "todo-row",
     [
-      "obj",
+      "title"
+    ],
+    [
+      "li",
       [
-        "str",
-        "tag"
-      ],
-      [
-        "str",
-        "button"
-      ],
-      [
-        "str",
-        "id"
-      ],
-      [
-        "str",
-        "save-button"
-      ],
-      [
-        "str",
+        "attr",
+        [
+          "str",
+          "data-id"
+        ],
         "title"
       ],
       [
-        "str",
-        "Save <draft>"
-      ],
-      [
-        "str",
-        "classes"
-      ],
-      [
-        "obj",
+        "class",
         [
           "str",
-          "px-4"
+          "rounded"
         ],
-        true,
         [
           "str",
-          "py-2"
-        ],
-        true,
+          "px-2"
+        ]
+      ],
+      [
+        "class-if",
         [
           "str",
           "opacity-50"
         ],
-        "saving",
+        "saving"
+      ],
+      [
+        "span",
+        [
+          "text",
+          "title"
+        ]
+      ]
+    ]
+  ],
+  [
+    "component",
+    "todo-list",
+    [
+      "titles"
+    ],
+    [
+      "ul",
+      [
+        "attr",
         [
           "str",
-          "bg-emerald-600"
+          "aria-label"
         ],
         [
-          "and",
-          "active",
-          [
-            "not",
-            "saving"
-          ]
+          "str",
+          "Tasks"
         ]
       ],
       [
-        "str",
-        "children"
-      ],
-      [
-        "list",
+        "for",
+        "title",
+        "titles",
         [
-          "obj",
-          [
-            "str",
-            "tag"
-          ],
-          [
-            "str",
-            "text"
-          ],
-          [
-            "str",
-            "value"
-          ],
-          [
-            "str",
-            "Save & close"
-          ]
+          "todo-row",
+          "title"
         ]
       ]
     ]
@@ -104,17 +82,33 @@
     "test",
     [
       "str",
-      "ui html renders active classes attributes and escaped text"
+      "ui components render explicit attributes classes and repeated children"
     ],
     [
-      "assert.equal",
+      "assert",
       [
-        "str",
-        "<button class=\"px-4 py-2 bg-emerald-600\" id=\"save-button\" title=\"Save &lt;draft&gt;\">Save &amp; close</button>"
-      ],
-      [
-        "ui.html",
-        "save-button"
+        "=",
+        [
+          "str",
+          "<ul aria-label=\"Tasks\"><li class=\"rounded px-2\" data-id=\"Plan\"><span>Plan</span></li><li class=\"rounded px-2\" data-id=\"Ship\"><span>Ship</span></li></ul>"
+        ],
+        [
+          "ui.html",
+          [
+            "todo-list",
+            [
+              "list",
+              [
+                "str",
+                "Plan"
+              ],
+              [
+                "str",
+                "Ship"
+              ]
+            ]
+          ]
+        ]
       ]
     ]
   ]

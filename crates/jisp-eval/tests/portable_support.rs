@@ -8,6 +8,10 @@ use jisp_syntax_yaml::YamlParser;
 use jisp_types::Inferencer;
 
 enum PortableTest {
+    Assert {
+        name: String,
+        condition: String,
+    },
     Equal {
         name: String,
         expected: String,
@@ -30,6 +34,9 @@ pub fn run_portable_test(file: &str, source: &str, test_index: usize, test_name:
     let context = format!("{file}: {}", test.name());
 
     match test {
+        PortableTest::Assert { condition, .. } => {
+            run_assert_test(&context, &module_nodes, &condition)
+        }
         PortableTest::Equal {
             expected, actual, ..
         } => run_equal_test(&context, &module_nodes, &expected, &actual),
@@ -60,9 +67,32 @@ fn parse_fixture(file: &str, source: &str) -> Result<Vec<Node>, String> {
 impl PortableTest {
     fn name(&self) -> &str {
         match self {
-            PortableTest::Equal { name, .. } | PortableTest::Error { name, .. } => name,
+            PortableTest::Assert { name, .. }
+            | PortableTest::Equal { name, .. }
+            | PortableTest::Error { name, .. } => name,
         }
     }
+}
+
+fn run_assert_test(context: &str, module_nodes: &[Node], condition: &str) {
+    let module = Lowerer
+        .lower_module(module_nodes)
+        .unwrap_or_else(|error| panic!("{context}: lower failed: {error}"));
+    Inferencer::with_prelude()
+        .infer_module(&module)
+        .unwrap_or_else(|error| panic!("{context}: type check failed: {error}"));
+    let loaded = Evaluator::new()
+        .load_module(&module)
+        .unwrap_or_else(|error| panic!("{context}: evaluation failed: {error}"));
+    let condition = loaded
+        .exports
+        .get(condition)
+        .unwrap_or_else(|| panic!("{context}: missing assertion export {condition}"));
+    assert!(
+        matches!(condition, jisp_eval::Value::Bool(true)),
+        "{context}: assertion failed: expected true, got {}",
+        condition.display_string()
+    );
 }
 
 fn run_equal_test(context: &str, module_nodes: &[Node], expected: &str, actual: &str) {
@@ -185,8 +215,19 @@ fn lower_test_form(
     let assertion = items[2]
         .as_form()
         .ok_or_else(|| format!("{name}: test body must be an assertion"))?;
+    if assertion.first().and_then(Node::as_symbol) == Some("assert") {
+        if assertion.len() != 2 {
+            return Err(format!("{name}: assert expects one boolean condition"));
+        }
+        let condition = format!("__jisp_test_{index}_assertion");
+        module_nodes.push(export_node(&condition, assertion[1].clone(), node));
+        return Ok(PortableTest::Assert { name, condition });
+    }
+
+    // Keep existing fixtures readable while the canonical suite moves to the
+    // general `(assert (= expected actual))` form. New tests must use `assert`.
     if assertion.first().and_then(Node::as_symbol) != Some("assert.equal") {
-        return Err(format!("{name}: test body must be assert.equal"));
+        return Err(format!("{name}: test body must be `(assert condition)`"));
     }
     if assertion.len() != 3 {
         return Err(format!(

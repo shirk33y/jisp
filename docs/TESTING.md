@@ -17,20 +17,57 @@ is compiled by the test harness.
 ## Portable language fixtures
 
 `tests/language/*.lisp` generate one interpreter test per `(test "...")` or
-`(test-error "...")` form. Positive tests use `(test "name" (assert.equal
-expected actual))`; the runner parses, expands quote/user macros, lowers,
-type-checks, evaluates, and structurally compares the expected and actual
-values. Negative tests use `(test-error "name" "expected message substring"
-expr)`; the runner inserts `expr` into a temporary export and expects lowering
-or type-checking to fail with a diagnostic containing that substring. To test
-top-level rejections, wrap temporary module items in the fixture-only pseudo
-form `(module ...)`, for example `(test-error "name" "message" (module
-(macro-import macros "macros.lisp")))`.
+`(test-error "...")` form. Positive tests use a normal boolean assertion:
+
+```lisp
+(test "helper keeps order"
+  (assert (= (list 1 2 3) (sort-values input))))
+```
+
+The runner parses, expands quote/user macros, lowers, type-checks, evaluates,
+and requires the assertion condition to be exactly `true`. This makes the
+fixture language useful beyond equality as more boolean predicates arrive.
+`assert.equal` remains temporarily accepted for old fixtures, but new tests
+must use `assert` and ordinary Jisp predicates. Negative tests use
+`(test-error "name" "expected message substring" expr)`; the runner inserts
+`expr` into a temporary export and expects lowering or type-checking to fail
+with a diagnostic containing that substring. To test top-level rejections,
+wrap temporary module items in the fixture-only pseudo form `(module ...)`,
+for example `(test-error "name" "message" (module (macro-import macros
+"macros.lisp")))`.
 
 Add a fixture here for language semantics that should be independent of native
 Rust codegen, especially parser/lowering edge cases, macro expansion, pattern
 matching, stdlib behaviour, immutable value semantics, and portable frontend
 rejections such as redundant or non-exhaustive `case` patterns.
+
+## Portable UI scenarios
+
+`tests/ui/*.lisp` are the canonical UI scenarios and generate matching JSON,
+YAML, and WS fixtures under `tests/generated-ui/`. A `ui.test` is fixture-only:
+the app source remains ordinary Jisp and declares one `ui.app`. Its scenario
+steps are deliberately data and renderer neutral:
+
+```lisp
+(ui.test "counter updates"
+  (assert (= "<button>0</button>" (ui.test.html)))
+  (dispatch Increment)
+  (assert (= 1 (ui.test.state)))
+  (assert (= "<button>1</button>" (ui.test.html))))
+```
+
+`dispatch` passes a portable action value to the declared reducer. Assertions
+can observe `(ui.test.state)`, the escaped static `(ui.test.html)`, or the raw
+renderer-neutral `(ui.test.tree)`. Each assertion also compares the reference
+component value with the compiled JUIR execution, so a passing test covers both
+the reducer and renderer contract without a browser. Keep pure helper tests in
+ordinary `(test ...)` fixtures; UI scenarios should only exercise the
+`ui.app` boundary.
+
+The playground recognises the same forms. Its **Run tests** button executes
+them in Wasm and shows pass/fail results, while the preview compiles the source
+with fixture-only `ui.test` forms removed. A future browser E2E adapter can
+replay the same `dispatch` trace without changing application test code.
 
 ## Native conformance
 
