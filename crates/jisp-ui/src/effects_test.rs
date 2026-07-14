@@ -1,8 +1,8 @@
 use serde_json::json;
 
 use super::{
-    Capability, Command, Delivery, DesiredResources, Error, FakeHost, HostError, HostErrorCode,
-    Owner, ResourceKind, Subscription, Trace,
+    ActionTemplate, ActionTemplateField, Capability, Command, Delivery, DesiredResources, Error,
+    FakeHost, HostError, HostErrorCode, Owner, ResourceKind, Subscription, Trace,
 };
 
 fn storage() -> Capability {
@@ -26,6 +26,8 @@ fn command(value: &str, replace: bool) -> Command {
         capability: storage(),
         request: json!({ "value": value }),
         replace,
+        on_ok: None,
+        on_error: None,
     }
 }
 
@@ -36,7 +38,60 @@ fn subscription(owner: Owner, milliseconds: u64, replace: bool) -> Subscription 
         capability: timer(),
         request: json!({ "milliseconds": milliseconds }),
         replace,
+        on_ok: None,
+        on_error: None,
     }
+}
+
+#[test]
+fn current_command_delivery_materializes_a_portable_action_template() {
+    let mut host = FakeHost::with_capabilities([storage()]);
+    let mut save = command("draft", true);
+    save.on_ok = Some(ActionTemplate {
+        tag: "Saved".to_owned(),
+        fields: vec![
+            ActionTemplateField::Literal(json!(42)),
+            ActionTemplateField::Result,
+        ],
+    });
+    save.on_error = Some(ActionTemplate {
+        tag: "SaveFailed".to_owned(),
+        fields: vec![ActionTemplateField::Error],
+    });
+    host.reconcile(vec![save]).unwrap();
+
+    let ok = host
+        .deliver_command_action(
+            Owner::App,
+            "save:1",
+            1,
+            Delivery::Ok(json!({ "etag": "v1" })),
+        )
+        .unwrap();
+    assert!(matches!(
+        ok,
+        jisp_eval::Value::Variant { tag, fields }
+            if tag == "Saved"
+                && matches!(fields.as_slice(), [jisp_eval::Value::Int(42), jisp_eval::Value::Obj(value)] if matches!(value.get("etag"), Some(jisp_eval::Value::Str(text)) if text.as_ref() == "v1"))
+    ));
+
+    let error = host
+        .deliver_command_action(
+            Owner::App,
+            "save:1",
+            1,
+            Delivery::Err(HostError {
+                code: HostErrorCode::PermissionDenied,
+                message: "readonly".to_owned(),
+            }),
+        )
+        .unwrap();
+    assert!(matches!(
+        error,
+        jisp_eval::Value::Variant { tag, fields }
+            if tag == "SaveFailed"
+                && matches!(fields.as_slice(), [jisp_eval::Value::Obj(value)] if matches!(value.get("code"), Some(jisp_eval::Value::Str(text)) if text.as_ref() == "permission-denied"))
+    ));
 }
 
 #[test]

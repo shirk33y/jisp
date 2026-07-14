@@ -79,6 +79,8 @@ fn decode_command(value: &JispValue, kind: &'static str) -> Result<Command, Deco
         capability: descriptor.capability,
         request: descriptor.request,
         replace: descriptor.replace,
+        on_ok: None,
+        on_error: None,
     })
 }
 
@@ -90,6 +92,8 @@ fn decode_subscription(value: &JispValue, kind: &'static str) -> Result<Subscrip
         capability: descriptor.capability,
         request: descriptor.request,
         replace: descriptor.replace,
+        on_ok: None,
+        on_error: None,
     })
 }
 

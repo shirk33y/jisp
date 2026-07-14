@@ -30,6 +30,8 @@ pub struct Command {
     pub capability: Capability,
     pub request: Value,
     pub replace: bool,
+    pub on_ok: Option<ActionTemplate>,
+    pub on_error: Option<ActionTemplate>,
 }
 
 /// A desired long-lived source of actions. It is reconciled independently from
@@ -41,6 +43,8 @@ pub struct Subscription {
     pub capability: Capability,
     pub request: Value,
     pub replace: bool,
+    pub on_ok: Option<ActionTemplate>,
+    pub on_error: Option<ActionTemplate>,
 }
 
 /// The complete desired effect set produced by one future reducer turn.
@@ -82,6 +86,80 @@ pub struct HostError {
 pub enum Delivery {
     Ok(Value),
     Err(HostError),
+}
+
+/// Portable action data attached to a resource completion. It is not a host
+/// callback: it creates a regular Jisp variant only after a live resource
+/// delivers a value.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ActionTemplate {
+    pub tag: String,
+    pub fields: Vec<ActionTemplateField>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum ActionTemplateField {
+    Literal(Value),
+    Result,
+    Error,
+}
+
+impl ActionTemplate {
+    pub fn instantiate(&self, delivery: &Delivery) -> jisp_eval::Value {
+        let fields = self
+            .fields
+            .iter()
+            .map(|field| match field {
+                ActionTemplateField::Literal(value) => jisp_value(value),
+                ActionTemplateField::Result => match delivery {
+                    Delivery::Ok(value) => jisp_value(value),
+                    Delivery::Err(error) => jisp_value(&error_value(error)),
+                },
+                ActionTemplateField::Error => match delivery {
+                    Delivery::Ok(value) => jisp_value(value),
+                    Delivery::Err(error) => jisp_value(&error_value(error)),
+                },
+            })
+            .collect();
+        jisp_eval::Value::Variant {
+            tag: self.tag.clone(),
+            fields,
+        }
+    }
+}
+
+fn error_value(error: &HostError) -> Value {
+    serde_json::json!({ "code": error_code(error.code.clone()), "message": error.message })
+}
+
+fn error_code(code: HostErrorCode) -> &'static str {
+    match code {
+        HostErrorCode::UnsupportedCapability => "unsupported-capability",
+        HostErrorCode::PermissionDenied => "permission-denied",
+        HostErrorCode::InvalidRequest => "invalid-request",
+        HostErrorCode::Cancelled => "cancelled",
+        HostErrorCode::HostFailure => "host-failure",
+    }
+}
+
+fn jisp_value(value: &Value) -> jisp_eval::Value {
+    match value {
+        Value::Null => jisp_eval::Value::Null,
+        Value::Bool(value) => jisp_eval::Value::Bool(*value),
+        Value::Number(value) => value
+            .as_i64()
+            .map(jisp_eval::Value::Int)
+            .or_else(|| value.as_f64().map(jisp_eval::Value::Float))
+            .expect("effect JSON numbers are finite i64/f64"),
+        Value::String(value) => jisp_eval::Value::string(value.as_str()),
+        Value::Array(values) => jisp_eval::Value::List(values.iter().map(jisp_value).collect()),
+        Value::Object(fields) => jisp_eval::Value::Obj(
+            fields
+                .iter()
+                .map(|(key, value)| (key.clone(), jisp_value(value)))
+                .collect(),
+        ),
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -304,6 +382,28 @@ impl FakeHost {
             generation,
             result,
         )
+    }
+
+    /// Deliver a command and, when it is still current, materialize its
+    /// declared success/error template as the next reducer action.
+    pub fn deliver_command_action(
+        &mut self,
+        owner: Owner,
+        id: impl Into<String>,
+        generation: u64,
+        result: Delivery,
+    ) -> Option<jisp_eval::Value> {
+        let id = id.into();
+        let template = self
+            .commands
+            .get(&(owner.clone(), id.clone()))
+            .and_then(|active| match &result {
+                Delivery::Ok(_) => active.resource.on_ok.clone(),
+                Delivery::Err(_) => active.resource.on_error.clone(),
+            });
+        self.deliver_command(owner, id, generation, result.clone())
+            .then(|| template.map(|template| template.instantiate(&result)))
+            .flatten()
     }
 
     /// Compatibility helper for an empty successful command completion.
