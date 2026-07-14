@@ -109,6 +109,10 @@ fn juir_reuses_the_previous_tree_when_update_returns_the_same_state() {
     let first: Value = serde_json::from_str(&first_text).unwrap();
     let handler = usize::try_from(first["events"]["click"]["handler"].as_u64().unwrap()).unwrap();
     assert_eq!(session.runtime.as_ref().unwrap().renders, 1);
+    let initial_metrics: Value = serde_json::from_str(&session.metrics_json().unwrap()).unwrap();
+    assert_eq!(initial_metrics["renders"], 1);
+    assert_eq!(initial_metrics["skippedRenders"], 0);
+    assert_eq!(initial_metrics["lastRenderSkipped"], false);
 
     let second = session
         .dispatch_event(handler, r#"{"type":"click"}"#)
@@ -116,6 +120,10 @@ fn juir_reuses_the_previous_tree_when_update_returns_the_same_state() {
 
     assert_eq!(second, first_text);
     assert_eq!(session.runtime.as_ref().unwrap().renders, 1);
+    let metrics: Value = serde_json::from_str(&session.metrics_json().unwrap()).unwrap();
+    assert_eq!(metrics["renders"], 1);
+    assert_eq!(metrics["skippedRenders"], 1);
+    assert_eq!(metrics["lastRenderSkipped"], true);
 }
 
 #[test]

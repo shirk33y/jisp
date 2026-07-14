@@ -8,7 +8,8 @@ use jisp::jisp_eval::{Evaluator, Value};
 use jisp::jisp_types::Inferencer;
 #[cfg(feature = "juir")]
 use jisp::jisp_ui::{
-    changed_paths, compile as compile_juir, execute_incremental, ChangeSet, Program as JuirProgram,
+    changed_paths, compile as compile_juir, execute_incremental, ChangeSet, ExecutionStats,
+    Program as JuirProgram,
 };
 use jisp_syntax_json::JsonParser;
 use jisp_syntax_lisp::LispParser;
@@ -54,9 +55,13 @@ struct Runtime {
     last_value: Option<Value>,
     #[cfg(feature = "juir")]
     changes: ChangeSet,
+    #[cfg(feature = "juir")]
+    last_execution: ExecutionStats,
     handlers: Vec<Value>,
     last_render: Option<String>,
     renders: usize,
+    skipped_renders: usize,
+    last_render_skipped: bool,
     span: Span,
 }
 
@@ -80,6 +85,11 @@ impl PlaygroundSession {
     /// Process a browser event through one event handler and the declared update function.
     pub fn dispatch(&mut self, handler: usize, event_json: &str) -> Result<String, JsValue> {
         self.dispatch_event(handler, event_json).map_err(js_error)
+    }
+
+    /// Return renderer-neutral execution counters for playground diagnostics.
+    pub fn metrics(&self) -> Result<String, JsValue> {
+        self.metrics_json().map_err(js_error)
     }
 }
 
@@ -149,9 +159,13 @@ impl PlaygroundSession {
                 unknown: true,
                 ..ChangeSet::default()
             },
+            #[cfg(feature = "juir")]
+            last_execution: ExecutionStats::default(),
             handlers: vec![],
             last_render: None,
             renders: 0,
+            skipped_renders: 0,
+            last_render_skipped: false,
             span: app.span,
         });
         self.render()
@@ -188,6 +202,8 @@ impl PlaygroundSession {
         {
             let changes = changed_paths("state", &previous_state, &runtime.state);
             if changes.paths.is_empty() {
+                runtime.skipped_renders += 1;
+                runtime.last_render_skipped = true;
                 return runtime
                     .last_render
                     .clone()
@@ -216,6 +232,10 @@ impl PlaygroundSession {
         .map_err(|error| error.to_string())?;
         #[cfg(feature = "juir")]
         let vnode = execution.value;
+        #[cfg(feature = "juir")]
+        {
+            runtime.last_execution = execution.stats;
+        }
         #[cfg(not(feature = "juir"))]
         let vnode = runtime
             .evaluator
@@ -230,6 +250,7 @@ impl PlaygroundSession {
         runtime.handlers = handlers;
         let rendered = serde_json::to_string(&tree).map_err(|error| error.to_string())?;
         runtime.renders += 1;
+        runtime.last_render_skipped = false;
         runtime.last_render = Some(rendered.clone());
         #[cfg(feature = "juir")]
         {
@@ -240,6 +261,32 @@ impl PlaygroundSession {
             };
         }
         Ok(rendered)
+    }
+
+    fn metrics_json(&self) -> Result<String, String> {
+        let runtime = self
+            .runtime
+            .as_ref()
+            .ok_or_else(|| "load a ui.app program before reading metrics".to_owned())?;
+        #[cfg(not(feature = "juir"))]
+        let metrics = json!({
+            "renders": runtime.renders,
+            "skippedRenders": runtime.skipped_renders,
+            "lastRenderSkipped": runtime.last_render_skipped,
+        });
+        #[cfg(feature = "juir")]
+        let metrics = json!({
+            "renders": runtime.renders,
+            "skippedRenders": runtime.skipped_renders,
+            "lastRenderSkipped": runtime.last_render_skipped,
+            "execution": {
+                "evaluatedSlots": runtime.last_execution.evaluated_slots,
+                "reusedSlots": runtime.last_execution.reused_slots,
+                "reusedBlocks": runtime.last_execution.reused_blocks,
+                "reusedComponents": runtime.last_execution.reused_components,
+            },
+        });
+        serde_json::to_string(&metrics).map_err(|error| error.to_string())
     }
 }
 

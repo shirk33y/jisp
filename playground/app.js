@@ -178,6 +178,21 @@ function setStatus(kind, text) {
   status.textContent = text;
 }
 
+function setRuntimeStatus(label) {
+  const metrics = JSON.parse(session.metrics());
+  const execution = metrics.execution;
+  const reused = execution
+    ? execution.reusedSlots + execution.reusedBlocks + execution.reusedComponents
+    : 0;
+  const detail = metrics.lastRenderSkipped
+    ? "render skipped"
+    : reused > 0
+      ? `${reused} JUIR value${reused === 1 ? "" : "s"} reused`
+      : null;
+  setStatus("bg-emerald-100 text-emerald-700", detail ? `${label} · ${detail}` : label);
+  status.title = JSON.stringify(metrics, null, 2);
+}
+
 function previewDocument() {
   return `<!doctype html><html><head><meta charset="utf-8"><style>html { overflow-y: scroll; scrollbar-gutter: stable; }</style><script src="https://cdn.tailwindcss.com"><\/script></head><body class="min-h-screen bg-slate-50 p-4 md:p-8"><div id="root"></div><script>
 const allowedTags = new Set(["a", "article", "aside", "button", "div", "footer", "form", "h1", "h2", "h3", "header", "img", "input", "label", "li", "main", "nav", "ol", "option", "p", "section", "select", "span", "strong", "textarea", "ul"]);
@@ -421,9 +436,10 @@ function renderPreview() {
     session = new PlaygroundSession();
     postTree(JSON.parse(session.load_syntax(sourceText(), syntax)));
     error.classList.add("hidden");
-    setStatus("bg-emerald-100 text-emerald-700", "Update ready");
+    setRuntimeStatus("Update ready");
   } catch (reason) {
     session = null;
+    status.removeAttribute("title");
     postTree({ kind: "text", value: "" });
     error.textContent = String(reason);
     error.classList.remove("hidden");
@@ -473,8 +489,9 @@ window.addEventListener("message", (message) => {
   try {
     postTree(JSON.parse(session.dispatch(message.data.handler, JSON.stringify(message.data.event))));
     error.classList.add("hidden");
-    setStatus("bg-emerald-100 text-emerald-700", "State updated");
+    setRuntimeStatus("State updated");
   } catch (reason) {
+    status.removeAttribute("title");
     error.textContent = String(reason);
     error.classList.remove("hidden");
     setStatus("bg-rose-100 text-rose-700", "Update error");
