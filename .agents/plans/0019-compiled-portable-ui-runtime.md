@@ -31,7 +31,11 @@ internal to the JUIR executor and does not alter the structural-tree contract.
 M4's pre-implementation ownership and capability contract is documented in
 [`docs/UI_EFFECTS.md`](../../docs/UI_EFFECTS.md): effects remain reducer data,
 carry stable owner/id/generation identity, and require deterministic fake-host
-tests before a source-level command API is introduced.
+tests before a source-level command API is introduced. `jisp-ui::effects`
+now implements the command-only deterministic fake host: it reconciles desired
+commands by owner/id, validates versioned capabilities, cancels/replaces work,
+and ignores late generations. Source-level reducer results, subscriptions, and
+component-local ownership remain subsequent M4 work.
 M5 has a versioned SSR payload (`jisp-ui-ssr/1`) containing escaped HTML,
 serializable state, and the structural tree. Its generated `data-jisp-path` and
 `data-jisp-key` markers provide stable element anchors without allowing source

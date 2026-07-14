@@ -13,6 +13,7 @@ use jisp_eval::{Env, Evaluator, RuntimeError, Value};
 use jisp_ir::{Definition, Expr, ExprKind, Literal, StringPart};
 use jisp_types::{Type, TypedModule};
 
+pub mod effects;
 pub mod native;
 
 #[derive(Clone, Debug)]

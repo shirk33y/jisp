@@ -1,6 +1,8 @@
 # UI commands, subscriptions, and ownership
 
-> Design contract — not implemented source syntax.
+> Design contract. `jisp-ui::effects::FakeHost` implements the deterministic
+> command-reconciliation subset for host tests; Jisp source syntax and runtime
+> command execution are still intentionally not implemented.
 
 Jisp UI keeps Model–View–Update: `view` is pure and `(update state action)`
 calculates the next immutable state. Effects are data emitted by `update`; they
@@ -85,6 +87,13 @@ cancel(owner, id, generation)
 deliver(owner, id, generation, result)
 dispose(owner)
 ```
+
+`FakeHost` currently implements `start`, `cancel`, and delivery/late-delivery
+classification for commands. It validates versioned capabilities, rejects
+duplicate `(owner, id)` pairs atomically, preserves equal active requests,
+requires explicit replacement permission, and ignores a completion whose
+generation is no longer active. It is an in-memory reference implementation,
+not a browser or native capability provider.
 
 Test success, failure, timeout, duplicate id, replacement, late completion,
 owner disposal, keyed-item removal/reorder, and unsupported capability.

@@ -378,6 +378,7 @@ dependencies = [
  "jisp-ir",
  "jisp-syntax-lisp",
  "jisp-types",
+ "serde_json",
 ]
 
 [[package]]
