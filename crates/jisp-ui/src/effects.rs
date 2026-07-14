@@ -430,6 +430,29 @@ impl FakeHost {
         )
     }
 
+    /// Deliver one subscription event and materialize its declared completion
+    /// action while the subscription generation remains active. Unlike a
+    /// command, the subscription remains active for later deliveries.
+    pub fn deliver_subscription_action(
+        &mut self,
+        owner: Owner,
+        id: impl Into<String>,
+        generation: u64,
+        result: Delivery,
+    ) -> Option<jisp_eval::Value> {
+        let id = id.into();
+        let template = self
+            .subscriptions
+            .get(&(owner.clone(), id.clone()))
+            .and_then(|active| match &result {
+                Delivery::Ok(_) => active.resource.on_ok.clone(),
+                Delivery::Err(_) => active.resource.on_error.clone(),
+            });
+        self.deliver_subscription(owner, id, generation, result.clone())
+            .then(|| template.map(|template| template.instantiate(&result)))
+            .flatten()
+    }
+
     /// Cancels every resource owned by precisely this app/component instance.
     /// It is idempotent, so unmount paths can call it exactly once without
     /// needing host-specific bookkeeping.

@@ -95,6 +95,33 @@ fn current_command_delivery_materializes_a_portable_action_template() {
 }
 
 #[test]
+fn active_subscription_materializes_each_delivery_until_disposed() {
+    let mut host = FakeHost::with_capabilities([timer()]);
+    let mut refresh = subscription(Owner::App, 1000, true);
+    refresh.on_ok = Some(ActionTemplate {
+        tag: "Tick".to_owned(),
+        fields: vec![ActionTemplateField::Result],
+    });
+    host.reconcile_subscriptions(vec![refresh]).unwrap();
+
+    for tick in [1, 2] {
+        let action = host
+            .deliver_subscription_action(Owner::App, "refresh", 1, Delivery::Ok(json!(tick)))
+            .unwrap();
+        assert!(matches!(
+            action,
+            jisp_eval::Value::Variant { tag, fields }
+                if tag == "Tick" && matches!(fields.as_slice(), [jisp_eval::Value::Int(value)] if *value == tick)
+        ));
+    }
+
+    host.reconcile_subscriptions(vec![]).unwrap();
+    assert!(host
+        .deliver_subscription_action(Owner::App, "refresh", 1, Delivery::Ok(json!(3)))
+        .is_none());
+}
+
+#[test]
 fn reconciles_replacement_cancellation_and_late_completion() {
     let mut host = FakeHost::with_capabilities([storage()]);
     host.reconcile(vec![command("one", true)]).unwrap();
