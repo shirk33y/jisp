@@ -403,6 +403,57 @@ pub struct ExecutionStats {
     pub reused_blocks: usize,
     pub reused_items: usize,
     pub reused_components: usize,
+    /// Development-only explanation for every component-call boundary visited
+    /// during this execution turn. It is observability data, not UI state.
+    pub component_decisions: Vec<ComponentDecision>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ComponentDecision {
+    pub component: String,
+    pub path: String,
+    pub outcome: ComponentDecisionOutcome,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ComponentDecisionOutcome {
+    Reused,
+    Executed(ComponentExecutionReason),
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ComponentExecutionReason {
+    NoPreviousOutput,
+    UnknownChanges,
+    OpaqueDependency,
+    InputChanged,
+}
+
+impl ComponentDecisionOutcome {
+    pub const fn decision(&self) -> &'static str {
+        match self {
+            Self::Reused => "reused",
+            Self::Executed(_) => "executed",
+        }
+    }
+
+    pub const fn reason(&self) -> Option<&'static str> {
+        match self {
+            Self::Reused => None,
+            Self::Executed(reason) => Some(reason.as_str()),
+        }
+    }
+}
+
+impl ComponentExecutionReason {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::NoPreviousOutput => "no-previous-output",
+            Self::UnknownChanges => "unknown-changes",
+            Self::OpaqueDependency => "opaque-dependency",
+            Self::InputChanged => "input-changed",
+        }
+    }
 }
 
 pub struct Execution {
@@ -889,9 +940,21 @@ impl Executor<'_> {
                 if !self.changes.affects(dependencies) {
                     if let Some(previous) = previous {
                         self.stats.reused_components += 1;
+                        self.stats.component_decisions.push(ComponentDecision {
+                            component: name.clone(),
+                            path: path.to_owned(),
+                            outcome: ComponentDecisionOutcome::Reused,
+                        });
                         return Ok(previous.clone());
                     }
                 }
+                self.stats.component_decisions.push(ComponentDecision {
+                    component: name.clone(),
+                    path: path.to_owned(),
+                    outcome: ComponentDecisionOutcome::Executed(
+                        self.component_execution_reason(dependencies, previous),
+                    ),
+                });
                 let values = arguments
                     .iter()
                     .map(|argument| self.evaluator.eval_in(argument, env).map_err(Into::into))
@@ -912,6 +975,25 @@ impl Executor<'_> {
                 self.stats.evaluated_slots += 1;
                 self.evaluator.eval_in(expression, env).map_err(Into::into)
             }
+        }
+    }
+
+    fn component_execution_reason(
+        &self,
+        dependencies: &[Dependency],
+        previous: Option<&Value>,
+    ) -> ComponentExecutionReason {
+        if previous.is_none() {
+            ComponentExecutionReason::NoPreviousOutput
+        } else if self.changes.unknown {
+            ComponentExecutionReason::UnknownChanges
+        } else if dependencies
+            .iter()
+            .any(|dependency| matches!(dependency, Dependency::Unknown))
+        {
+            ComponentExecutionReason::OpaqueDependency
+        } else {
+            ComponentExecutionReason::InputChanged
         }
     }
 

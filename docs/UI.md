@@ -159,12 +159,15 @@ proposed ownership/capability contract live in [UI_EFFECTS.md](UI_EFFECTS.md).
 A UI component remains a pure function of its supplied state and props.
 
 For development diagnostics, `PlaygroundSession.metrics()` reports render
-counts plus the latest JUIR slot, block, keyed-item, and component reuse counts. The
-browser host separately records DOM mounts, replacements, text writes,
-element/child patches, and forwarded events. The playground exposes the latest
-decision in its status pill and both JSON payloads as that pill's tooltip.
-These counters are observability data, never a part of a component's public
-result.
+counts plus the latest JUIR slot, block, keyed-item, and component reuse counts.
+`execution.componentDecisions` additionally names every visited component-call
+boundary and reports either `reused` or `executed` with a stable reason:
+`no-previous-output`, `unknown-changes`, `opaque-dependency`, or
+`input-changed`. The browser host separately records DOM mounts, replacements,
+text writes, element/child patches, and forwarded events. The playground
+exposes the latest decision in its status pill and both JSON payloads as that
+pill's tooltip. These counters are observability data, never a part of a
+component's public result.
 
 `PlaygroundSession.dispatch_patches(handler, event)` exposes the same update
 batch for another browser or native host. `snapshot()` returns the complete

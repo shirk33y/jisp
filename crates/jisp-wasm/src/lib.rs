@@ -444,6 +444,12 @@ impl PlaygroundSession {
                 "reusedBlocks": runtime.last_execution.reused_blocks,
                 "reusedItems": runtime.last_execution.reused_items,
                 "reusedComponents": runtime.last_execution.reused_components,
+                "componentDecisions": runtime.last_execution.component_decisions.iter().map(|decision| json!({
+                    "component": decision.component,
+                    "path": decision.path,
+                    "decision": decision.outcome.decision(),
+                    "reason": decision.outcome.reason(),
+                })).collect::<Vec<_>>(),
             },
         });
         serde_json::to_string(&metrics).map_err(|error| error.to_string())

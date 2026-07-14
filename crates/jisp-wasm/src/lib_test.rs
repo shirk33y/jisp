@@ -511,6 +511,15 @@ fn update_todo_example_updates_draft_then_adds_a_task() {
             metrics["execution"]["reusedItems"].as_u64().unwrap() >= 3,
             "adding one todo should retain the already rendered keyed rows"
         );
+        assert!(metrics["execution"]["componentDecisions"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|decision| {
+                decision["component"] == "todo-list"
+                    && decision["decision"] == "executed"
+                    && decision["reason"] == "opaque-dependency"
+            }));
     }
 }
 

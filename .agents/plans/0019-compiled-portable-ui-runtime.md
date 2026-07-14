@@ -27,7 +27,9 @@ local, and module-level expressions are explicitly `Unknown` and therefore
 cannot be skipped. The browser Wasm executor retains the previous structural
 value, so this path is exercised by the playground rather than only by unit
 tests. Component calls with unaffected, statically tracked inputs are skipped
-as whole subtrees. The playground surfaces per-render reuse/skip diagnostics
+as whole subtrees. Per-render metrics now explain every component-call decision
+as `reused` or `executed` with no-cache, unknown-change, opaque-dependency, or
+changed-input reason. The playground surfaces per-render reuse/skip diagnostics
 from the Wasm executor plus DOM mount/replacement/write counters from the
 browser host. Browser event updates now receive a batched structural patch
 protocol rather than a complete tree; a full snapshot is reserved for initial

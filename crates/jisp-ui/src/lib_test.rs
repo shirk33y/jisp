@@ -982,6 +982,99 @@ fn incremental_executor_skips_a_component_with_unaffected_inputs() {
 
     assert_eq!(second.stats.reused_components, 1);
     assert_eq!(second.stats.evaluated_slots, 1);
+    assert_eq!(
+        second.stats.component_decisions,
+        vec![crate::ComponentDecision {
+            component: "app-header".to_owned(),
+            path: "root.child.0".to_owned(),
+            outcome: crate::ComponentDecisionOutcome::Reused,
+        }]
+    );
+
+    let title_changed = Value::Obj(indexmap::IndexMap::from([
+        ("title".to_owned(), Value::string("Ship")),
+        ("count".to_owned(), Value::Int(2)),
+    ]));
+    let third = execute_incremental(
+        &program,
+        &mut evaluator,
+        &loaded.env,
+        "app",
+        std::slice::from_ref(&title_changed),
+        Some(&second.value),
+        &changed_paths("state", &after, &title_changed),
+    )
+    .unwrap();
+    assert_eq!(
+        third.stats.component_decisions,
+        vec![crate::ComponentDecision {
+            component: "app-header".to_owned(),
+            path: "root.child.0".to_owned(),
+            outcome: crate::ComponentDecisionOutcome::Executed(
+                crate::ComponentExecutionReason::InputChanged
+            ),
+        }]
+    );
+}
+
+#[test]
+fn component_skip_diagnostics_name_opaque_dependencies() {
+    let typed = typed(
+        r#"
+(component app-header (title)
+  (header (text title)))
+
+(component app (state)
+  (main
+    (app-header (str.from (. state "title")))
+    (text (. state "count"))))
+"#,
+    );
+    let program = compile(&typed).unwrap();
+    let before = Value::Obj(indexmap::IndexMap::from([
+        ("title".to_owned(), Value::string("Plan")),
+        ("count".to_owned(), Value::Int(1)),
+    ]));
+    let after = Value::Obj(indexmap::IndexMap::from([
+        ("title".to_owned(), Value::string("Plan")),
+        ("count".to_owned(), Value::Int(2)),
+    ]));
+    let mut evaluator = Evaluator::new();
+    let loaded = evaluator.load_module(&typed.module).unwrap();
+    let first = execute_incremental(
+        &program,
+        &mut evaluator,
+        &loaded.env,
+        "app",
+        std::slice::from_ref(&before),
+        None,
+        &ChangeSet {
+            unknown: true,
+            ..ChangeSet::default()
+        },
+    )
+    .unwrap();
+    let second = execute_incremental(
+        &program,
+        &mut evaluator,
+        &loaded.env,
+        "app",
+        std::slice::from_ref(&after),
+        Some(&first.value),
+        &changed_paths("state", &before, &after),
+    )
+    .unwrap();
+
+    assert_eq!(
+        second.stats.component_decisions,
+        vec![crate::ComponentDecision {
+            component: "app-header".to_owned(),
+            path: "root.child.0".to_owned(),
+            outcome: crate::ComponentDecisionOutcome::Executed(
+                crate::ComponentExecutionReason::OpaqueDependency
+            ),
+        }]
+    );
 }
 
 fn app_state(title: &str, show: bool, items: &[&str]) -> Value {
