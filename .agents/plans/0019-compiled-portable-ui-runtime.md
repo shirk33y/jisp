@@ -62,6 +62,13 @@ successes or stable errors through declared action templates and the ordinary
 reducer. The browser Wasm session exposes declarations without executing them;
 its fixture-only test entry point runs that deterministic simulation. Real host
 execution and component-local state remain subsequent M4 work.
+`PlaygroundSession` now also exposes an opt-in generation-safe effect-host
+boundary: an embedding host configures immutable versioned capabilities, reads
+active resource generations from `jisp-ui-resources/1`, and returns an
+`{ok}`/`{error}` completion to Wasm. Wasm verifies the live generation,
+materializes the source-declared action template, runs the normal reducer, and
+reconciles the next desired set. This is an embedding protocol only; the
+playground does not yet attach browser I/O providers to it.
 M6 now has a first WIT package at
 [`wit/jisp-ui-capabilities.wit`](../../wit/jisp-ui-capabilities.wit), limited to
 coarse versioned storage/timer/navigation capabilities; binding generation and

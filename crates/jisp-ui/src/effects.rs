@@ -363,6 +363,19 @@ impl FakeHost {
         Ok(())
     }
 
+    /// Return the generation currently owned by one resource identity.
+    /// Hosts must include this opaque value with a completion so a cancelled
+    /// or replaced operation cannot deliver into a newer resource.
+    pub fn active_generation(&self, kind: ResourceKind, owner: &Owner, id: &str) -> Option<u64> {
+        let key = (owner.clone(), id.to_owned());
+        match kind {
+            ResourceKind::Command => self.commands.get(&key).map(|active| active.generation),
+            ResourceKind::Subscription => {
+                self.subscriptions.get(&key).map(|active| active.generation)
+            }
+        }
+    }
+
     /// Delivers a command result if that exact generation remains current.
     /// A successful delivery does not implicitly remove the desired command:
     /// the next reducer result owns that decision.

@@ -589,6 +589,118 @@ fn update_result_updates_state_and_exposes_declared_resources() {
 }
 
 #[test]
+fn configured_effect_host_reconciles_and_rejects_stale_command_completions() {
+    let mut session = PlaygroundSession::new();
+    let tree: Value = serde_json::from_str(
+        &session
+            .load_source(
+                r#"
+(type Action (Save) (Saved int))
+(def init 0)
+(defn update (state action)
+  (case action
+    ((Save)
+      (ui.result (+ state 1)
+        (list
+          (ui.command "save:1" "storage.write" 1 (obj "revision" state) true
+            (ui.action-result "Saved" (list))
+            (ui.action-error "Saved" (list))))
+        (list)))
+    ((Saved revision) (ui.result revision (list) (list)))))
+(component app (state)
+  (button (on click (emit Save)) (text (str.from state))))
+(ui.app init update app)
+"#,
+            )
+            .unwrap(),
+    )
+    .unwrap();
+    session
+        .configure_effect_host_json(r#"[{"name":"storage.write","version":1}]"#)
+        .unwrap();
+    let handler = usize::try_from(handler_for(&tree, "click").unwrap()).unwrap();
+    session
+        .dispatch_event(handler, r#"{"type":"click"}"#)
+        .unwrap();
+    let first: Value = serde_json::from_str(&session.desired_resources_json().unwrap()).unwrap();
+    assert_eq!(first["protocol"], "jisp-ui-resources/1");
+    assert_eq!(first["commands"][0]["generation"], 1);
+
+    session
+        .dispatch_event(handler, r#"{"type":"click"}"#)
+        .unwrap();
+    let second: Value = serde_json::from_str(&session.desired_resources_json().unwrap()).unwrap();
+    assert_eq!(second["commands"][0]["generation"], 2);
+    let stale = session
+        .deliver_effect_json("command", "save:1", 1, r#"{"ok": 7}"#)
+        .unwrap_err();
+    assert!(stale.contains("not current"));
+
+    let delivered: Value = serde_json::from_str(
+        &session
+            .deliver_effect_json("command", "save:1", 2, r#"{"ok": 42}"#)
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(delivered["children"][0]["value"], "42");
+    let resources: Value =
+        serde_json::from_str(&session.desired_resources_json().unwrap()).unwrap();
+    assert!(resources["commands"].as_array().unwrap().is_empty());
+}
+
+#[test]
+fn configured_effect_host_delivers_subscription_errors_as_reducer_actions() {
+    let mut session = PlaygroundSession::new();
+    let tree: Value = serde_json::from_str(
+        &session
+            .load_source(
+                r#"
+(type Action (Start) (ClockFailed obj))
+(def init 0)
+(defn update (state action)
+  (case action
+    ((Start)
+      (ui.result state (list)
+        (list
+          (ui.subscription "clock" "timer.tick" 1 (obj "every-ms" 1000) false
+            (ui.action "Ignored" (list))
+            (ui.action-error "ClockFailed" (list))))))
+    ((ClockFailed _) (ui.result -1 (list) (list)))))
+(component app (state)
+  (button (on click (emit Start)) (text (str.from state))))
+(ui.app init update app)
+"#,
+            )
+            .unwrap(),
+    )
+    .unwrap();
+    session
+        .configure_effect_host_json(r#"[{"name":"timer.tick","version":1}]"#)
+        .unwrap();
+    let handler = usize::try_from(handler_for(&tree, "click").unwrap()).unwrap();
+    session
+        .dispatch_event(handler, r#"{"type":"click"}"#)
+        .unwrap();
+    let resources: Value =
+        serde_json::from_str(&session.desired_resources_json().unwrap()).unwrap();
+    let generation = resources["subscriptions"][0]["generation"]
+        .as_u64()
+        .unwrap();
+    let delivered: Value = serde_json::from_str(
+        &session
+            .deliver_effect_json(
+                "subscription",
+                "clock",
+                generation,
+                r#"{"error":{"code":"permission-denied","message":"disabled"}}"#,
+            )
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(delivered["children"][0]["value"], "-1");
+}
+
+#[test]
 fn update_session_serializes_scalar_keys_for_reconciliation() {
     let mut session = PlaygroundSession::new();
     let tree: Value = serde_json::from_str(

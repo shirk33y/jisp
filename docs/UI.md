@@ -153,9 +153,10 @@ controlled edit. This preserves focused controls and their selection through
 ordinary updates. The structural tree remains the semantic oracle and recovery
 snapshot while the compiled JUIR runtime evolves.
 
-Executable effects, subscriptions, async commands, persistence, and lifecycle
-boundaries are not implemented; reducer resource declarations and their
-proposed ownership/capability contract live in [UI_EFFECTS.md](UI_EFFECTS.md).
+Executable browser effects, subscriptions, async commands, persistence, and
+component lifecycle boundaries are not implemented; reducer resource
+declarations, deterministic test delivery, and the generation-safe Wasm host
+boundary live in [UI_EFFECTS.md](UI_EFFECTS.md).
 A UI component remains a pure function of its supplied state and props.
 
 For development diagnostics, `PlaygroundSession.metrics()` reports render

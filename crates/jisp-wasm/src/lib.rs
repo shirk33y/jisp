@@ -6,6 +6,9 @@ use jisp::jisp_eval::Env;
 use jisp::jisp_eval::{normalize_update_result, Evaluator, Value};
 #[cfg(feature = "juir")]
 use jisp::jisp_types::Inferencer;
+use jisp::jisp_ui::effects::{
+    Capability, Delivery, FakeHost, HostError, HostErrorCode, Owner, ResourceKind,
+};
 #[cfg(feature = "juir")]
 use jisp::jisp_ui::{
     changed_paths, compile as compile_juir, execute_incremental_cached,
@@ -80,6 +83,7 @@ struct Runtime {
     last_render_skipped: bool,
     desired_commands: Vec<Value>,
     desired_subscriptions: Vec<Value>,
+    effect_host: Option<FakeHost>,
     span: Span,
 }
 
@@ -137,6 +141,30 @@ impl PlaygroundSession {
     /// are data for the embedding host; this interpreter does not execute them.
     pub fn desired_resources(&self) -> Result<String, JsValue> {
         self.desired_resources_json().map_err(js_error)
+    }
+
+    /// Configure the immutable capability set of an embedding effect host.
+    /// The host receives versioned resource declarations and must later return
+    /// completions through [`Self::deliver_effect`]. Calling this twice would
+    /// discard active generations, so it is rejected.
+    pub fn configure_effect_host(&mut self, capabilities_json: &str) -> Result<(), JsValue> {
+        self.configure_effect_host_json(capabilities_json)
+            .map_err(js_error)
+    }
+
+    /// Deliver one generation-bound effect completion. The JSON envelope is
+    /// either `{ "ok": value }` or
+    /// `{ "error": { "code": string, "message": string } }`.
+    #[wasm_bindgen(js_name = deliverEffect)]
+    pub fn deliver_effect(
+        &mut self,
+        kind: &str,
+        id: &str,
+        generation: u64,
+        completion_json: &str,
+    ) -> Result<String, JsValue> {
+        self.deliver_effect_json(kind, id, generation, completion_json)
+            .map_err(js_error)
     }
 
     /// Return stable source locations for the currently compiled JUIR plan.
@@ -239,6 +267,7 @@ impl PlaygroundSession {
             last_render_skipped: false,
             desired_commands: vec![],
             desired_subscriptions: vec![],
+            effect_host: None,
             span: app.span,
         });
         self.render()
@@ -248,19 +277,88 @@ impl PlaygroundSession {
         let event = serde_json::from_str(event_json)
             .map_err(|error| format!("browser event is not JSON: {error}"))?;
         let event = value_from_json(event)?;
+        let action = {
+            let runtime = self
+                .runtime
+                .as_mut()
+                .ok_or_else(|| "load a ui.app program before dispatching events".to_owned())?;
+            let handler = runtime
+                .handlers
+                .get(handler)
+                .cloned()
+                .ok_or_else(|| format!("unknown UI event handler {handler}"))?;
+            runtime
+                .evaluator
+                .apply(handler, &[event], runtime.span)
+                .map_err(|error| error.to_string())?
+        };
+        self.apply_action(action)
+    }
+
+    fn configure_effect_host_json(&mut self, capabilities_json: &str) -> Result<(), String> {
+        let capabilities = parse_capabilities(capabilities_json)?;
         let runtime = self
             .runtime
             .as_mut()
-            .ok_or_else(|| "load a ui.app program before dispatching events".to_owned())?;
-        let handler = runtime
-            .handlers
-            .get(handler)
-            .cloned()
-            .ok_or_else(|| format!("unknown UI event handler {handler}"))?;
-        let action = runtime
-            .evaluator
-            .apply(handler, &[event], runtime.span)
-            .map_err(|error| error.to_string())?;
+            .ok_or_else(|| "load a ui.app program before configuring an effect host".to_owned())?;
+        if runtime.effect_host.is_some() {
+            return Err("an effect host is already configured for this session".to_owned());
+        }
+        let mut host = FakeHost::with_capabilities(capabilities);
+        host.reconcile_declared_resources(
+            &runtime.desired_commands,
+            &runtime.desired_subscriptions,
+        )
+        .map_err(|error| format!("effect host reconciliation failed: {error}"))?;
+        runtime.effect_host = Some(host);
+        Ok(())
+    }
+
+    fn deliver_effect_json(
+        &mut self,
+        kind: &str,
+        id: &str,
+        generation: u64,
+        completion_json: &str,
+    ) -> Result<String, String> {
+        let kind = parse_resource_kind(kind)?;
+        if id.is_empty() {
+            return Err("effect id must be nonempty".to_owned());
+        }
+        let completion = serde_json::from_str(completion_json)
+            .map_err(|error| format!("effect completion is not JSON: {error}"))?;
+        let delivery = parse_delivery(completion)?;
+        let action = {
+            let runtime = self
+                .runtime
+                .as_mut()
+                .ok_or_else(|| "load a ui.app program before delivering an effect".to_owned())?;
+            let host = runtime.effect_host.as_mut().ok_or_else(|| {
+                "configure an effect host before delivering effect completions".to_owned()
+            })?;
+            match kind {
+                ResourceKind::Command => {
+                    host.deliver_command_action(Owner::App, id, generation, delivery)
+                }
+                ResourceKind::Subscription => {
+                    host.deliver_subscription_action(Owner::App, id, generation, delivery)
+                }
+            }
+            .ok_or_else(|| {
+                format!(
+                    "effect completion is not current for {} `{id}` generation {generation}",
+                    resource_kind_name(kind)
+                )
+            })?
+        };
+        self.apply_action(action)
+    }
+
+    fn apply_action(&mut self, action: Value) -> Result<String, String> {
+        let runtime = self
+            .runtime
+            .as_mut()
+            .ok_or_else(|| "load a ui.app program before dispatching actions".to_owned())?;
         #[cfg(feature = "juir")]
         let previous_state = runtime.state.clone();
         let result = runtime
@@ -273,6 +371,10 @@ impl PlaygroundSession {
             .map_err(|error| error.to_string())?;
         let result =
             normalize_update_result(result, runtime.span).map_err(|error| error.to_string())?;
+        if let Some(host) = &mut runtime.effect_host {
+            host.reconcile_declared_resources(&result.commands, &result.subscriptions)
+                .map_err(|error| format!("effect host reconciliation failed: {error}"))?;
+        }
         runtime.state = result.state;
         runtime.desired_commands = result.commands;
         runtime.desired_subscriptions = result.subscriptions;
@@ -315,15 +417,16 @@ impl PlaygroundSession {
             .as_ref()
             .ok_or_else(|| "load a ui.app program before reading resources".to_owned())?;
         serde_json::to_string(&json!({
+            "protocol": "jisp-ui-resources/1",
             "commands": runtime
                 .desired_commands
                 .iter()
-                .map(json_value)
+                .map(|value| resource_json(value, runtime.effect_host.as_ref(), ResourceKind::Command))
                 .collect::<Result<Vec<_>, _>>()?,
             "subscriptions": runtime
                 .desired_subscriptions
                 .iter()
-                .map(json_value)
+                .map(|value| resource_json(value, runtime.effect_host.as_ref(), ResourceKind::Subscription))
                 .collect::<Result<Vec<_>, _>>()?,
         }))
         .map_err(|error| error.to_string())
@@ -1310,6 +1413,130 @@ fn render_module_error(error: jisp::ModuleError) -> String {
 
 fn js_error(error: String) -> JsValue {
     JsValue::from_str(&error)
+}
+
+fn parse_capabilities(source: &str) -> Result<Vec<Capability>, String> {
+    let JsonValue::Array(values) = serde_json::from_str(source)
+        .map_err(|error| format!("effect capabilities are not JSON: {error}"))?
+    else {
+        return Err("effect capabilities must be a JSON array".to_owned());
+    };
+    values
+        .into_iter()
+        .map(|value| {
+            let JsonValue::Object(fields) = value else {
+                return Err("each effect capability must be an object".to_owned());
+            };
+            if fields.len() != 2 || !fields.contains_key("name") || !fields.contains_key("version")
+            {
+                return Err(
+                    "each effect capability must contain exactly name and version".to_owned(),
+                );
+            }
+            let name = fields
+                .get("name")
+                .and_then(JsonValue::as_str)
+                .filter(|name| !name.is_empty())
+                .ok_or_else(|| "effect capability name must be a nonempty string".to_owned())?;
+            let version = fields
+                .get("version")
+                .and_then(JsonValue::as_u64)
+                .and_then(|version| u32::try_from(version).ok())
+                .filter(|version| *version > 0)
+                .ok_or_else(|| "effect capability version must be a positive u32".to_owned())?;
+            Ok(Capability {
+                name: name.to_owned(),
+                version,
+            })
+        })
+        .collect()
+}
+
+fn parse_resource_kind(kind: &str) -> Result<ResourceKind, String> {
+    match kind {
+        "command" => Ok(ResourceKind::Command),
+        "subscription" => Ok(ResourceKind::Subscription),
+        _ => Err("effect kind must be command or subscription".to_owned()),
+    }
+}
+
+fn resource_kind_name(kind: ResourceKind) -> &'static str {
+    match kind {
+        ResourceKind::Command => "command",
+        ResourceKind::Subscription => "subscription",
+    }
+}
+
+fn parse_delivery(value: JsonValue) -> Result<Delivery, String> {
+    let JsonValue::Object(mut fields) = value else {
+        return Err("effect completion must be a JSON object".to_owned());
+    };
+    if fields.len() != 1 {
+        return Err("effect completion must contain exactly ok or error".to_owned());
+    }
+    if let Some(value) = fields.remove("ok") {
+        return Ok(Delivery::Ok(value));
+    }
+    let Some(JsonValue::Object(error)) = fields.remove("error") else {
+        return Err("effect completion must contain exactly ok or error".to_owned());
+    };
+    if error.len() != 2 || !error.contains_key("code") || !error.contains_key("message") {
+        return Err("effect completion error must contain exactly code and message".to_owned());
+    }
+    let code = error
+        .get("code")
+        .and_then(JsonValue::as_str)
+        .ok_or_else(|| "effect completion error code must be a string".to_owned())?;
+    let message = error
+        .get("message")
+        .and_then(JsonValue::as_str)
+        .ok_or_else(|| "effect completion error message must be a string".to_owned())?;
+    Ok(Delivery::Err(HostError {
+        code: parse_host_error_code(code)?,
+        message: message.to_owned(),
+    }))
+}
+
+fn parse_host_error_code(code: &str) -> Result<HostErrorCode, String> {
+    match code {
+        "unsupported-capability" => Ok(HostErrorCode::UnsupportedCapability),
+        "permission-denied" => Ok(HostErrorCode::PermissionDenied),
+        "invalid-request" => Ok(HostErrorCode::InvalidRequest),
+        "cancelled" => Ok(HostErrorCode::Cancelled),
+        "host-failure" => Ok(HostErrorCode::HostFailure),
+        _ => Err(format!("unsupported effect error code `{code}`")),
+    }
+}
+
+fn resource_json(
+    value: &Value,
+    host: Option<&FakeHost>,
+    kind: ResourceKind,
+) -> Result<JsonValue, String> {
+    let mut value = json_value(value)?;
+    let Some(host) = host else {
+        return Ok(value);
+    };
+    let fields = value
+        .as_object_mut()
+        .ok_or_else(|| "effect descriptor must serialize as an object".to_owned())?;
+    let id = fields
+        .get("id")
+        .and_then(JsonValue::as_str)
+        .ok_or_else(|| "effect descriptor must include string id".to_owned())?;
+    let generation = host
+        .active_generation(kind, &Owner::App, id)
+        .ok_or_else(|| {
+            format!(
+                "effect host has no active {} `{id}`",
+                resource_kind_name(kind)
+            )
+        })?;
+    fields.insert(
+        "generation".to_owned(),
+        JsonValue::Number(Number::from(generation)),
+    );
+    Ok(value)
 }
 
 fn value_from_json(value: JsonValue) -> Result<Value, String> {

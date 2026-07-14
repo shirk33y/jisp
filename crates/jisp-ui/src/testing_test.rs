@@ -54,7 +54,12 @@ fn ui_tests_observe_reducer_declared_resources_without_running_them() {
   (assert (= (list) (ui.test.commands)))
   (assert (= (list) (ui.test.subscriptions)))
   (dispatch Save)
-  (assert (= (list (ui.command "save:1" "storage.write" 1 (obj "key" "draft") true (ui.action-result "Saved" (list)) (ui.action-error "SaveFailed" (list))) (ui.test.commands)))
+  (assert (=
+    (list
+      (ui.command "save:1" "storage.write" 1 (obj "key" "draft") true
+        (ui.action-result "Saved" (list))
+        (ui.action-error "SaveFailed" (list))))
+    (ui.test.commands)))
   (assert (= (list) (ui.test.subscriptions))))
 "#,
     ))

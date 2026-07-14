@@ -179,9 +179,20 @@ is not a generated WIT binding.
   describes this coarse capability boundary, never DOM patch operations.
 
 The browser Wasm session exposes the most recent declarations through
-`desired_resources`; it does not execute them. Its fixture-only `run_tests`
-entry point does execute the deterministic `ui.test` simulation. A real command
-host must still validate capability schemas, reconcile against
-`FakeHost`-equivalent lifecycle rules, and dispatch completions back through
-`update`. UI components remain effect-free. See also [UI.md](UI.md) and
+`desired_resources`; it does not execute them. An embedding host may opt in to
+the generation-safe Wasm boundary by calling
+`configure_effect_host([{name, version}])`. Once configured, each active
+resource in `jisp-ui-resources/1` includes an opaque `generation`; return it to
+`deliverEffect(kind, id, generation, completion)`, where `completion` is
+either `{"ok": value}` or
+`{"error": {"code": "permission-denied", "message": "..."}}`. Wasm
+checks that the resource is still current, expands the source-declared action
+template, runs `update`, and atomically reconciles the next declarations.
+Duplicate configuration is rejected so active generations cannot be reset.
+
+This boundary performs no I/O and the playground does not yet attach browser
+providers to it. Its fixture-only `run_tests` entry point executes the
+deterministic `ui.test` simulation instead. A real command host must still
+validate capability schemas and implement cancellation against the same
+lifecycle rules. UI components remain effect-free. See also [UI.md](UI.md) and
 [FFI_FUTURE.md](FFI_FUTURE.md).

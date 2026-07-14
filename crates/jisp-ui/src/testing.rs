@@ -359,6 +359,7 @@ fn parse_assert(name: &str, node: &Node, items: &[Node]) -> Result<UiTestStep, U
 struct PreparedTest {
     name: String,
     capabilities: Vec<Capability>,
+    uses_fake_host: bool,
     steps: Vec<PreparedStep>,
 }
 
@@ -465,6 +466,13 @@ fn prepare_steps(module: &mut Module, tests: &[UiTest]) -> Result<Vec<PreparedTe
         prepared.push(PreparedTest {
             name: test.name.clone(),
             capabilities: test.capabilities.clone(),
+            uses_fake_host: !test.capabilities.is_empty()
+                || test.steps.iter().any(|step| {
+                    matches!(
+                        step,
+                        UiTestStep::Deliver { .. } | UiTestStep::DeliverError { .. }
+                    )
+                }),
             steps,
         });
     }
@@ -487,7 +495,9 @@ fn run_one(
     let mut state = init.clone();
     let mut commands = vec![];
     let mut subscriptions = vec![];
-    let mut host = FakeHost::with_capabilities(test.capabilities.clone());
+    let mut host = test
+        .uses_fake_host
+        .then(|| FakeHost::with_capabilities(test.capabilities.clone()));
     let mut assertions = 0;
     for step in &test.steps {
         let result = match step {
@@ -499,7 +509,7 @@ fn run_one(
                         &mut state,
                         &mut commands,
                         &mut subscriptions,
-                        &mut host,
+                        host.as_mut(),
                         action,
                         *span,
                     )
@@ -513,7 +523,12 @@ fn run_one(
             } => lookup(module_env, result, "delivery result")
                 .and_then(|result| portable_json(result))
                 .and_then(|result| {
-                    delivery_action(&mut host, *kind, id, Delivery::Ok(result)).ok_or_else(|| {
+                    let host = host.as_mut().ok_or_else(|| {
+                        UiTestError(
+                            "ui.test delivery requires one or more supports setup steps".to_owned(),
+                        )
+                    })?;
+                    delivery_action(host, *kind, id, Delivery::Ok(result)).ok_or_else(|| {
                         UiTestError(format!(
                             "delivery at {} has no live {kind:?} `{id}` with a completion action",
                             span.start
@@ -527,7 +542,7 @@ fn run_one(
                         &mut state,
                         &mut commands,
                         &mut subscriptions,
-                        &mut host,
+                        host.as_mut(),
                         action,
                         *span,
                     )
@@ -537,12 +552,22 @@ fn run_one(
                 id,
                 error,
                 span,
-            } => delivery_action(&mut host, *kind, id, Delivery::Err(error.clone()))
+            } => host
+                .as_mut()
                 .ok_or_else(|| {
-                    UiTestError(format!(
+                    UiTestError(
+                        "ui.test delivery requires one or more supports setup steps".to_owned(),
+                    )
+                })
+                .and_then(|host| {
+                    delivery_action(host, *kind, id, Delivery::Err(error.clone())).ok_or_else(
+                        || {
+                            UiTestError(format!(
                         "delivery at {} has no live {kind:?} `{id}` with a completion action",
                         span.start
                     ))
+                        },
+                    )
                 })
                 .and_then(|action| {
                     reduce_and_reconcile(
@@ -551,7 +576,7 @@ fn run_one(
                         &mut state,
                         &mut commands,
                         &mut subscriptions,
-                        &mut host,
+                        host.as_mut(),
                         action,
                         *span,
                     )
@@ -612,7 +637,7 @@ fn reduce_and_reconcile(
     state: &mut Value,
     commands: &mut Vec<Value>,
     subscriptions: &mut Vec<Value>,
-    host: &mut FakeHost,
+    host: Option<&mut FakeHost>,
     action: Value,
     span: Span,
 ) -> Result<(), UiTestError> {
@@ -620,10 +645,12 @@ fn reduce_and_reconcile(
         .apply(update.clone(), &[state.clone(), action], span)
         .map_err(runtime_error)
         .and_then(|result| normalize_update_result(result, span).map_err(runtime_error))?;
-    host.reconcile_declared_resources(&result.commands, &result.subscriptions)
-        .map_err(|error| {
-            UiTestError(format!("ui.test fake host reconciliation failed: {error}"))
-        })?;
+    if let Some(host) = host {
+        host.reconcile_declared_resources(&result.commands, &result.subscriptions)
+            .map_err(|error| {
+                UiTestError(format!("ui.test fake host reconciliation failed: {error}"))
+            })?;
+    }
     *state = result.state;
     *commands = result.commands;
     *subscriptions = result.subscriptions;
