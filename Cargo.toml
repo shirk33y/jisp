@@ -11,6 +11,7 @@ members = [
   "crates/jisp-ir",
   "crates/jisp-types",
   "crates/jisp-runtime",
+  "crates/jisp-ui",
   "crates/jisp-wasm",
   "crates/jisp-eval",
   "crates/jisp-codegen-rust",
@@ -49,6 +50,7 @@ jisp-expand = { path = "crates/jisp-expand" }
 jisp-ir = { path = "crates/jisp-ir" }
 jisp-types = { path = "crates/jisp-types" }
 jisp-runtime = { path = "crates/jisp-runtime" }
+jisp-ui = { path = "crates/jisp-ui" }
 jisp-eval = { path = "crates/jisp-eval" }
 jisp-codegen-rust = { path = "crates/jisp-codegen-rust" }
 jisp-macros = { path = "crates/jisp-macros" }

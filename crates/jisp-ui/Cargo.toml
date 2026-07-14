@@ -1,0 +1,13 @@
+[package]
+name = "jisp-ui"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+jisp-core.workspace = true
+jisp-ir.workspace = true
+jisp-types.workspace = true
+
+[dev-dependencies]
+jisp-syntax-lisp.workspace = true

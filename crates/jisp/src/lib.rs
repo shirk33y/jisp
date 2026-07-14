@@ -29,6 +29,7 @@ pub use jisp_eval;
 pub use jisp_expand;
 pub use jisp_ir;
 pub use jisp_types;
+pub use jisp_ui;
 
 #[derive(Debug, Error)]
 pub enum Error {
