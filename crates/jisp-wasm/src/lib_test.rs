@@ -535,8 +535,8 @@ fn update_result_updates_state_and_exposes_declared_resources() {
 (defn update (state action)
   (ui.result
     (obj.set state "count" (+ (. state "count") 1))
-    (list (ui.command "save:1" "storage.write" 1 (obj "key" "draft") true))
-    (list (ui.subscription "clock" "timer.tick" 1 (obj "every-ms" 1000) false))))
+    (list (ui.command "save:1" "storage.write" 1 (obj "key" "draft") true (ui.action-result "Saved" (list)) (ui.action-error "SaveFailed" (list))))
+    (list (ui.subscription "clock" "timer.tick" 1 (obj "every-ms" 1000) false (ui.action-result "Tick" (list)) (ui.action-error "ClockFailed" (list))))))
 
 (component app (state)
   (button
@@ -566,6 +566,11 @@ fn update_result_updates_state_and_exposes_declared_resources() {
         "storage.write"
     );
     assert_eq!(resources["subscriptions"][0]["id"], "clock");
+    assert_eq!(resources["commands"][0]["on-ok"]["tag"], "Saved");
+    assert_eq!(
+        resources["commands"][0]["on-ok"]["fields"][0]["$jisp"],
+        "result"
+    );
 }
 
 #[test]

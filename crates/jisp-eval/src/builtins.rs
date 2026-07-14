@@ -89,6 +89,9 @@ pub fn install_builtins(evaluator: &mut Evaluator) {
         ("ui.result", ui_result),
         ("ui.command", ui_command),
         ("ui.subscription", ui_subscription),
+        ("ui.action", ui_action),
+        ("ui.action-result", ui_action_result),
+        ("ui.action-error", ui_action_error),
         ("result.try", result_try),
         ("result.map", result_map),
         ("result.map-err", result_map_err),
@@ -887,8 +890,55 @@ fn ui_subscription(_: &mut Evaluator, args: &[Value], span: Span) -> Result<Valu
     ui_resource_descriptor("subscription", args, span)
 }
 
+fn ui_action(_: &mut Evaluator, args: &[Value], span: Span) -> Result<Value, RuntimeError> {
+    ui_action_template(args, span, None)
+}
+
+fn ui_action_result(_: &mut Evaluator, args: &[Value], span: Span) -> Result<Value, RuntimeError> {
+    ui_action_template(args, span, Some("result"))
+}
+
+fn ui_action_error(_: &mut Evaluator, args: &[Value], span: Span) -> Result<Value, RuntimeError> {
+    ui_action_template(args, span, Some("error"))
+}
+
+fn ui_action_template(
+    args: &[Value],
+    span: Span,
+    placeholder: Option<&str>,
+) -> Result<Value, RuntimeError> {
+    arity(args, 2, span)?;
+    let tag = expect_str(&args[0], span)?;
+    if tag.is_empty() {
+        return Err(RuntimeError::at(span, "ui.action tag must not be empty"));
+    }
+    let Value::List(fields) = &args[1] else {
+        return Err(RuntimeError::at(
+            span,
+            "ui.action fields must be a list of JSON-shaped portable data",
+        ));
+    };
+    if !fields.iter().all(is_json_effect_data) {
+        return Err(RuntimeError::at(
+            span,
+            "ui.action fields must contain portable data, not functions or constructors",
+        ));
+    }
+    let mut fields = fields.clone();
+    if let Some(placeholder) = placeholder {
+        fields.push(Value::Obj(IndexMap::from([(
+            "$jisp".to_owned(),
+            Value::string(placeholder),
+        )])));
+    }
+    Ok(Value::Obj(IndexMap::from([
+        ("tag".to_owned(), Value::string(tag)),
+        ("fields".to_owned(), Value::List(fields)),
+    ])))
+}
+
 fn ui_resource_descriptor(kind: &str, args: &[Value], span: Span) -> Result<Value, RuntimeError> {
-    arity(args, 5, span)?;
+    arity(args, 7, span)?;
     let id = expect_str(&args[0], span)?;
     if id.is_empty() {
         return Err(RuntimeError::at(
@@ -924,6 +974,8 @@ fn ui_resource_descriptor(kind: &str, args: &[Value], span: Span) -> Result<Valu
             format!("ui.{kind} replace must be a bool"),
         ));
     };
+    let on_ok = ui_action_descriptor(&args[5], span)?;
+    let on_error = ui_action_descriptor(&args[6], span)?;
     Ok(Value::Obj(IndexMap::from([
         ("kind".to_owned(), Value::string(kind)),
         ("id".to_owned(), Value::string(id)),
@@ -936,7 +988,38 @@ fn ui_resource_descriptor(kind: &str, args: &[Value], span: Span) -> Result<Valu
         ),
         ("request".to_owned(), args[3].clone()),
         ("replace".to_owned(), Value::Bool(replace)),
+        ("on-ok".to_owned(), on_ok),
+        ("on-error".to_owned(), on_error),
     ])))
+}
+
+fn ui_action_descriptor(value: &Value, span: Span) -> Result<Value, RuntimeError> {
+    let Value::Obj(fields) = value else {
+        return Err(RuntimeError::at(
+            span,
+            "ui completion must be a ui.action template",
+        ));
+    };
+    if fields.len() != 2 || !fields.contains_key("tag") || !fields.contains_key("fields") {
+        return Err(RuntimeError::at(
+            span,
+            "ui completion must contain exactly tag and fields",
+        ));
+    }
+    let tag = expect_str(fields.get("tag").expect("checked tag"), span)?;
+    let Value::List(template_fields) = fields.get("fields").expect("checked fields") else {
+        return Err(RuntimeError::at(
+            span,
+            "ui completion fields must be a list",
+        ));
+    };
+    if tag.is_empty() || !template_fields.iter().all(is_json_effect_data) {
+        return Err(RuntimeError::at(
+            span,
+            "ui completion must contain portable action data",
+        ));
+    }
+    Ok(value.clone())
 }
 
 fn is_json_effect_data(value: &Value) -> bool {

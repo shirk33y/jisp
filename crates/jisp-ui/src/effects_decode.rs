@@ -4,7 +4,9 @@ use indexmap::IndexMap;
 use jisp_eval::Value as JispValue;
 use serde_json::{Map, Number, Value};
 
-use super::{Capability, Command, DesiredResources, Owner, Subscription};
+use super::{
+    ActionTemplate, ActionTemplateField, Capability, Command, DesiredResources, Owner, Subscription,
+};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum DecodeError {
@@ -79,8 +81,8 @@ fn decode_command(value: &JispValue, kind: &'static str) -> Result<Command, Deco
         capability: descriptor.capability,
         request: descriptor.request,
         replace: descriptor.replace,
-        on_ok: None,
-        on_error: None,
+        on_ok: Some(descriptor.on_ok),
+        on_error: Some(descriptor.on_error),
     })
 }
 
@@ -92,8 +94,8 @@ fn decode_subscription(value: &JispValue, kind: &'static str) -> Result<Subscrip
         capability: descriptor.capability,
         request: descriptor.request,
         replace: descriptor.replace,
-        on_ok: None,
-        on_error: None,
+        on_ok: Some(descriptor.on_ok),
+        on_error: Some(descriptor.on_error),
     })
 }
 
@@ -102,6 +104,8 @@ struct Descriptor {
     capability: Capability,
     request: Value,
     replace: bool,
+    on_ok: ActionTemplate,
+    on_error: ActionTemplate,
 }
 
 fn decode_descriptor(value: &JispValue, kind: &'static str) -> Result<Descriptor, DecodeError> {
@@ -131,11 +135,15 @@ fn decode_descriptor(value: &JispValue, kind: &'static str) -> Result<Descriptor
     }
     let version = expect_version(required(capability_fields, "version", kind)?, kind)?;
     let replace = expect_bool(required(fields, "replace", kind)?, "replace", kind)?;
+    let on_ok = decode_action_template(required(fields, "on-ok", kind)?, kind)?;
+    let on_error = decode_action_template(required(fields, "on-error", kind)?, kind)?;
     Ok(Descriptor {
         id,
         capability: Capability { name, version },
         request: json_value(required(fields, "request", kind)?, kind)?,
         replace,
+        on_ok,
+        on_error,
     })
 }
 
@@ -153,7 +161,15 @@ fn require_exact_fields(
     fields: &IndexMap<String, JispValue>,
     kind: &'static str,
 ) -> Result<(), DecodeError> {
-    const FIELDS: [&str; 5] = ["kind", "id", "capability", "request", "replace"];
+    const FIELDS: [&str; 7] = [
+        "kind",
+        "id",
+        "capability",
+        "request",
+        "replace",
+        "on-ok",
+        "on-error",
+    ];
     if fields.len() != FIELDS.len() || FIELDS.iter().any(|field| !fields.contains_key(*field)) {
         return invalid(
             kind,
@@ -161,6 +177,43 @@ fn require_exact_fields(
         );
     }
     Ok(())
+}
+
+fn decode_action_template(
+    value: &JispValue,
+    kind: &'static str,
+) -> Result<ActionTemplate, DecodeError> {
+    let fields = expect_object(value, kind)?;
+    if fields.len() != 2 || !fields.contains_key("tag") || !fields.contains_key("fields") {
+        return invalid(kind, "completion must contain exactly tag and fields");
+    }
+    let tag = expect_string(required(fields, "tag", kind)?, "completion.tag", kind)?;
+    if tag.is_empty() {
+        return invalid(kind, "completion.tag must not be empty");
+    }
+    let JispValue::List(values) = required(fields, "fields", kind)? else {
+        return invalid(kind, "completion.fields must be a list");
+    };
+    let fields = values
+        .iter()
+        .map(|value| action_field(value, kind))
+        .collect::<Result<_, _>>()?;
+    Ok(ActionTemplate { tag, fields })
+}
+
+fn action_field(value: &JispValue, kind: &'static str) -> Result<ActionTemplateField, DecodeError> {
+    if let JispValue::Obj(fields) = value {
+        if fields.len() == 1 {
+            if let Some(JispValue::Str(name)) = fields.get("$jisp") {
+                return match name.as_ref() {
+                    "result" => Ok(ActionTemplateField::Result),
+                    "error" => Ok(ActionTemplateField::Error),
+                    _ => invalid(kind, "completion placeholder must be result or error"),
+                };
+            }
+        }
+    }
+    Ok(ActionTemplateField::Literal(json_value(value, kind)?))
 }
 
 fn required<'a>(

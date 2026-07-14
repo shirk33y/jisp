@@ -344,7 +344,15 @@ pub fn environment() -> BTreeMap<String, Scheme> {
         scheme(
             vec![0],
             fun(
-                vec![Type::Str, Type::Str, Type::Int, var(0), Type::Bool],
+                vec![
+                    Type::Str,
+                    Type::Str,
+                    Type::Int,
+                    var(0),
+                    Type::Bool,
+                    ui_action_template(),
+                    ui_action_template(),
+                ],
                 ui_command(),
             ),
         ),
@@ -355,11 +363,29 @@ pub fn environment() -> BTreeMap<String, Scheme> {
         scheme(
             vec![0],
             fun(
-                vec![Type::Str, Type::Str, Type::Int, var(0), Type::Bool],
+                vec![
+                    Type::Str,
+                    Type::Str,
+                    Type::Int,
+                    var(0),
+                    Type::Bool,
+                    ui_action_template(),
+                    ui_action_template(),
+                ],
                 ui_subscription(),
             ),
         ),
     );
+    for name in ["ui.action", "ui.action-result", "ui.action-error"] {
+        add(
+            &mut env,
+            name,
+            scheme(
+                vec![0],
+                fun(vec![Type::Str, list(var(0))], ui_action_template()),
+            ),
+        );
+    }
 
     add(
         &mut env,
@@ -580,6 +606,13 @@ fn ui_command() -> Type {
 fn ui_subscription() -> Type {
     Type::Named {
         name: "ui.subscription".to_owned(),
+        arguments: vec![],
+    }
+}
+
+fn ui_action_template() -> Type {
+    Type::Named {
+        name: "ui.action-template".to_owned(),
         arguments: vec![],
     }
 }

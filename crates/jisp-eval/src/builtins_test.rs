@@ -6,6 +6,13 @@ fn span() -> Span {
     Span::empty(SourceId(0), 0)
 }
 
+fn action(tag: &str) -> Value {
+    Value::Obj(indexmap::IndexMap::from([
+        ("tag".to_owned(), Value::string(tag)),
+        ("fields".to_owned(), Value::List(vec![])),
+    ]))
+}
+
 #[test]
 fn ui_result_declares_resources_without_executing_them() {
     let mut evaluator = Evaluator::new();
@@ -63,6 +70,8 @@ fn ui_resource_constructors_produce_canonical_portable_descriptors() {
                     Value::string("draft"),
                 )])),
                 Value::Bool(true),
+                action("Saved"),
+                action("SaveFailed"),
             ],
             span(),
         )
@@ -95,6 +104,8 @@ fn ui_resource_constructors_reject_invalid_identity_and_nonportable_request() {
                 Value::Int(0),
                 Value::Null,
                 Value::Bool(true),
+                action("Saved"),
+                action("SaveFailed"),
             ],
             span(),
         )
@@ -110,6 +121,8 @@ fn ui_resource_constructors_reject_invalid_identity_and_nonportable_request() {
                 Value::Int(1),
                 evaluator.root_env().lookup("ui.node").unwrap(),
                 Value::Bool(true),
+                action("Saved"),
+                action("SaveFailed"),
             ],
             span(),
         )

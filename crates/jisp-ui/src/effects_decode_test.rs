@@ -1,3 +1,4 @@
+use crate::effects::ActionTemplateField;
 use indexmap::IndexMap;
 use jisp_eval::Value;
 use serde_json::json;
@@ -15,6 +16,10 @@ fn obj(fields: impl IntoIterator<Item = (&'static str, Value)>) -> Value {
     )
 }
 
+fn action(tag: &str) -> Value {
+    obj([("tag", Value::string(tag)), ("fields", Value::List(vec![]))])
+}
+
 fn command(id: &str) -> Value {
     obj([
         ("kind", Value::string("command")),
@@ -28,6 +33,8 @@ fn command(id: &str) -> Value {
         ),
         ("request", obj([("key", Value::string("draft"))])),
         ("replace", Value::Bool(true)),
+        ("on-ok", action("Saved")),
+        ("on-error", action("SaveFailed")),
     ])
 }
 
@@ -54,6 +61,44 @@ fn decodes_source_descriptors_and_reconciles_them_through_the_fake_host() {
 }
 
 #[test]
+fn decodes_result_and_error_placeholders_in_completion_templates() {
+    let mut descriptor = command("save:1");
+    let Value::Obj(fields) = &mut descriptor else {
+        panic!("command helper must produce an object");
+    };
+    fields.insert(
+        "on-ok".to_owned(),
+        obj([
+            ("tag", Value::string("Saved")),
+            (
+                "fields",
+                Value::List(vec![obj([("$jisp", Value::string("result"))])]),
+            ),
+        ]),
+    );
+    fields.insert(
+        "on-error".to_owned(),
+        obj([
+            ("tag", Value::string("SaveFailed")),
+            (
+                "fields",
+                Value::List(vec![obj([("$jisp", Value::string("error"))])]),
+            ),
+        ]),
+    );
+
+    let desired = decode_resources(&[descriptor], &[]).unwrap();
+    assert!(matches!(
+        desired.commands[0].on_ok,
+        Some(ref template) if matches!(template.fields.as_slice(), [ActionTemplateField::Result])
+    ));
+    assert!(matches!(
+        desired.commands[0].on_error,
+        Some(ref template) if matches!(template.fields.as_slice(), [ActionTemplateField::Error])
+    ));
+}
+
+#[test]
 fn rejects_wrong_list_kind_unknown_fields_and_non_json_request_values() {
     let wrong_kind = obj([
         ("kind", Value::string("subscription")),
@@ -67,6 +112,8 @@ fn rejects_wrong_list_kind_unknown_fields_and_non_json_request_values() {
         ),
         ("request", Value::Null),
         ("replace", Value::Bool(true)),
+        ("on-ok", action("Saved")),
+        ("on-error", action("Failed")),
     ]);
     assert!(decode_resources(&[wrong_kind], &[])
         .unwrap_err()
@@ -85,6 +132,8 @@ fn rejects_wrong_list_kind_unknown_fields_and_non_json_request_values() {
         ),
         ("request", Value::BigInt(1.into())),
         ("replace", Value::Bool(true)),
+        ("on-ok", action("Saved")),
+        ("on-error", action("Failed")),
         ("extra", Value::Null),
     ]);
     assert!(decode_resources(&[unknown], &[])

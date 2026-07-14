@@ -51,8 +51,8 @@ fn ui_app_accepts_plain_state_and_explicit_update_result() {
 (defn update (state action)
   (ui.result
     (+ state 1)
-    (list (ui.command "save:1" "storage.write" 1 (obj "key" "draft") true))
-    (list (ui.subscription "clock" "timer.tick" 1 (obj "every-ms" 1000) false))))
+    (list (ui.command "save:1" "storage.write" 1 (obj "key" "draft") true (ui.action "Saved" (list)) (ui.action-error "SaveFailed" (list))))
+    (list (ui.subscription "clock" "timer.tick" 1 (obj "every-ms" 1000) false (ui.action-result "Tick" (list)) (ui.action-error "ClockFailed" (list))))))
 {VIEW}
 (ui.app init update app)
 "#

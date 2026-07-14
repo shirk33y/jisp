@@ -354,8 +354,9 @@ intentionally ignores events and keys. An interactive host can instead use
 handler with an event value, updates `(state, action)` to next state, and asks
 `app` for a fresh node tree. A reducer may instead return
 `(ui.result next-state commands subscriptions)` to declare portable resource
-data. Lists are built with `(ui.command id capability version request replace)`
-and `(ui.subscription id capability version request replace)`; these nominal
+data. Lists are built with
+`(ui.command id capability version request replace on-ok on-error)` and
+`(ui.subscription id capability version request replace on-ok on-error)`; these nominal
 values keep resource kinds and the versioned descriptor schema explicit.
 Declarations are not effect execution and views must still return only a UI
 node. Reconciliation, capability execution, subscriptions, and native widget

@@ -33,20 +33,28 @@ Create those values with the canonical constructors:
 ```lisp
 (ui.command "save:42" "storage.write" 1
   (obj "key" "draft:42" "value" (obj "title" "Plan"))
-  true)
+  true
+  (ui.action-result "Saved" (list 42))
+  (ui.action-error "SaveFailed" (list 42)))
 
 (ui.subscription "clock" "timer.tick" 1
   (obj "every-ms" 1000)
-  false)
+  false
+  (ui.action-result "Tick" (list))
+  (ui.action-error "ClockFailed" (list)))
 ```
 
-Their arguments are `(id capability-name capability-version request replace)`.
+Their arguments are
+`(id capability-name capability-version request replace on-ok on-error)`.
 `id` and `capability-name` are nonempty strings, version is a positive `u32`,
 `replace` is a boolean, and request is JSON-shaped portable data. The resulting
 descriptor has exactly `kind`, `id`, `capability {name, version}`, `request`,
-and `replace`; callers cannot forge a partially valid object through the typed
-`ui.result` surface. `ui.result` only declares work. It neither runs a
-capability nor lets a view register work.
+`replace`, `on-ok`, and `on-error`; callers cannot forge a partially valid
+object through the typed `ui.result` surface. `ui.action` creates a tagged
+variant template with static fields. `ui.action-result` and `ui.action-error`
+append a reserved portable placeholder for the host result or `{code, message}`
+error, respectively. They are data templates, never callbacks. `ui.result`
+only declares work. It neither runs a capability nor lets a view register work.
 
 Type checking connects all three `ui.app` bindings: `update` receives the init
 state as its first argument and returns either that state or
