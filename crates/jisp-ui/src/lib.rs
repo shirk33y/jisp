@@ -901,7 +901,21 @@ fn component_parts(definition: &Definition) -> Option<(&[String], &Option<String
     let ExprKind::Lambda { params, rest, body } = &definition.value.kind else {
         return None;
     };
-    ui_node_object(body).map(|_| (params.as_slice(), rest, body.as_ref()))
+    is_ui_root(body).then_some((params.as_slice(), rest, body.as_ref()))
+}
+
+fn is_ui_root(expr: &Expr) -> bool {
+    if ui_node_object(expr).is_some() {
+        return true;
+    }
+    match &expr.kind {
+        ExprKind::If {
+            then_branch,
+            else_branch,
+            ..
+        } => is_ui_root(then_branch) && is_ui_root(else_branch),
+        _ => false,
+    }
 }
 
 fn ui_node_object(expr: &Expr) -> Option<&[(Expr, Expr)]> {

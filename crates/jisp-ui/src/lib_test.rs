@@ -352,3 +352,144 @@ fn incremental_executor_reuses_unaffected_slots() {
         .display_string();
     assert_eq!(html, "<div>Plan2</div>");
 }
+
+#[test]
+fn incremental_executor_matches_full_execution_across_block_updates() {
+    let typed = typed(
+        r#"
+(component row (item)
+  (li
+    (key (. item "id"))
+    (text (. item "title"))))
+
+(component app (state)
+  (main
+    (h1 (text (. state "title")))
+    (if (. state "show")
+      (div (text "Visible"))
+      (div (text "Hidden")))
+    (ul
+      (for item (. state "items")
+        (row item)))))
+"#,
+    );
+    let program = compile(&typed).unwrap();
+    let states = [
+        app_state("Inbox", true, &["Plan", "Ship"]),
+        app_state("Inbox", true, &["Plan", "Ship"]),
+        app_state("Today", true, &["Plan", "Ship"]),
+        app_state("Today", false, &["Plan", "Ship"]),
+        app_state("Today", false, &["Plan", "Review"]),
+    ];
+    let mut evaluator = Evaluator::new();
+    let loaded = evaluator.load_module(&typed.module).unwrap();
+    let ui_html = evaluator.root_env().lookup("ui.html").unwrap();
+    let mut previous = None;
+
+    for (index, state) in states.iter().enumerate() {
+        let changes = previous
+            .as_ref()
+            .map(|before| changed_paths("state", before, state))
+            .unwrap_or(ChangeSet {
+                unknown: true,
+                ..ChangeSet::default()
+            });
+        let incremental = execute_incremental(
+            &program,
+            &mut evaluator,
+            &loaded.env,
+            "app",
+            std::slice::from_ref(state),
+            previous.as_ref(),
+            &changes,
+        )
+        .unwrap();
+        let full = execute(
+            &program,
+            &mut evaluator,
+            &loaded.env,
+            "app",
+            std::slice::from_ref(state),
+        )
+        .unwrap();
+        let span = typed.module.definitions[1].span;
+        let incremental_html = evaluator
+            .apply(ui_html.clone(), &[incremental.value.clone()], span)
+            .unwrap()
+            .display_string();
+        let full_html = evaluator
+            .apply(ui_html.clone(), &[full], span)
+            .unwrap()
+            .display_string();
+
+        assert_eq!(incremental_html, full_html, "state {index}");
+        previous = Some(incremental.value);
+    }
+}
+
+#[test]
+fn compiles_a_conditional_component_root() {
+    let program = compile(&typed(
+        r#"
+(component status (state)
+  (if (. state "visible")
+    (div (text "Visible"))
+    (div (text "Hidden"))))
+"#,
+    ))
+    .unwrap();
+
+    assert!(program.components.contains_key("status"));
+    let mut evaluator = Evaluator::new();
+    let module = typed(
+        r#"
+(component status (state)
+  (if (. state "visible")
+    (div (text "Visible"))
+    (div (text "Hidden"))))
+"#,
+    );
+    let loaded = evaluator.load_module(&module.module).unwrap();
+    let rendered = execute(
+        &program,
+        &mut evaluator,
+        &loaded.env,
+        "status",
+        &[Value::Obj(indexmap::IndexMap::from([(
+            "visible".to_owned(),
+            Value::Bool(false),
+        )]))],
+    )
+    .unwrap();
+    let html = evaluator
+        .apply(
+            evaluator.root_env().lookup("ui.html").unwrap(),
+            &[rendered],
+            module.module.definitions[0].span,
+        )
+        .unwrap()
+        .display_string();
+    assert_eq!(html, "<div>Hidden</div>");
+}
+
+fn app_state(title: &str, show: bool, items: &[&str]) -> Value {
+    Value::Obj(indexmap::IndexMap::from([
+        ("title".to_owned(), Value::string(title)),
+        ("show".to_owned(), Value::Bool(show)),
+        (
+            "items".to_owned(),
+            Value::List(
+                items
+                    .iter()
+                    .enumerate()
+                    .map(|(index, title)| {
+                        Value::Obj(indexmap::IndexMap::from([
+                            ("id".to_owned(), Value::Int(index as i64 + 1)),
+                            ("title".to_owned(), Value::string(*title)),
+                        ]))
+                    })
+                    .collect(),
+            ),
+        ),
+    ]))
+}

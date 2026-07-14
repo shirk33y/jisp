@@ -257,6 +257,37 @@ fn component_lowers_explicit_elements_directives_and_component_children() {
 }
 
 #[test]
+fn component_lowers_ui_elements_in_conditional_branches() {
+    let module = lower_lisp(
+        r#"
+(component status (visible)
+  (if visible
+    (div (text "Visible"))
+    (div (text "Hidden"))))
+"#,
+    )
+    .unwrap();
+
+    let ExprKind::Lambda { body, .. } = &module.definitions[0].value.kind else {
+        panic!("component should lower to a lambda");
+    };
+    let ExprKind::If {
+        then_branch,
+        else_branch,
+        ..
+    } = &body.kind
+    else {
+        panic!("conditional UI should lower to an if expression");
+    };
+    for branch in [then_branch, else_branch] {
+        let ExprKind::Call { callee, .. } = &branch.kind else {
+            panic!("conditional branch should lower through ui.node");
+        };
+        assert!(matches!(callee.kind, ExprKind::Name(ref name) if name == "ui.node"));
+    }
+}
+
+#[test]
 fn component_rejects_reserved_element_names_and_duplicate_directives() {
     let reserved = lower_lisp("(component div () (div))").unwrap_err();
     assert_eq!(

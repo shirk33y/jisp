@@ -40,7 +40,16 @@ language change, so every parser and host observes the same element set.
 `(text expression)` creates an escaped text child. Any other expression in an
 element body is a child expression; use a component call or a standard Jisp
 expression that evaluates to a node. `(for ...)` is the list-producing child
-form.
+form. `(if condition then-node else-node)` is valid both as a component root
+and as a child expression; each branch is lowered as UI, so it may contain an
+explicit host element or component call.
+
+```lisp
+(component status (visible)
+  (if visible
+    (div (class "status-ok") (text "Connected"))
+    (div (class "status-warn") (text "Offline"))))
+```
 
 ## Explicit directives
 

@@ -42,6 +42,7 @@ pub(crate) fn lower_ui_expr(lowerer: &Lowerer, node: &Node) -> Result<Expr, Lowe
     match &node.kind {
         NodeKind::Form(items) => match items.first().and_then(Node::as_symbol) {
             Some("text") => lower_text(lowerer, node.span, items),
+            Some("if") => lower_ui_if(lowerer, node.span, items),
             Some(name) if ui_element(name).is_some() => {
                 lower_ui_element(lowerer, node.span, name, &items[1..])
             }
@@ -49,6 +50,23 @@ pub(crate) fn lower_ui_expr(lowerer: &Lowerer, node: &Node) -> Result<Expr, Lowe
         },
         _ => lowerer.lower_expr(node),
     }
+}
+
+fn lower_ui_if(lowerer: &Lowerer, span: Span, items: &[Node]) -> Result<Expr, LowerError> {
+    expect_arity(items, 3, 4, span, "if")?;
+    let else_branch = items
+        .get(3)
+        .map(|node| lower_ui_expr(lowerer, node))
+        .transpose()?
+        .unwrap_or_else(|| Expr::null(span));
+    Ok(Expr::new(
+        ExprKind::If {
+            condition: Box::new(lowerer.lower_expr(&items[1])?),
+            then_branch: Box::new(lower_ui_expr(lowerer, &items[2])?),
+            else_branch: Box::new(else_branch),
+        },
+        span,
+    ))
 }
 
 fn lower_text(lowerer: &Lowerer, span: Span, items: &[Node]) -> Result<Expr, LowerError> {
