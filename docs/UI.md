@@ -64,6 +64,7 @@ turn a name into a class: `aria-label`, `data-id`, and `http-equiv` belong in
 | `(class name...)` | Enables each named utility class. |
 | `(class-if name condition)` | Enables the named utility class only when the boolean condition is true. |
 | `(on event (emit action))` | Creates a delayed handler. The interactive host supplies `event`, evaluates `action`, then passes that value to the app update function. Static HTML deliberately does not serialize it. |
+| `(on event modifier... handler)` | Adds zero or more synchronous host policies before a delayed or explicit handler. `prevent-default`, `stop-propagation`, and `capture` are the supported modifiers. |
 | `(on event handler)` | Stores an explicit function handler for an interactive host. Use this when the handler needs more than one expression. |
 | `(key value)` | Stores a scalar (`str`, number, or `bool`) identity key for reconciliation. Static HTML deliberately ignores it. |
 | `(for binding collection child)` | Maps `child` over `collection`; nested result lists are flattened as children. |
@@ -84,6 +85,26 @@ browser state leaking into the update function:
   (prop value (. state "draft"))
   (on input (emit (Draft (. event "value")))))
 ```
+
+Event modifiers are evaluated by the host **before** Jisp receives its portable
+event snapshot. They are not reducer effects, because a reducer cannot cancel
+a browser default action after dispatch has completed. Use them only for the
+corresponding host-event behavior:
+
+```lisp
+(form
+  (on submit (prevent-default) (emit (Save draft)))
+  (button (prop type "submit") (text "Save")))
+
+(button
+  (on click (stop-propagation) (emit (MenuToggle menu.id)))
+  (text menu.title))
+```
+
+`capture` installs the listener during the capture phase; it is mainly for
+router or analytics boundaries. The browser playground applies these policies
+synchronously and then sends only `type`, `value`, `checked`, and `key` to
+Jisp. It never passes a DOM event object or exposes arbitrary DOM methods.
 
 ## Update-driven applications
 

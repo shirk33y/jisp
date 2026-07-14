@@ -462,13 +462,14 @@ impl Compiler<'_> {
         };
         fields
             .iter()
-            .map(|(name, handler)| {
+            .map(|(name, descriptor)| {
+                let (handler, policy) = event_descriptor(descriptor)?;
                 Ok((
                     static_string(name)?,
                     Event {
-                        span: handler.span,
-                        handler: handler.clone(),
-                        policy: EventPolicy::default(),
+                        span: descriptor.span,
+                        handler,
+                        policy,
                     },
                 ))
             })
@@ -500,6 +501,46 @@ impl Compiler<'_> {
             span: expr.span,
         }
     }
+}
+
+fn event_descriptor(expr: &Expr) -> Result<(Expr, EventPolicy), CompileError> {
+    let ExprKind::Object(fields) = &expr.kind else {
+        return Ok((expr.clone(), EventPolicy::default()));
+    };
+    let fields = object_fields(fields)?;
+    let Some(handler) = fields.get("handler") else {
+        return Ok((expr.clone(), EventPolicy::default()));
+    };
+    let policy = match fields.get("policy") {
+        None => EventPolicy::default(),
+        Some(policy) => event_policy(policy)?,
+    };
+    Ok(((*handler).clone(), policy))
+}
+
+fn event_policy(expr: &Expr) -> Result<EventPolicy, CompileError> {
+    let ExprKind::Object(fields) = &expr.kind else {
+        return Err(invalid(expr.span, "JUIR event policy must be an object"));
+    };
+    let mut policy = EventPolicy::default();
+    for (name, value) in fields {
+        let name = static_string(name)?;
+        let ExprKind::Literal(Literal::Bool(enabled)) = value.kind else {
+            return Err(invalid(value.span, "JUIR event policy flags must be bools"));
+        };
+        match name.as_str() {
+            "prevent-default" => policy.prevent_default = enabled,
+            "stop-propagation" => policy.stop_propagation = enabled,
+            "capture" => policy.capture = enabled,
+            _ => {
+                return Err(invalid(
+                    value.span,
+                    format!("unknown JUIR event policy `{name}`"),
+                ))
+            }
+        }
+    }
+    Ok(policy)
 }
 
 struct Executor<'a> {
@@ -662,7 +703,16 @@ impl Executor<'_> {
         if !element.events.is_empty() {
             let mut events = IndexMap::new();
             for (name, event) in &element.events {
-                events.insert(name.clone(), self.evaluator.eval_in(&event.handler, env)?);
+                events.insert(
+                    name.clone(),
+                    Value::Obj(IndexMap::from([
+                        (
+                            "handler".to_owned(),
+                            self.evaluator.eval_in(&event.handler, env)?,
+                        ),
+                        ("policy".to_owned(), event_policy_value(&event.policy)),
+                    ])),
+                );
             }
             fields.insert("events".to_owned(), Value::Obj(events));
         }
@@ -746,6 +796,20 @@ impl Executor<'_> {
             }
         }
     }
+}
+
+fn event_policy_value(policy: &EventPolicy) -> Value {
+    Value::Obj(IndexMap::from([
+        (
+            "prevent-default".to_owned(),
+            Value::Bool(policy.prevent_default),
+        ),
+        (
+            "stop-propagation".to_owned(),
+            Value::Bool(policy.stop_propagation),
+        ),
+        ("capture".to_owned(), Value::Bool(policy.capture)),
+    ]))
 }
 
 fn scalar_value(value: &Scalar) -> Value {

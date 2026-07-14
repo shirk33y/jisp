@@ -10,8 +10,10 @@ UI runtime.
 Progress: M0 and M1 are complete on `master`. M2 now has a typed JUIR compiler
 and structural executor enabled by the browser Wasm crate's default `juir`
 feature. It evaluates Jisp expressions through the canonical evaluator and
-materializes the existing structural-tree contract before the DOM reconciler;
-direct static-template DOM mount remains the next M2 increment.
+materializes the existing structural-tree contract before the DOM reconciler.
+Event descriptors retain explicit synchronous `prevent-default`,
+`stop-propagation`, and `capture` policy for the browser host; direct
+static-template DOM mount remains the next M2 increment.
 M3 now conservatively reuses JUIR scalar slots and whole `for` blocks. Proven
 parameter field paths are compared with immutable reducer changes; opaque,
 local, and module-level expressions are explicitly `Unknown` and therefore

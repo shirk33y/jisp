@@ -965,7 +965,8 @@ fn event_json(value: Option<&Value>, handlers: &mut Vec<Value>) -> Result<JsonVa
         return object_json(value);
     };
     let mut result = Map::new();
-    for (name, handler) in events {
+    for (name, descriptor) in events {
+        let (handler, policy) = event_handler_and_policy(descriptor)?;
         if !matches!(
             handler,
             Value::Builtin(_) | Value::Closure(_) | Value::Constructor(_)
@@ -974,9 +975,51 @@ fn event_json(value: Option<&Value>, handlers: &mut Vec<Value>) -> Result<JsonVa
         }
         let id = handlers.len();
         handlers.push(handler.clone());
-        result.insert(name.clone(), JsonValue::Number(Number::from(id)));
+        result.insert(
+            name.clone(),
+            json!({
+                "handler": id,
+                "policy": policy,
+            }),
+        );
     }
     Ok(JsonValue::Object(result))
+}
+
+fn event_handler_and_policy(value: &Value) -> Result<(&Value, JsonValue), String> {
+    let default = json!({
+        "preventDefault": false,
+        "stopPropagation": false,
+        "capture": false,
+    });
+    let Value::Obj(descriptor) = value else {
+        return Ok((value, default));
+    };
+    let Some(handler) = descriptor.get("handler") else {
+        return Ok((value, default));
+    };
+    let policy = descriptor
+        .get("policy")
+        .ok_or_else(|| "UI event descriptor is missing `policy`".to_owned())?;
+    let Value::Obj(policy) = policy else {
+        return Err("UI event policy must be an object".to_owned());
+    };
+    let flag = |name: &str| match policy.get(name) {
+        Some(Value::Bool(value)) => Ok(*value),
+        Some(value) => Err(format!(
+            "UI event policy `{name}` must be bool, got {}",
+            value.type_name()
+        )),
+        None => Err(format!("UI event policy is missing `{name}`")),
+    };
+    Ok((
+        handler,
+        json!({
+            "preventDefault": flag("prevent-default")?,
+            "stopPropagation": flag("stop-propagation")?,
+            "capture": flag("capture")?,
+        }),
+    ))
 }
 
 fn children_json(value: Option<&Value>, handlers: &mut Vec<Value>) -> Result<JsonValue, String> {

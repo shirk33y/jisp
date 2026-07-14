@@ -288,6 +288,48 @@ fn component_lowers_ui_elements_in_conditional_branches() {
 }
 
 #[test]
+fn component_lowers_event_policies_and_rejects_invalid_modifiers() {
+    let module = lower_lisp(
+        r#"
+(component action ()
+  (button
+    (on click (prevent-default) (stop-propagation) (emit "ok"))
+    (text "Run")))
+"#,
+    )
+    .unwrap();
+    let ExprKind::Lambda { body, .. } = &module.definitions[0].value.kind else {
+        panic!("component should lower to a lambda");
+    };
+    let ExprKind::Call { arguments, .. } = &body.kind else {
+        panic!("component should lower through ui.node");
+    };
+    let ExprKind::Object(fields) = &arguments[0].kind else {
+        panic!("ui.node should receive a structural object");
+    };
+    let ExprKind::Object(events) = &object_field(fields, "events").unwrap().kind else {
+        panic!("expected events metadata");
+    };
+    let ExprKind::Object(click) = &events[0].1.kind else {
+        panic!("policy event should lower to a descriptor");
+    };
+    assert!(object_field(click, "handler").is_some());
+    let ExprKind::Object(policy) = &object_field(click, "policy").unwrap().kind else {
+        panic!("descriptor should retain policy flags");
+    };
+    assert!(object_field(policy, "prevent-default").is_some());
+    assert!(object_field(policy, "stop-propagation").is_some());
+
+    let error = lower_lisp(
+        "(component action () (button (on click (stop-immediate-propagation) (emit null))))",
+    )
+    .unwrap_err();
+    assert!(error.diagnostics[0]
+        .message
+        .contains("unknown event modifier `stop-immediate-propagation`"));
+}
+
+#[test]
 fn component_rejects_reserved_element_names_and_duplicate_directives() {
     let reserved = lower_lisp("(component div () (div))").unwrap_err();
     assert_eq!(

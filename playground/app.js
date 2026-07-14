@@ -299,28 +299,48 @@ function syncClasses(element, classes) {
 function syncEvents(element, events) {
   const records = element.__jispEvents || new Map();
   for (const [name, record] of records) {
-    if (!allowedEvents.has(name) || !Number.isInteger(events[name])) {
-      element.removeEventListener(name, record.listener);
+    const next = eventDescriptor(events[name]);
+    if (!allowedEvents.has(name) || !next || next.policy.capture !== record.policy.capture) {
+      element.removeEventListener(name, record.listener, record.policy.capture);
       records.delete(name);
     }
   }
-  for (const [name, handler] of Object.entries(events)) {
-    if (!allowedEvents.has(name) || !Number.isInteger(handler)) continue;
+  for (const [name, encoded] of Object.entries(events)) {
+    const next = eventDescriptor(encoded);
+    if (!allowedEvents.has(name) || !next) continue;
     let record = records.get(name);
     if (!record) {
       record = {
-        handler,
+        handler: next.handler,
+        policy: next.policy,
         listener(event) {
-          if (name === "submit") event.preventDefault();
+          if (record.policy.preventDefault) event.preventDefault();
+          if (record.policy.stopPropagation) event.stopPropagation();
           parent.postMessage({ type: "jisp-event", handler: record.handler, event: browserEvent(event) }, "*");
         },
       };
       records.set(name, record);
-      element.addEventListener(name, record.listener);
+      element.addEventListener(name, record.listener, record.policy.capture);
     }
-    record.handler = handler;
+    record.handler = next.handler;
+    record.policy = next.policy;
   }
   element.__jispEvents = records;
+}
+
+function eventDescriptor(value) {
+  if (Number.isInteger(value)) {
+    return {
+      handler: value,
+      policy: { preventDefault: false, stopPropagation: false, capture: false },
+    };
+  }
+  if (!value || !Number.isInteger(value.handler) || typeof value.policy !== "object") return null;
+  const policy = value.policy;
+  if (typeof policy.preventDefault !== "boolean"
+    || typeof policy.stopPropagation !== "boolean"
+    || typeof policy.capture !== "boolean") return null;
+  return { handler: value.handler, policy };
 }
 
 function reconcileChildren(parent, trees, path) {

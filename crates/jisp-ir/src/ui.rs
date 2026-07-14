@@ -239,13 +239,15 @@ fn lower_ui_directive(
             Ok(true)
         }
         "on" => {
-            expect_arity(items, 3, 3, span, "on")?;
+            if items.len() < 3 {
+                return Err(error(span, "on expects an event name and handler"));
+            }
             push_named(
                 &mut parts.events,
                 &mut parts.event_names,
                 ui_name(&items[1], "event name")?,
                 items[1].span,
-                lower_event_handler(lowerer, &items[2])?,
+                lower_event(lowerer, span, &items[2..])?,
             )?;
             Ok(true)
         }
@@ -259,6 +261,57 @@ fn lower_ui_directive(
         }
         _ => Ok(false),
     }
+}
+
+fn lower_event(lowerer: &Lowerer, span: Span, parts: &[Node]) -> Result<Expr, LowerError> {
+    let (handler, modifiers) = parts
+        .split_last()
+        .expect("on has at least one handler after the event name");
+    if modifiers.is_empty() {
+        return lower_event_handler(lowerer, handler);
+    }
+
+    let mut policy = vec![];
+    let mut seen = BTreeSet::new();
+    for modifier in modifiers {
+        let Some(items) = modifier.as_form() else {
+            return Err(error(modifier.span, "event modifier must be a form"));
+        };
+        expect_arity(items, 1, 1, modifier.span, "event modifier")?;
+        let name = expect_symbol(&items[0], "event modifier")?;
+        if !matches!(name, "prevent-default" | "stop-propagation" | "capture") {
+            return Err(error(
+                modifier.span,
+                format!(
+                    "unknown event modifier `{name}`; expected prevent-default, stop-propagation, or capture"
+                ),
+            ));
+        }
+        if !seen.insert(name) {
+            return Err(error(
+                modifier.span,
+                format!("duplicate event modifier `{name}`"),
+            ));
+        }
+        policy.push((
+            string_literal(name, modifier.span),
+            bool_literal(true, modifier.span),
+        ));
+    }
+
+    Ok(Expr::new(
+        ExprKind::Object(vec![
+            (
+                string_literal("handler", span),
+                lower_event_handler(lowerer, handler)?,
+            ),
+            (
+                string_literal("policy", span),
+                Expr::new(ExprKind::Object(policy), span),
+            ),
+        ]),
+        span,
+    ))
 }
 
 fn lower_event_handler(lowerer: &Lowerer, node: &Node) -> Result<Expr, LowerError> {

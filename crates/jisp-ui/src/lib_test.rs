@@ -76,6 +76,30 @@ fn retains_typed_dynamic_slots_and_event_descriptors() {
 }
 
 #[test]
+fn compiles_explicit_event_policies() {
+    let program = compile(&typed(
+        r#"
+(component app (state)
+  (button
+    (on click
+      (prevent-default)
+      (stop-propagation)
+      (capture)
+      (emit (. state "id")))
+    (text "Open")))
+"#,
+    ))
+    .unwrap();
+    let Node::Element(button) = &program.components["app"].root else {
+        panic!("expected a button template");
+    };
+    let policy = &button.events["click"].policy;
+    assert!(policy.prevent_default);
+    assert!(policy.stop_propagation);
+    assert!(policy.capture);
+}
+
+#[test]
 fn compiles_for_to_a_keyed_each_block() {
     let program = compile(&typed(
         r#"
@@ -255,7 +279,11 @@ fn executor_evaluates_event_handlers_in_component_scope() {
     let Some(Value::Obj(events)) = element.get("events") else {
         panic!("expected event bindings");
     };
-    assert!(matches!(events.get("click"), Some(Value::Closure(_))));
+    let Some(Value::Obj(click)) = events.get("click") else {
+        panic!("expected a structured click descriptor");
+    };
+    assert!(matches!(click.get("handler"), Some(Value::Closure(_))));
+    assert!(matches!(click.get("policy"), Some(Value::Obj(_))));
 }
 
 #[test]

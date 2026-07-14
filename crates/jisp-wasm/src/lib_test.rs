@@ -48,11 +48,45 @@ fn update_session_rebuilds_the_view_after_an_emitted_action() {
         .unwrap();
     let first: Value = serde_json::from_str(&first_text).unwrap();
     assert_eq!(first["children"][0]["value"], "Count: 0");
-    assert_eq!(first["events"]["click"], 0);
+    assert_eq!(first["events"]["click"]["handler"], 0);
+    assert_eq!(first["events"]["click"]["policy"]["preventDefault"], false);
 
     let second: Value =
         serde_json::from_str(&session.dispatch_event(0, r#"{"type":"click"}"#).unwrap()).unwrap();
     assert_eq!(second["children"][0]["value"], "Count: 1");
+}
+
+#[test]
+fn update_session_serializes_declared_event_policies() {
+    let mut session = PlaygroundSession::new();
+    let tree: Value = serde_json::from_str(
+        &session
+            .load_source(
+                r#"
+(def init 0)
+(defn update (state action) action)
+(component app (state)
+  (button
+    (on click
+      (prevent-default)
+      (stop-propagation)
+      (capture)
+      (emit 7))
+    (text (str.from state))))
+(ui.app init update app)
+"#,
+            )
+            .unwrap(),
+    )
+    .unwrap();
+
+    assert_eq!(tree["events"]["click"]["handler"], 0);
+    assert_eq!(tree["events"]["click"]["policy"]["preventDefault"], true);
+    assert_eq!(tree["events"]["click"]["policy"]["stopPropagation"], true);
+    assert_eq!(tree["events"]["click"]["policy"]["capture"], true);
+    let updated: Value =
+        serde_json::from_str(&session.dispatch_event(0, r#"{"type":"click"}"#).unwrap()).unwrap();
+    assert_eq!(updated["children"][0]["value"], "7");
 }
 
 #[cfg(feature = "juir")]
@@ -73,7 +107,7 @@ fn juir_reuses_the_previous_tree_when_update_returns_the_same_state() {
         )
         .unwrap();
     let first: Value = serde_json::from_str(&first_text).unwrap();
-    let handler = usize::try_from(first["events"]["click"].as_u64().unwrap()).unwrap();
+    let handler = usize::try_from(first["events"]["click"]["handler"].as_u64().unwrap()).unwrap();
     assert_eq!(session.runtime.as_ref().unwrap().renders, 1);
 
     let second = session
@@ -268,7 +302,7 @@ fn update_session_rejects_duplicate_or_structural_sibling_keys() {
 fn handler_for(tree: &Value, event: &str) -> Option<u64> {
     tree.get("events")
         .and_then(|events| events.get(event))
-        .and_then(Value::as_u64)
+        .and_then(|descriptor| descriptor.get("handler").and_then(Value::as_u64))
         .or_else(|| {
             tree.get("children")
                 .and_then(Value::as_array)
