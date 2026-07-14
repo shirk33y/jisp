@@ -352,8 +352,11 @@ renderer-neutral structural node with `tag`, optional `attrs`, `props`,
 intentionally ignores events and keys. An interactive host can instead use
 `(ui.app init update app)` and `(on event (emit action))`: it invokes the
 handler with an event value, updates `(state, action)` to next state, and asks
-`app` for a fresh node tree. Reconciliation, effects, subscriptions, and
-native widget contracts remain deferred. See [UI.md](UI.md).
+`app` for a fresh node tree. A reducer may instead return
+`(ui.result next-state commands subscriptions)` to declare portable resource
+data; declarations are not effect execution and views must still return only a
+UI node. Reconciliation, capability execution, subscriptions, and native widget
+contracts remain deferred. See [UI.md](UI.md) and [UI_EFFECTS.md](UI_EFFECTS.md).
 
 `[., object, key]` is field/map lookup only. Jisp has no method syntax or
 implicit receiver. A function stored in a field is called normally.

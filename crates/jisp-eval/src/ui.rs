@@ -2,6 +2,60 @@ use jisp_core::Span;
 
 use crate::{RuntimeError, Value};
 
+const UPDATE_RESULT_TAG: &str = "\0jisp.ui.update-result";
+
+/// The data returned by a `ui.app` reducer after normalizing its convenient
+/// state-only shorthand. It contains declarations only; evaluating it never
+/// invokes a host capability.
+#[derive(Clone)]
+pub struct UpdateResult {
+    pub state: Value,
+    pub commands: Vec<Value>,
+    pub subscriptions: Vec<Value>,
+}
+
+pub(crate) fn update_result_value(
+    state: Value,
+    commands: Vec<Value>,
+    subscriptions: Vec<Value>,
+) -> Value {
+    Value::Variant {
+        tag: UPDATE_RESULT_TAG.to_owned(),
+        fields: vec![state, Value::List(commands), Value::List(subscriptions)],
+    }
+}
+
+/// Treat a plain reducer return as its next state, or decode the opaque value
+/// created by `ui.result`. The sentinel tag is deliberately not a source-level
+/// constructor, so user data cannot accidentally opt into effect semantics.
+pub fn normalize_update_result(value: Value, span: Span) -> Result<UpdateResult, RuntimeError> {
+    let Value::Variant { tag, fields } = value else {
+        return Ok(UpdateResult {
+            state: value,
+            commands: vec![],
+            subscriptions: vec![],
+        });
+    };
+    if tag != UPDATE_RESULT_TAG {
+        return Ok(UpdateResult {
+            state: Value::Variant { tag, fields },
+            commands: vec![],
+            subscriptions: vec![],
+        });
+    }
+    let [state, Value::List(commands), Value::List(subscriptions)] = fields.as_slice() else {
+        return Err(RuntimeError::at(
+            span,
+            "invalid internal ui.update-result value",
+        ));
+    };
+    Ok(UpdateResult {
+        state: state.clone(),
+        commands: commands.clone(),
+        subscriptions: subscriptions.clone(),
+    })
+}
+
 pub(crate) fn render_html(value: &Value, span: Span) -> Result<String, RuntimeError> {
     let mut output = String::new();
     render_node(value, span, &mut output)?;

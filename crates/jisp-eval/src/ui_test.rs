@@ -1,7 +1,7 @@
 use indexmap::IndexMap;
 use jisp_core::{SourceId, Span};
 
-use crate::ui::render_html;
+use crate::ui::{normalize_update_result, render_html, update_result_value};
 use crate::Value;
 
 fn span() -> Span {
@@ -97,6 +97,26 @@ fn rejects_inline_event_attributes_in_static_html() {
     assert!(error
         .message
         .contains("event attribute `OnClick` is not allowed"));
+}
+
+#[test]
+fn normalizes_plain_state_and_explicit_update_results() {
+    let plain = normalize_update_result(Value::Int(3), span()).unwrap();
+    assert!(matches!(plain.state, Value::Int(3)));
+    assert!(plain.commands.is_empty());
+
+    let explicit = normalize_update_result(
+        update_result_value(
+            Value::Int(4),
+            vec![Value::string("command")],
+            vec![Value::string("subscription")],
+        ),
+        span(),
+    )
+    .unwrap();
+    assert!(matches!(explicit.state, Value::Int(4)));
+    assert_eq!(explicit.commands.len(), 1);
+    assert_eq!(explicit.subscriptions.len(), 1);
 }
 
 #[test]

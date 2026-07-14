@@ -365,6 +365,7 @@ dependencies = [
  "indexmap",
  "jisp-core",
  "jisp-ir",
+ "jisp-syntax-lisp",
  "thiserror",
 ]
 

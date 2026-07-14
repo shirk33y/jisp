@@ -86,6 +86,7 @@ pub fn install_builtins(evaluator: &mut Evaluator) {
         ("map.cat", obj_cat),
         ("ui.html", ui_html),
         ("ui.node", ui_node),
+        ("ui.result", ui_result),
         ("result.try", result_try),
         ("result.map", result_map),
         ("result.map-err", result_map_err),
@@ -841,6 +842,58 @@ fn ui_node(_: &mut Evaluator, args: &[Value], span: Span) -> Result<Value, Runti
     arity(args, 1, span)?;
     Ok(args[0].clone())
 }
+
+fn ui_result(_: &mut Evaluator, args: &[Value], span: Span) -> Result<Value, RuntimeError> {
+    arity(args, 3, span)?;
+    let Value::List(commands) = &args[1] else {
+        return Err(RuntimeError::at(
+            span,
+            "ui.result commands must be a list of declared command data",
+        ));
+    };
+    let Value::List(subscriptions) = &args[2] else {
+        return Err(RuntimeError::at(
+            span,
+            "ui.result subscriptions must be a list of declared subscription data",
+        ));
+    };
+    if !commands
+        .iter()
+        .chain(subscriptions)
+        .all(is_portable_effect_data)
+    {
+        return Err(RuntimeError::at(
+            span,
+            "ui.result resources must contain portable data, not functions or constructors",
+        ));
+    }
+    Ok(ui::update_result_value(
+        args[0].clone(),
+        commands.clone(),
+        subscriptions.clone(),
+    ))
+}
+
+fn is_portable_effect_data(value: &Value) -> bool {
+    match value {
+        Value::Null
+        | Value::Bool(_)
+        | Value::Int(_)
+        | Value::BigInt(_)
+        | Value::Float(_)
+        | Value::Str(_) => true,
+        Value::List(values) => values.iter().all(is_portable_effect_data),
+        Value::Obj(fields) => fields.values().all(is_portable_effect_data),
+        Value::Variant { fields, .. } => fields.iter().all(is_portable_effect_data),
+        Value::Builtin(_) | Value::Closure(_) | Value::Constructor(_) | Value::Uninitialized(_) => {
+            false
+        }
+    }
+}
+
+#[cfg(test)]
+#[path = "builtins_test.rs"]
+mod builtins_test;
 
 fn result_try(eval: &mut Evaluator, args: &[Value], span: Span) -> Result<Value, RuntimeError> {
     arity(args, 2, span)?;

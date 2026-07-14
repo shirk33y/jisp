@@ -426,6 +426,47 @@ fn update_todo_example_updates_draft_then_adds_a_task() {
 }
 
 #[test]
+fn update_result_updates_state_and_exposes_declared_resources() {
+    let mut session = PlaygroundSession::new();
+    let tree: Value = serde_json::from_str(
+        &session
+            .load_source(
+                r#"
+(def init (obj "count" 0))
+
+(defn update (state action)
+  (ui.result
+    (obj.set state "count" (+ (. state "count") 1))
+    (list (obj "id" "save:1" "kind" "command"))
+    (list (obj "id" "clock" "kind" "subscription"))))
+
+(component app (state)
+  (button
+    (on click (emit "increment"))
+    (text (str.from (. state "count")))))
+
+(ui.app init update app)
+"#,
+            )
+            .unwrap(),
+    )
+    .unwrap();
+    let handler = usize::try_from(handler_for(&tree, "click").unwrap()).unwrap();
+    let updated: Value = serde_json::from_str(
+        &session
+            .dispatch_event(handler, r#"{"type":"click"}"#)
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(updated["children"][0]["value"], "1");
+
+    let resources: Value =
+        serde_json::from_str(&session.desired_resources_json().unwrap()).unwrap();
+    assert_eq!(resources["commands"][0]["id"], "save:1");
+    assert_eq!(resources["subscriptions"][0]["id"], "clock");
+}
+
+#[test]
 fn update_session_serializes_scalar_keys_for_reconciliation() {
     let mut session = PlaygroundSession::new();
     let tree: Value = serde_json::from_str(

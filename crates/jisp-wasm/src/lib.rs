@@ -3,7 +3,7 @@
 use jisp::jisp_core::{ui_element, Node, NodeKind, SourceId, Span, SyntaxParser};
 #[cfg(feature = "juir")]
 use jisp::jisp_eval::Env;
-use jisp::jisp_eval::{Evaluator, Value};
+use jisp::jisp_eval::{normalize_update_result, Evaluator, Value};
 #[cfg(feature = "juir")]
 use jisp::jisp_types::Inferencer;
 #[cfg(feature = "juir")]
@@ -77,6 +77,8 @@ struct Runtime {
     renders: usize,
     skipped_renders: usize,
     last_render_skipped: bool,
+    desired_commands: Vec<Value>,
+    desired_subscriptions: Vec<Value>,
     span: Span,
 }
 
@@ -128,6 +130,12 @@ impl PlaygroundSession {
     /// Return renderer-neutral execution counters for playground diagnostics.
     pub fn metrics(&self) -> Result<String, JsValue> {
         self.metrics_json().map_err(js_error)
+    }
+
+    /// Return resource declarations from the most recent reducer turn. They
+    /// are data for the embedding host; this interpreter does not execute them.
+    pub fn desired_resources(&self) -> Result<String, JsValue> {
+        self.desired_resources_json().map_err(js_error)
     }
 }
 
@@ -207,6 +215,8 @@ impl PlaygroundSession {
             renders: 0,
             skipped_renders: 0,
             last_render_skipped: false,
+            desired_commands: vec![],
+            desired_subscriptions: vec![],
             span: app.span,
         });
         self.render()
@@ -231,7 +241,7 @@ impl PlaygroundSession {
             .map_err(|error| error.to_string())?;
         #[cfg(feature = "juir")]
         let previous_state = runtime.state.clone();
-        runtime.state = runtime
+        let result = runtime
             .evaluator
             .apply(
                 runtime.update.clone(),
@@ -239,6 +249,11 @@ impl PlaygroundSession {
                 runtime.span,
             )
             .map_err(|error| error.to_string())?;
+        let result =
+            normalize_update_result(result, runtime.span).map_err(|error| error.to_string())?;
+        runtime.state = result.state;
+        runtime.desired_commands = result.commands;
+        runtime.desired_subscriptions = result.subscriptions;
         #[cfg(feature = "juir")]
         {
             let changes = changed_paths("state", &previous_state, &runtime.state);
@@ -270,6 +285,26 @@ impl PlaygroundSession {
         let mut patches = vec![];
         collect_tree_patches(&previous, current, "0", &mut patches);
         serde_json::to_string(&json!({ "patches": patches })).map_err(|error| error.to_string())
+    }
+
+    fn desired_resources_json(&self) -> Result<String, String> {
+        let runtime = self
+            .runtime
+            .as_ref()
+            .ok_or_else(|| "load a ui.app program before reading resources".to_owned())?;
+        serde_json::to_string(&json!({
+            "commands": runtime
+                .desired_commands
+                .iter()
+                .map(json_value)
+                .collect::<Result<Vec<_>, _>>()?,
+            "subscriptions": runtime
+                .desired_subscriptions
+                .iter()
+                .map(json_value)
+                .collect::<Result<Vec<_>, _>>()?,
+        }))
+        .map_err(|error| error.to_string())
     }
 
     fn render(&mut self) -> Result<String, String> {

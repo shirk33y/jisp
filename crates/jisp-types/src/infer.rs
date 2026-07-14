@@ -44,6 +44,9 @@ pub enum InferError {
     #[error("no overload of `{name}` matches the arguments; expected {expected}")]
     NoMatchingOverload { name: String, expected: String },
 
+    #[error("invalid ui.app contract: {0}")]
+    InvalidUiApp(String),
+
     #[error("{error}")]
     Located {
         #[source]
@@ -178,6 +181,8 @@ impl Inferencer {
                 schemes.insert(definition.name.clone(), scheme);
             }
         }
+
+        self.validate_ui_app(module)?;
 
         Ok(schemes)
     }
@@ -725,6 +730,88 @@ impl Inferencer {
         self.unifier.substitution.apply(ty)
     }
 
+    fn validate_ui_app(&mut self, module: &Module) -> Result<(), InferError> {
+        let Some(app) = &module.ui_app else {
+            return Ok(());
+        };
+        let init = self.lookup(&app.init)?;
+        let update = self.lookup(&app.update)?;
+        let view = self.lookup(&app.app)?;
+        let (update_parameters, update_result) =
+            self.ui_function(&app.update, update, 2, app.span)?;
+        let (view_parameters, view_result) = self.ui_function(&app.app, view, 1, app.span)?;
+
+        self.ui_unify(
+            init.clone(),
+            update_parameters[0].clone(),
+            "the first update parameter must have the init state type",
+            app.span,
+        )?;
+        self.ui_unify(
+            init.clone(),
+            view_parameters[0].clone(),
+            "the app component parameter must have the init state type",
+            app.span,
+        )?;
+        self.ui_unify(
+            view_result,
+            ui_node_type(),
+            "the app component must return ui.node",
+            app.span,
+        )?;
+
+        let checkpoint = self.unifier.clone();
+        if self.unify(init.clone(), update_result.clone()).is_err() {
+            self.unifier = checkpoint;
+            self.ui_unify(
+                Type::Named {
+                    name: "ui.update-result".to_owned(),
+                    arguments: vec![init],
+                },
+                update_result,
+                "update must return state or ui.update-result(state)",
+                app.span,
+            )?;
+        }
+        Ok(())
+    }
+
+    fn ui_function(
+        &self,
+        name: &str,
+        ty: Type,
+        arity: usize,
+        span: Span,
+    ) -> Result<(Vec<Type>, Type), InferError> {
+        match self.apply(&ty) {
+            Type::Function {
+                parameters,
+                rest: None,
+                result,
+            } if parameters.len() == arity => Ok((parameters, *result)),
+            actual => Err(InferError::InvalidUiApp(format!(
+                "{name} must be a function with exactly {arity} parameter(s), got {actual}"
+            ))
+            .locate(span)),
+        }
+    }
+
+    fn ui_unify(
+        &mut self,
+        left: Type,
+        right: Type,
+        message: &str,
+        span: Span,
+    ) -> Result<(), InferError> {
+        let checkpoint = self.unifier.clone();
+        if self.unify(left, right).is_ok() {
+            Ok(())
+        } else {
+            self.unifier = checkpoint;
+            Err(InferError::InvalidUiApp(message.to_owned()).locate(span))
+        }
+    }
+
     fn unify(&mut self, left: Type, right: Type) -> Result<Type, InferError> {
         Ok(self.unifier.unify(left, right)?)
     }
@@ -792,6 +879,13 @@ impl Inferencer {
             },
         )?;
         Ok(result)
+    }
+}
+
+fn ui_node_type() -> Type {
+    Type::Named {
+        name: "ui.node".to_owned(),
+        arguments: vec![],
     }
 }
 
@@ -1041,3 +1135,7 @@ fn collect_type_vars(ty: &Type, vars: &mut BTreeSet<TypeVar>) {
 #[cfg(test)]
 #[path = "infer_test.rs"]
 mod infer_test;
+
+#[cfg(test)]
+#[path = "ui_app_test.rs"]
+mod ui_app_test;

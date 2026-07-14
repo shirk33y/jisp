@@ -1,8 +1,9 @@
 # UI commands, subscriptions, and ownership
 
 > Design contract. `jisp-ui::effects::FakeHost` implements deterministic
-> command and subscription reconciliation for host tests; Jisp source syntax
-> and runtime command execution are still intentionally not implemented.
+> command and subscription reconciliation for host tests. `ui.result` now
+> carries reducer-declared resources as data; runtime command execution remains
+> intentionally unimplemented.
 
 Jisp UI keeps Model–View–Update: `view` is pure and `(update state action)`
 calculates the next immutable state. Effects are data emitted by `update`; they
@@ -12,14 +13,29 @@ policies, not commands.
 
 ## Reducer outcome
 
-The future semantic result is:
+The semantic result is:
 
 ```text
 UpdateResult { state: Value, commands: [Command], subscriptions: [Subscription] }
 ```
 
-An ordinary `state` return is shorthand for empty lists. Exact Jisp constructor
-names are deferred: this document owns the protocol, not provisional syntax.
+An ordinary `state` return is shorthand for empty lists. The explicit source
+form is deliberately narrow:
+
+```lisp
+(ui.result next-state commands subscriptions)
+```
+
+`commands` and `subscriptions` must be lists of portable data: scalar values,
+lists, objects, and variants are accepted; functions, constructors, and host
+objects are rejected. `ui.result` only declares work. It neither runs a
+capability nor lets a view register work.
+
+Type checking connects all three `ui.app` bindings: `update` receives the init
+state as its first argument and returns either that state or
+`ui.update-result(state)`; `app` receives that state and must return `ui.node`.
+This makes `(ui.result ...)` invalid as a component result and preserves a pure
+view boundary.
 
 ## Command identity
 
@@ -130,6 +146,8 @@ is not a generated WIT binding.
 - Generated WIT bindings and a component-toolchain validation gate. WIT
   describes this coarse capability boundary, never DOM patch operations.
 
-Until these invariants are implemented, `update` returns state only and UI
-components remain effect-free. See also [UI.md](UI.md) and
-[FFI_FUTURE.md](FFI_FUTURE.md).
+The browser Wasm session exposes the most recent declarations through
+`desired_resources`; it does not execute them. A real command host must still
+validate capability schemas, reconcile against `FakeHost`-equivalent lifecycle
+rules, and dispatch completions back through `update`. UI components remain
+effect-free. See also [UI.md](UI.md) and [FFI_FUTURE.md](FFI_FUTURE.md).

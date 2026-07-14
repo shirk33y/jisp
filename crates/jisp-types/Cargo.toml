@@ -9,3 +9,6 @@ indexmap.workspace = true
 jisp-core.workspace = true
 jisp-ir.workspace = true
 thiserror.workspace = true
+
+[dev-dependencies]
+jisp-syntax-lisp.workspace = true

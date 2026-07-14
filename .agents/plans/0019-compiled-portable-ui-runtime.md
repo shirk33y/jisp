@@ -36,8 +36,13 @@ now implements a deterministic command/subscription fake host: it reconciles
 the whole desired resource set atomically by kind/owner/id, validates versioned
 capabilities, cancels/replaces work, preserves JSON-shaped success/failure
 deliveries, ignores late generations, and disposes every resource owned by a
-keyed component instance exactly once. Source-level reducer results and
-component-local state remain subsequent M4 work.
+keyed component instance exactly once. The source-level
+`(ui.result state commands subscriptions)` constructor now carries only
+portable data; type validation ties `init`, `update`, and `app` together and
+rejects effect values from a view. The browser Wasm session exposes declarations
+without executing them. Capability-specific source constructors, host execution,
+completion-action templates, and component-local state remain subsequent M4
+work.
 M6 now has a first WIT package at
 [`wit/jisp-ui-capabilities.wit`](../../wit/jisp-ui-capabilities.wit), limited to
 coarse versioned storage/timer/navigation capabilities; binding generation and
