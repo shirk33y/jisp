@@ -170,6 +170,14 @@ batch for another browser or native host. `snapshot()` returns the complete
 current tree only for initial mount or host recovery; it is not the normal
 event-update path.
 
+`render_ssr(source)` and `PlaygroundSession.ssr()` return the versioned
+`jisp-ui-ssr/1` payload: escaped `html`, serializable initial `state`, and the
+same structural `tree` used by the interactive host. The embedding server owns
+safe document serialization and activation. The current browser runtime starts
+from the client tree rather than hydrating pre-existing DOM, so this payload is
+an SSR contract and conformance oracle, not a claim of completed hydration or
+resumability.
+
 ## Lowered contract and host status
 
 The lowerer produces an ordinary structural node with `tag` and, when present,

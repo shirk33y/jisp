@@ -30,6 +30,9 @@ M4's pre-implementation ownership and capability contract is documented in
 [`docs/UI_EFFECTS.md`](../../docs/UI_EFFECTS.md): effects remain reducer data,
 carry stable owner/id/generation identity, and require deterministic fake-host
 tests before a source-level command API is introduced.
+M5 has an initial versioned SSR payload (`jisp-ui-ssr/1`) containing escaped
+HTML, serializable state, and the structural tree. Hydrating existing DOM,
+stable SSR anchors, and a native-host prototype remain subsequent M5 work.
 
 ## Goal
 

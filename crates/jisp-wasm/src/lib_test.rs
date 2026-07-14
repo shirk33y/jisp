@@ -1,3 +1,5 @@
+#[cfg(feature = "juir")]
+use super::render_ssr;
 use super::{
     collect_tree_patches, format_source, parse_source, render_html_source, PlaygroundSession,
 };
@@ -26,6 +28,29 @@ fn renders_a_component_program_with_the_real_interpreter() {
         html,
         "<ul><li class=\"rounded\">Plan</li><li class=\"rounded\">Ship</li></ul>"
     );
+}
+
+#[cfg(feature = "juir")]
+#[test]
+fn ssr_payload_matches_the_initial_ui_app_tree() {
+    let payload: Value = serde_json::from_str(
+        &render_ssr(
+            r#"
+(def init (obj "title" "Plan"))
+(defn update (state action) state)
+(component app (state)
+  (main (h1 (text (. state "title")))))
+(ui.app init update app)
+"#,
+        )
+        .unwrap(),
+    )
+    .unwrap();
+
+    assert_eq!(payload["protocol"], "jisp-ui-ssr/1");
+    assert_eq!(payload["html"], "<main><h1>Plan</h1></main>");
+    assert_eq!(payload["state"]["title"], "Plan");
+    assert_eq!(payload["tree"]["tag"], "main");
 }
 
 #[test]

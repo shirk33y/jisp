@@ -23,6 +23,18 @@ pub fn render_html(source: &str) -> Result<String, JsValue> {
     render_html_source(source).map_err(|error| JsValue::from_str(&error))
 }
 
+/// Render a `ui.app` program into a versioned SSR payload.
+///
+/// The payload keeps escaped HTML, serializable initial state, and the
+/// renderer-neutral tree separate so an embedding host chooses its own safe
+/// document serialization and hydration strategy.
+#[wasm_bindgen]
+pub fn render_ssr(source: &str) -> Result<String, JsValue> {
+    let mut session = PlaygroundSession::new();
+    session.load_source(source).map_err(js_error)?;
+    session.ssr_payload().map_err(js_error)
+}
+
 /// An update-driven Jisp UI program loaded by a browser host.
 ///
 /// `load` evaluates the program once and creates the initial state. Each
@@ -104,6 +116,11 @@ impl PlaygroundSession {
             .as_ref()
             .and_then(|runtime| runtime.last_render.clone())
             .ok_or_else(|| JsValue::from_str("load a ui.app program before reading its snapshot"))
+    }
+
+    /// Return escaped HTML, initial state, and the structural tree for SSR.
+    pub fn ssr(&mut self) -> Result<String, JsValue> {
+        self.ssr_payload().map_err(js_error)
     }
 
     /// Return renderer-neutral execution counters for playground diagnostics.
@@ -325,6 +342,43 @@ impl PlaygroundSession {
             },
         });
         serde_json::to_string(&metrics).map_err(|error| error.to_string())
+    }
+
+    fn ssr_payload(&mut self) -> Result<String, String> {
+        #[cfg(feature = "juir")]
+        {
+            let runtime = self
+                .runtime
+                .as_mut()
+                .ok_or_else(|| "load a ui.app program before rendering SSR".to_owned())?;
+            let vnode = runtime
+                .last_value
+                .clone()
+                .ok_or_else(|| "JUIR runtime has no initial SSR tree".to_owned())?;
+            let tree = runtime
+                .last_tree
+                .clone()
+                .ok_or_else(|| "JUIR runtime has no serializable SSR tree".to_owned())?;
+            let renderer = runtime
+                .evaluator
+                .root_env()
+                .lookup("ui.html")
+                .map_err(|error| error.to_string())?;
+            let html = runtime
+                .evaluator
+                .apply(renderer, &[vnode], runtime.span)
+                .map_err(|error| error.to_string())?
+                .display_string();
+            return serde_json::to_string(&json!({
+                "protocol": "jisp-ui-ssr/1",
+                "html": html,
+                "state": json_value(&runtime.state)?,
+                "tree": tree,
+            }))
+            .map_err(|error| error.to_string());
+        }
+        #[cfg(not(feature = "juir"))]
+        Err("SSR payloads require the `juir` feature".to_owned())
     }
 }
 
