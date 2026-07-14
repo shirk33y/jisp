@@ -12,6 +12,9 @@ and structural executor enabled by the browser Wasm crate's default `juir`
 feature. It evaluates Jisp expressions through the canonical evaluator and
 materializes the existing structural-tree contract before the DOM reconciler;
 direct static-template DOM mount remains the next M2 increment.
+M3 has begun with conservative static dependency metadata on JUIR slots and
+blocks: proven parameter field paths are recorded, while any opaque/local
+expression is explicitly `Unknown` and therefore cannot be skipped.
 
 ## Goal
 

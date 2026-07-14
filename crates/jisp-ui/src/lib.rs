@@ -10,7 +10,7 @@ use std::collections::BTreeMap;
 use indexmap::IndexMap;
 use jisp_core::Span;
 use jisp_eval::{Env, Evaluator, RuntimeError, Value};
-use jisp_ir::{Definition, Expr, ExprKind, Literal};
+use jisp_ir::{Definition, Expr, ExprKind, Literal, StringPart};
 use jisp_types::{Type, TypedModule};
 
 #[derive(Clone, Debug)]
@@ -33,6 +33,7 @@ pub enum Node {
     Element(Element),
     If {
         condition: Expr,
+        dependencies: Vec<Dependency>,
         then_branch: Box<Node>,
         else_branch: Box<Node>,
         span: Span,
@@ -40,6 +41,7 @@ pub enum Node {
     Each {
         binding: String,
         collection: Expr,
+        dependencies: Vec<Dependency>,
         body: Box<Node>,
         span: Span,
     },
@@ -51,6 +53,7 @@ pub enum Node {
     Dynamic {
         expression: Expr,
         ty: Type,
+        dependencies: Vec<Dependency>,
         span: Span,
     },
 }
@@ -73,6 +76,7 @@ pub enum Slot {
     Dynamic {
         expression: Expr,
         ty: Type,
+        dependencies: Vec<Dependency>,
         span: Span,
     },
 }
@@ -84,6 +88,17 @@ pub enum Scalar {
     Int(i64),
     Float(f64),
     Str(String),
+}
+
+/// Conservative static dependencies of a dynamic JUIR expression.
+///
+/// `Path` is a static field-read chain rooted at a component parameter. Every
+/// expression that cannot be proven to be only such reads carries `Unknown`;
+/// hosts must then re-evaluate it rather than risk a stale value.
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum Dependency {
+    Path { root: String, fields: Vec<String> },
+    Unknown,
 }
 
 #[derive(Clone, Debug)]
@@ -189,7 +204,7 @@ pub fn compile(module: &TypedModule) -> Result<Program, CompileError> {
                 name: definition.name.clone(),
                 params: params.to_vec(),
                 rest: rest.clone(),
-                root: compiler.node(root)?,
+                root: compiler.node(root, params)?,
                 span: definition.span,
             },
         );
@@ -240,7 +255,7 @@ struct Compiler<'a> {
 }
 
 impl Compiler<'_> {
-    fn node(&self, expr: &Expr) -> Result<Node, CompileError> {
+    fn node(&self, expr: &Expr, parameters: &[String]) -> Result<Node, CompileError> {
         if let ExprKind::If {
             condition,
             then_branch,
@@ -249,8 +264,9 @@ impl Compiler<'_> {
         {
             return Ok(Node::If {
                 condition: (**condition).clone(),
-                then_branch: Box::new(self.node(then_branch)?),
-                else_branch: Box::new(self.node(else_branch)?),
+                dependencies: expression_dependencies(condition, parameters),
+                then_branch: Box::new(self.node(then_branch, parameters)?),
+                else_branch: Box::new(self.node(else_branch, parameters)?),
                 span: expr.span,
             });
         }
@@ -258,7 +274,8 @@ impl Compiler<'_> {
             return Ok(Node::Each {
                 binding: binding.to_owned(),
                 collection: collection.clone(),
-                body: Box::new(self.node(body)?),
+                dependencies: expression_dependencies(collection, parameters),
+                body: Box::new(self.node(body, parameters)?),
                 span: expr.span,
             });
         }
@@ -270,48 +287,63 @@ impl Compiler<'_> {
             });
         }
         let Some(object) = ui_node_object(expr) else {
-            return Ok(self.dynamic(expr));
+            return Ok(self.dynamic(expr, parameters));
         };
-        self.object_node(object, expr.span)
+        self.object_node(object, expr.span, parameters)
     }
 
-    fn object_node(&self, fields: &[(Expr, Expr)], span: Span) -> Result<Node, CompileError> {
+    fn object_node(
+        &self,
+        fields: &[(Expr, Expr)],
+        span: Span,
+        parameters: &[String],
+    ) -> Result<Node, CompileError> {
         let fields = object_fields(fields)?;
         let tag = static_string(required_field(&fields, "tag", span)?)?;
         if tag == "text" {
             return Ok(Node::Text(
-                self.slot(required_field(&fields, "value", span)?)?,
+                self.slot(required_field(&fields, "value", span)?, parameters)?,
             ));
         }
         Ok(Node::Element(Element {
             tag,
-            attrs: self.slots(fields.get("attrs"))?,
-            props: self.slots(fields.get("props"))?,
-            classes: self.slots(fields.get("classes"))?,
+            attrs: self.slots(fields.get("attrs"), parameters)?,
+            props: self.slots(fields.get("props"), parameters)?,
+            classes: self.slots(fields.get("classes"), parameters)?,
             events: self.events(fields.get("events"))?,
-            key: fields.get("key").map(|expr| self.slot(expr)).transpose()?,
+            key: fields
+                .get("key")
+                .map(|expr| self.slot(expr, parameters))
+                .transpose()?,
             children: fields
                 .get("children")
-                .map(|children| self.children(children))
+                .map(|children| self.children(children, parameters))
                 .transpose()?
                 .unwrap_or_default(),
             span,
         }))
     }
 
-    fn children(&self, expr: &Expr) -> Result<Vec<Node>, CompileError> {
+    fn children(&self, expr: &Expr, parameters: &[String]) -> Result<Vec<Node>, CompileError> {
         match &expr.kind {
-            ExprKind::List(children) => children.iter().map(|child| self.node(child)).collect(),
+            ExprKind::List(children) => children
+                .iter()
+                .map(|child| self.node(child, parameters))
+                .collect(),
             ExprKind::Call { callee, arguments } if is_name(callee, "list.cat") => arguments
                 .iter()
-                .map(|argument| self.children(argument))
+                .map(|argument| self.children(argument, parameters))
                 .collect::<Result<Vec<_>, _>>()
                 .map(|groups| groups.into_iter().flatten().collect()),
-            _ => Ok(vec![self.node(expr)?]),
+            _ => Ok(vec![self.node(expr, parameters)?]),
         }
     }
 
-    fn slots(&self, expr: Option<&&Expr>) -> Result<IndexMap<String, Slot>, CompileError> {
+    fn slots(
+        &self,
+        expr: Option<&&Expr>,
+        parameters: &[String],
+    ) -> Result<IndexMap<String, Slot>, CompileError> {
         let Some(expr) = expr else {
             return Ok(IndexMap::new());
         };
@@ -320,7 +352,7 @@ impl Compiler<'_> {
         };
         fields
             .iter()
-            .map(|(name, value)| Ok((static_string(name)?, self.slot(value)?)))
+            .map(|(name, value)| Ok((static_string(name)?, self.slot(value, parameters)?)))
             .collect()
     }
 
@@ -346,7 +378,7 @@ impl Compiler<'_> {
             .collect()
     }
 
-    fn slot(&self, expr: &Expr) -> Result<Slot, CompileError> {
+    fn slot(&self, expr: &Expr, parameters: &[String]) -> Result<Slot, CompileError> {
         match &expr.kind {
             ExprKind::Literal(Literal::Null) => Ok(Slot::Static(Scalar::Null)),
             ExprKind::Literal(Literal::Bool(value)) => Ok(Slot::Static(Scalar::Bool(*value))),
@@ -355,11 +387,11 @@ impl Compiler<'_> {
             ExprKind::Literal(Literal::String(value)) => {
                 Ok(Slot::Static(Scalar::Str(value.clone())))
             }
-            _ => Ok(self.dynamic(expr).into_slot()),
+            _ => Ok(self.dynamic(expr, parameters).into_slot()),
         }
     }
 
-    fn dynamic(&self, expr: &Expr) -> Node {
+    fn dynamic(&self, expr: &Expr, parameters: &[String]) -> Node {
         Node::Dynamic {
             expression: expr.clone(),
             ty: self
@@ -367,6 +399,7 @@ impl Compiler<'_> {
                 .get(&expr.span)
                 .cloned()
                 .unwrap_or(Type::Never),
+            dependencies: expression_dependencies(expr, parameters),
             span: expr.span,
         }
     }
@@ -432,6 +465,7 @@ impl Executor<'_> {
                 collection,
                 body,
                 span,
+                ..
             } => {
                 let values = self.evaluator.eval_in(collection, env)?;
                 let Value::List(values) = values else {
@@ -548,6 +582,7 @@ impl Node {
         let Self::Dynamic {
             expression,
             ty,
+            dependencies,
             span,
         } = self
         else {
@@ -556,6 +591,7 @@ impl Node {
         Slot::Dynamic {
             expression,
             ty,
+            dependencies,
             span,
         }
     }
@@ -608,6 +644,118 @@ fn component_call<'a>(
         return None;
     };
     component_names.contains(name).then_some((name, arguments))
+}
+
+fn expression_dependencies(expr: &Expr, parameters: &[String]) -> Vec<Dependency> {
+    let mut paths = std::collections::BTreeSet::new();
+    let mut unknown = false;
+    collect_dependencies(expr, parameters, &mut paths, &mut unknown);
+    let mut dependencies = paths
+        .into_iter()
+        .map(|(root, fields)| Dependency::Path { root, fields })
+        .collect::<Vec<_>>();
+    if unknown {
+        dependencies.push(Dependency::Unknown);
+    }
+    dependencies
+}
+
+fn collect_dependencies(
+    expr: &Expr,
+    parameters: &[String],
+    paths: &mut std::collections::BTreeSet<(String, Vec<String>)>,
+    unknown: &mut bool,
+) {
+    match &expr.kind {
+        ExprKind::Literal(_) => {}
+        ExprKind::Name(name) => {
+            if parameters.contains(name) {
+                paths.insert((name.clone(), vec![]));
+            }
+        }
+        ExprKind::Field { .. } => match dependency_path(expr, parameters) {
+            Some((root, fields)) => {
+                paths.insert((root, fields));
+            }
+            None => *unknown = true,
+        },
+        ExprKind::Lambda { .. } => *unknown = true,
+        ExprKind::Let { bindings, body } => {
+            for (_, value) in bindings {
+                collect_dependencies(value, parameters, paths, unknown);
+            }
+            // The body can refer to local bindings, for which a static component
+            // parameter path is not generally recoverable.
+            *unknown = true;
+            collect_dependencies(body, parameters, paths, unknown);
+        }
+        ExprKind::Do(expressions)
+        | ExprKind::And(expressions)
+        | ExprKind::Or(expressions)
+        | ExprKind::List(expressions) => {
+            for expression in expressions {
+                collect_dependencies(expression, parameters, paths, unknown);
+            }
+        }
+        ExprKind::If {
+            condition,
+            then_branch,
+            else_branch,
+        } => {
+            collect_dependencies(condition, parameters, paths, unknown);
+            collect_dependencies(then_branch, parameters, paths, unknown);
+            collect_dependencies(else_branch, parameters, paths, unknown);
+        }
+        ExprKind::Not(expression) => collect_dependencies(expression, parameters, paths, unknown),
+        ExprKind::Call { callee, arguments } => {
+            collect_dependencies(callee, parameters, paths, unknown);
+            for argument in arguments {
+                collect_dependencies(argument, parameters, paths, unknown);
+            }
+        }
+        ExprKind::Object(fields) => {
+            for (key, value) in fields {
+                collect_dependencies(key, parameters, paths, unknown);
+                collect_dependencies(value, parameters, paths, unknown);
+            }
+        }
+        ExprKind::StringTemplate { parts, .. } => {
+            for part in parts {
+                if let StringPart::Expr(expression) | StringPart::Splice(expression) = part {
+                    collect_dependencies(expression, parameters, paths, unknown);
+                }
+            }
+        }
+        ExprKind::Case {
+            subject, branches, ..
+        } => {
+            collect_dependencies(subject, parameters, paths, unknown);
+            // Pattern bindings can feed guards and bodies, so retain the safe
+            // fallback while still recording any direct parameter reads.
+            *unknown = true;
+            for branch in branches {
+                if let Some(guard) = &branch.guard {
+                    collect_dependencies(guard, parameters, paths, unknown);
+                }
+                collect_dependencies(&branch.body, parameters, paths, unknown);
+            }
+        }
+    }
+}
+
+fn dependency_path(expr: &Expr, parameters: &[String]) -> Option<(String, Vec<String>)> {
+    match &expr.kind {
+        ExprKind::Name(name) if parameters.contains(name) => Some((name.clone(), vec![])),
+        ExprKind::Field { object, key } => {
+            let (root, mut fields) = dependency_path(object, parameters)?;
+            let ExprKind::Literal(Literal::String(key)) = &key.kind else {
+                return None;
+            };
+            fields.push(key.clone());
+            Some((root, fields))
+        }
+        _ => None,
+    }
 }
 
 fn object_fields<'a>(

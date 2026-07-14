@@ -4,7 +4,7 @@ use jisp_ir::Lowerer;
 use jisp_syntax_lisp::LispParser;
 use jisp_types::{Inferencer, TypedModule};
 
-use crate::{compile, execute, render_static_html, Node, Scalar, Slot};
+use crate::{compile, execute, render_static_html, Dependency, Node, Scalar, Slot};
 
 fn typed(source: &str) -> TypedModule {
     let nodes = LispParser.parse_module(SourceId(0), source).unwrap();
@@ -51,7 +51,20 @@ fn retains_typed_dynamic_slots_and_event_descriptors() {
         panic!("expected a button template");
     };
 
-    assert!(matches!(button.props["disabled"], Slot::Dynamic { .. }));
+    let Slot::Dynamic {
+        dependencies: disabled_dependencies,
+        ..
+    } = &button.props["disabled"]
+    else {
+        panic!("expected dynamic disabled property");
+    };
+    assert_eq!(
+        disabled_dependencies,
+        &[Dependency::Path {
+            root: "state".to_owned(),
+            fields: vec!["disabled".to_owned()],
+        }]
+    );
     assert!(matches!(button.classes["pending"], Slot::Dynamic { .. }));
     assert!(button.events.contains_key("click"));
     let [Node::Text(Slot::Dynamic { .. })] = button.children.as_slice() else {
@@ -73,10 +86,23 @@ fn compiles_for_to_a_keyed_each_block() {
     let Node::Element(list) = &program.components["app"].root else {
         panic!("expected a list template");
     };
-    let [Node::Each { binding, body, .. }] = list.children.as_slice() else {
+    let [Node::Each {
+        binding,
+        dependencies,
+        body,
+        ..
+    }] = list.children.as_slice()
+    else {
         panic!("expected one each block");
     };
     assert_eq!(binding, "item");
+    assert_eq!(
+        dependencies,
+        &[Dependency::Path {
+            root: "items".to_owned(),
+            fields: vec![],
+        }]
+    );
     let Node::Element(item) = body.as_ref() else {
         panic!("expected list item template");
     };
