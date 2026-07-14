@@ -54,6 +54,60 @@ fn ssr_payload_matches_the_initial_ui_app_tree() {
 }
 
 #[test]
+fn json_formatter_keeps_modules_and_nested_forms_readable() {
+    let nodes = parse_source(
+        r#"
+(export main
+  (fn ()
+    (str "Hello from " "Jisp" "!")))
+"#,
+        "lisp",
+    )
+    .unwrap();
+
+    assert_eq!(
+        format_source(&nodes, "json").unwrap(),
+        concat!(
+            "[\n",
+            "  [\"export\", \"main\",\n",
+            "    [\"fn\", [], [\"str\", \"Hello from \", \"Jisp\", \"!\"]]\n",
+            "  ]\n",
+            "]\n"
+        )
+    );
+}
+
+#[test]
+fn json_formatter_groups_object_fields_like_lisp_object_layouts() {
+    let nodes = parse_source(
+        r#"
+(def profile
+  (obj
+    "name" "Mina"
+    "role" "Designer"
+    "tags" (list "ui" "wasm")))
+"#,
+        "lisp",
+    )
+    .unwrap();
+
+    assert_eq!(
+        format_source(&nodes, "json").unwrap(),
+        concat!(
+            "[\n",
+            "  [\"def\", \"profile\",\n",
+            "    [\"obj\",\n",
+            "      [\"str\", \"name\"], [\"str\", \"Mina\"],\n",
+            "      [\"str\", \"role\"], [\"str\", \"Designer\"],\n",
+            "      [\"str\", \"tags\"], [\"list\", [\"str\", \"ui\"], [\"str\", \"wasm\"]]\n",
+            "    ]\n",
+            "  ]\n",
+            "]\n"
+        )
+    );
+}
+
+#[test]
 fn update_session_rebuilds_the_view_after_an_emitted_action() {
     let mut session = PlaygroundSession::new();
     let first_text = session

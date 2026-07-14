@@ -432,7 +432,9 @@ fn format_json_module(nodes: &[Node]) -> String {
             .collect::<Vec<_>>()
             .join(", ")
     );
-    if inline.chars().count() <= FORMAT_WIDTH {
+    if inline.chars().count() <= FORMAT_WIDTH
+        && nodes.iter().all(|node| !json_node_needs_layout(node))
+    {
         return format!("{inline}\n");
     }
 
@@ -451,31 +453,23 @@ fn format_json_module(nodes: &[Node]) -> String {
 
 fn format_json_layout(node: &Node, indent: usize) -> String {
     let inline = format_json_inline(node);
-    if (indent + inline.chars().count() <= FORMAT_WIDTH && !prefers_json_block(node))
-        || !matches!(node.kind, NodeKind::Form(_))
-    {
-        return inline;
-    }
     let NodeKind::Form(items) = &node.kind else {
         return inline;
     };
+    if !json_node_needs_layout(node) && indent + inline.chars().count() <= FORMAT_WIDTH {
+        return inline;
+    }
+    if items.first().and_then(Node::as_symbol) == Some("obj") && items.len() % 2 == 1 {
+        return format_json_object(items, indent);
+    }
     format_json_form(items, indent)
 }
 
-fn prefers_json_block(node: &Node) -> bool {
+fn json_node_needs_layout(node: &Node) -> bool {
     let NodeKind::Form(items) = &node.kind else {
         return false;
     };
-    let Some(head) = items.first().and_then(Node::as_symbol) else {
-        return false;
-    };
-    items[1..]
-        .iter()
-        .any(|item| matches!(item.kind, NodeKind::Form(_)))
-        && matches!(
-            head,
-            "component" | "def" | "defn" | "export" | "type" | "ui.app"
-        )
+    items.iter().skip(1).any(is_json_compound)
 }
 
 fn format_json_form(items: &[Node], indent: usize) -> String {
@@ -486,12 +480,16 @@ fn format_json_form(items: &[Node], indent: usize) -> String {
     let mut output = String::from("[");
     let mut line_width = indent + 1;
     let mut multiline = false;
+    let mut after_block = false;
 
     for (index, item) in items.iter().enumerate() {
         let rendered = format_json_layout(item, child_indent);
-        let is_block = is_json_block(item);
+        let is_block = is_json_compound(item) || rendered.contains('\n');
         let separator_width = usize::from(index > 0) * 2;
-        if !is_block && line_width + separator_width + rendered.chars().count() <= FORMAT_WIDTH {
+        if !is_block
+            && !after_block
+            && line_width + separator_width + rendered.chars().count() <= FORMAT_WIDTH
+        {
             if index > 0 {
                 output.push_str(", ");
                 line_width += 2;
@@ -515,6 +513,7 @@ fn format_json_form(items: &[Node], indent: usize) -> String {
                 .chars()
                 .count();
         multiline = true;
+        after_block = true;
     }
 
     if multiline {
@@ -525,11 +524,46 @@ fn format_json_form(items: &[Node], indent: usize) -> String {
     output
 }
 
-fn is_json_block(node: &Node) -> bool {
+fn format_json_object(items: &[Node], indent: usize) -> String {
+    let child_indent = indent + 2;
+    let mut output = format!("[{}", format_json_inline(&items[0]));
+
+    for pair in items[1..].chunks_exact(2) {
+        let key = format_json_layout(&pair[0], child_indent);
+        let value = format_json_layout(&pair[1], child_indent);
+        output.push_str(",\n");
+        output.push_str(&" ".repeat(child_indent));
+        if !value.contains('\n')
+            && child_indent + key.chars().count() + 2 + value.chars().count() <= FORMAT_WIDTH
+        {
+            output.push_str(&key);
+            output.push_str(", ");
+            output.push_str(&value);
+        } else {
+            output.push_str(&key);
+            output.push_str(",\n");
+            output.push_str(&" ".repeat(child_indent));
+            output.push_str(&value);
+        }
+    }
+    output.push('\n');
+    output.push_str(&" ".repeat(indent));
+    output.push(']');
+    output
+}
+
+fn is_json_compound(node: &Node) -> bool {
     let NodeKind::Form(items) = &node.kind else {
         return false;
     };
-    !items.is_empty() && !matches!(items.first().and_then(Node::as_symbol), Some("str"))
+    !items.is_empty() && !is_json_string_template(items)
+}
+
+fn is_json_string_template(items: &[Node]) -> bool {
+    matches!(
+        items.first().and_then(Node::as_symbol),
+        Some("str" | "str.lines")
+    )
 }
 
 fn format_json_inline(node: &Node) -> String {
@@ -544,10 +578,7 @@ fn format_json_inline(node: &Node) -> String {
             serde_json::to_string(value.as_ref()).expect("valid string")
         ),
         NodeKind::Form(items) => {
-            let string_template = matches!(
-                items.first().and_then(Node::as_symbol),
-                Some("str" | "str.lines")
-            );
+            let string_template = is_json_string_template(items);
             format!(
                 "[{}]",
                 items
