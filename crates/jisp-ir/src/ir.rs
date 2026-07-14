@@ -6,7 +6,7 @@ pub struct Module {
     pub types: Vec<TypeDecl>,
     pub definitions: Vec<Definition>,
     pub exports: Vec<String>,
-    /// Entry points for a host-managed, reducer-driven UI application.
+    /// Entry points for a host-managed, update-driven UI application.
     pub ui_app: Option<UiApp>,
 }
 
@@ -25,8 +25,8 @@ impl Module {
 #[derive(Clone, Debug)]
 pub struct UiApp {
     pub init: String,
-    pub reduce: String,
-    pub view: String,
+    pub update: String,
+    pub app: String,
     pub span: Span,
 }
 

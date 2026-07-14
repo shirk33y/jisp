@@ -1,4 +1,4 @@
-import init, { PlaygroundSession } from "./pkg/jisp_wasm.js";
+import init, { convert_source, PlaygroundSession } from "./pkg/jisp_wasm.js";
 import { EditorView, keymap } from "https://esm.sh/@codemirror/view@6.43.6";
 import { EditorState } from "https://esm.sh/@codemirror/state@6.7.1";
 import { StreamLanguage } from "https://esm.sh/@codemirror/language@6.12.4";
@@ -7,7 +7,10 @@ import { clojure } from "https://esm.sh/@codemirror/legacy-modes@6.5.0/mode/cloj
 import { oneDark } from "https://esm.sh/@codemirror/theme-one-dark@6.1.2";
 
 const examples = [
-  ["Reducer todo list", "examples/todos.lisp"],
+  ["Todo updates", "examples/todos.lisp"],
+  ["Product launch board", "examples/kanban.lisp"],
+  ["Tiny rituals", "examples/habits.lisp"],
+  ["Personal spend", "examples/finance.lisp"],
 ];
 
 const app = document.getElementById("app");
@@ -28,13 +31,20 @@ app.innerHTML = `
   <main class="mx-auto max-w-[1600px] px-5 py-6">
     <p class="mb-5 max-w-4xl text-sm leading-6 text-slate-400">
       Jisp compiles and evaluates in WebAssembly. Browser events become plain values, Jisp turns them
-      into actions, and the reducer returns the next immutable state. The preview only renders the
+      into actions, and the update function returns the next immutable state. The preview only renders the
       structural tree and forwards events; it never evaluates Jisp or owns application state.
     </p>
     <div class="grid gap-6 lg:grid-cols-2">
       <section class="editor-shell overflow-hidden rounded-2xl border border-slate-800 bg-slate-900 shadow-2xl">
         <div class="flex items-center justify-between border-b border-slate-800 px-4 py-3">
-          <h2 class="font-semibold text-white">Jisp UI</h2>
+          <div>
+            <h2 class="font-semibold text-white">Jisp UI</h2>
+            <fieldset class="mt-2 flex gap-1" aria-label="Source syntax">
+              <label class="cursor-pointer rounded-md px-2 py-1 text-xs font-semibold text-slate-300 has-[:checked]:bg-cyan-400 has-[:checked]:text-slate-950"><input class="sr-only" type="radio" name="syntax" value="lisp" checked> Lisp</label>
+              <label class="cursor-pointer rounded-md px-2 py-1 text-xs font-semibold text-slate-300 has-[:checked]:bg-cyan-400 has-[:checked]:text-slate-950"><input class="sr-only" type="radio" name="syntax" value="json"> JSON</label>
+              <label class="cursor-pointer rounded-md px-2 py-1 text-xs font-semibold text-slate-300 has-[:checked]:bg-cyan-400 has-[:checked]:text-slate-950"><input class="sr-only" type="radio" name="syntax" value="yaml"> YAML</label>
+            </fieldset>
+          </div>
           <button id="reset" class="rounded-md px-2 py-1 text-xs font-semibold text-cyan-300 hover:bg-slate-800">Reset</button>
         </div>
         <div id="editor" aria-label="Jisp UI source"></div>
@@ -56,11 +66,12 @@ const reset = document.getElementById("reset");
 const preview = document.getElementById("preview");
 const error = document.getElementById("error");
 const status = document.getElementById("status");
+const syntaxInputs = [...document.querySelectorAll('input[name="syntax"]')];
 let editor;
 let initialSource = "";
+let syntax = "lisp";
 let ready = false;
 let renderTimer;
-let frameReady = false;
 let latestTree = null;
 let session = null;
 
@@ -149,7 +160,7 @@ addEventListener("message", (message) => {
 
 function postTree(tree) {
   latestTree = tree;
-  if (frameReady) preview.contentWindow.postMessage({ type: "jisp-render", tree }, "*");
+  preview.contentWindow?.postMessage({ type: "jisp-render", tree }, "*");
 }
 
 function sourceText() {
@@ -160,9 +171,9 @@ function renderPreview() {
   if (!ready) return;
   try {
     session = new PlaygroundSession();
-    postTree(JSON.parse(session.load(sourceText())));
+    postTree(JSON.parse(session.load_syntax(sourceText(), syntax)));
     error.classList.add("hidden");
-    setStatus("bg-emerald-100 text-emerald-700", "Reducer ready");
+    setStatus("bg-emerald-100 text-emerald-700", "Update ready");
   } catch (reason) {
     session = null;
     postTree({ kind: "text", value: "" });
@@ -182,6 +193,8 @@ async function loadExample(path) {
     const response = await fetch(path);
     if (!response.ok) throw new Error(`Could not load ${path}: ${response.status}`);
     initialSource = await response.text();
+    syntax = "lisp";
+    syntaxInputs.find((input) => input.value === syntax).checked = true;
     setSource(initialSource);
     renderPreview();
   } catch (reason) {
@@ -192,7 +205,6 @@ async function loadExample(path) {
 }
 
 preview.addEventListener("load", () => {
-  frameReady = true;
   if (latestTree) postTree(latestTree);
 });
 preview.srcdoc = previewDocument();
@@ -206,7 +218,7 @@ window.addEventListener("message", (message) => {
   } catch (reason) {
     error.textContent = String(reason);
     error.classList.remove("hidden");
-    setStatus("bg-rose-100 text-rose-700", "Reducer error");
+    setStatus("bg-rose-100 text-rose-700", "Update error");
   }
 });
 
@@ -230,9 +242,31 @@ editor = new EditorView({
 });
 
 select.addEventListener("change", () => loadExample(select.value));
+syntaxInputs.forEach((input) => input.addEventListener("change", () => {
+  if (!input.checked || input.value === syntax) return;
+  try {
+    const converted = convert_source(sourceText(), syntax, input.value);
+    syntax = input.value;
+    setSource(converted);
+    renderPreview();
+    setStatus("bg-emerald-100 text-emerald-700", `Converted to ${syntax.toUpperCase()}`);
+  } catch (reason) {
+    input.checked = false;
+    syntaxInputs.find((current) => current.value === syntax).checked = true;
+    error.textContent = `Cannot convert invalid ${syntax.toUpperCase()} source: ${reason}`;
+    error.classList.remove("hidden");
+    setStatus("bg-rose-100 text-rose-700", "Conversion error");
+  }
+}));
 reset.addEventListener("click", () => {
-  setSource(initialSource);
-  renderPreview();
+  try {
+    setSource(convert_source(initialSource, "lisp", syntax));
+    renderPreview();
+  } catch (reason) {
+    error.textContent = String(reason);
+    error.classList.remove("hidden");
+    setStatus("bg-rose-100 text-rose-700", "Reset error");
+  }
 });
 
 try {

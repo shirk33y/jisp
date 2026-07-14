@@ -362,6 +362,10 @@ version = "0.0.1"
 dependencies = [
  "indexmap",
  "jisp",
+ "jisp-core",
+ "jisp-syntax-json",
+ "jisp-syntax-lisp",
+ "jisp-syntax-yaml",
  "serde_json",
  "wasm-bindgen",
 ]

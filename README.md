@@ -66,7 +66,7 @@ literal. In Lisp and YAML-like source, quoted values are strings.
 - Declarative, renderer-neutral UI components with explicit host elements,
   attributes, properties, utility classes, event actions, keys, and repeated
   children; `ui.html` is the escaped static-HTML host and the WebAssembly
-  playground provides an experimental reducer-driven browser host.
+  playground provides an experimental update-driven browser host.
 - A deliberately narrower native Rust subset: monomorphic definitions, closed
   objects, lists, bigints, typed function values, capturing closures, and
   variadic user functions, supported `case` patterns, imports, and selected
@@ -144,7 +144,7 @@ Useful examples live in [examples](examples/): a basic hello program, a native
 codegen fixture, static object helpers, legacy structural UI data for native
 codegen coverage, and declarative [UI components](examples/ui_components.lisp).
 Try the browser-only [UI playground](https://shirk33y.github.io/jisp/) for a
-small, explicitly documented reducer-driven preview subset.
+small, explicitly documented update-driven preview subset.
 
 ## Architecture
 

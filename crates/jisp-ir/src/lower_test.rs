@@ -284,18 +284,18 @@ fn ui_app_requires_local_bindings_and_emit_is_scoped_to_event_handlers() {
     let module = lower_lisp(
         r#"
 (def init 0)
-(defn reduce (state action) state)
+(defn update (state action) state)
 (component view (state) (button (on click (emit action)) (text "ok")))
-(ui.app init reduce view)
+(ui.app init update view)
 "#,
     )
     .unwrap();
     let app = module.ui_app.expect("ui.app metadata");
     assert_eq!(app.init, "init");
-    assert_eq!(app.reduce, "reduce");
-    assert_eq!(app.view, "view");
+    assert_eq!(app.update, "update");
+    assert_eq!(app.app, "view");
 
-    let unknown = lower_lisp("(ui.app init reduce view)").unwrap_err();
+    let unknown = lower_lisp("(ui.app init update view)").unwrap_err();
     assert!(unknown.diagnostics[0]
         .message
         .contains("does not name a module definition"));

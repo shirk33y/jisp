@@ -11,7 +11,7 @@
     "filter" "all"
     "next-id" 4
     "todos" (list
-      (obj "id" 1 "title" "Design the reducer contract" "done" true)
+      (obj "id" 1 "title" "Design the update contract" "done" true)
       (obj "id" 2 "title" "Compile Jisp to WebAssembly" "done" false)
       (obj "id" 3 "title" "Ship an interactive playground" "done" false))))
 
@@ -31,7 +31,7 @@
             "draft" "")
           "next-id" (+ (. state "next-id") 1))))))
 
-(defn reduce (state action)
+(defn update (state action)
   (case action
     ((Draft value) (obj.set state "draft" value))
     ((Add) (add-todo state))
@@ -91,9 +91,9 @@
       (class "overflow-hidden" "rounded-2xl" "border" "border-slate-200" "bg-slate-50" "shadow-xl")
       (div
         (class "bg-gradient-to-r" "from-cyan-600" "to-indigo-600" "p-6" "text-white")
-        (p (class "text-sm" "font-semibold" "uppercase" "tracking-widest" "text-cyan-100") (text "Reducer-driven UI"))
+          (p (class "text-sm" "font-semibold" "uppercase" "tracking-widest" "text-cyan-100") (text "Update-driven UI"))
         (h1 (class "mt-2" "text-3xl" "font-bold") (text "Jisp tasks"))
-        (p (class "mt-2" "text-sm" "text-cyan-50") (text "Events become values; the reducer creates the next immutable state.")))
+        (p (class "mt-2" "text-sm" "text-cyan-50") (text "Events become values; the update function creates the next immutable state.")))
       (div
         (class "space-y-5" "p-5")
         (div
@@ -115,5 +115,4 @@
           (filter-button (. state "filter") "done" "Done"))
         (todo-list (visible-todos state))))))
 
-(def view app)
-(ui.app init reduce view)
+(ui.app init update app)

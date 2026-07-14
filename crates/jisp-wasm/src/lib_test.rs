@@ -1,4 +1,4 @@
-use super::{render_html_source, PlaygroundSession};
+use super::{format_source, parse_source, render_html_source, PlaygroundSession};
 use serde_json::Value;
 
 #[test]
@@ -27,7 +27,7 @@ fn renders_a_component_program_with_the_real_interpreter() {
 }
 
 #[test]
-fn reducer_session_rebuilds_the_view_after_an_emitted_action() {
+fn update_session_rebuilds_the_view_after_an_emitted_action() {
     let mut session = PlaygroundSession::new();
     let first: Value = serde_json::from_str(
         &session
@@ -35,7 +35,7 @@ fn reducer_session_rebuilds_the_view_after_an_emitted_action() {
                 r#"
 (def init (obj "count" 0))
 
-(defn reduce (state next-count)
+(defn update (state next-count)
   (obj.set state "count" next-count))
 
 (component counter (state)
@@ -43,8 +43,7 @@ fn reducer_session_rebuilds_the_view_after_an_emitted_action() {
     (on click (emit (+ (. state "count") 1)))
     (text (str "Count: " ,(str.from (. state "count"))))))
 
-(def view counter)
-(ui.app init reduce view)
+(ui.app init update counter)
 "#,
             )
             .unwrap(),
@@ -59,7 +58,7 @@ fn reducer_session_rebuilds_the_view_after_an_emitted_action() {
 }
 
 #[test]
-fn reducer_todo_example_type_checks_and_renders() {
+fn update_todo_example_type_checks_and_renders() {
     let mut session = PlaygroundSession::new();
     let tree: Value = serde_json::from_str(
         &session
@@ -72,7 +71,53 @@ fn reducer_todo_example_type_checks_and_renders() {
 }
 
 #[test]
-fn reducer_todo_example_updates_draft_then_adds_a_task() {
+fn every_update_playground_example_type_checks_and_renders() {
+    let examples = [
+        (
+            "todo list",
+            include_str!("../../../playground/examples/todos.lisp"),
+        ),
+        (
+            "product launch board",
+            include_str!("../../../playground/examples/kanban.lisp"),
+        ),
+        (
+            "habit tracker",
+            include_str!("../../../playground/examples/habits.lisp"),
+        ),
+        (
+            "personal spend",
+            include_str!("../../../playground/examples/finance.lisp"),
+        ),
+    ];
+
+    for (name, source) in examples {
+        let mut session = PlaygroundSession::new();
+        let tree: Value =
+            serde_json::from_str(&session.load_source(source).unwrap_or_else(|error| {
+                panic!("update playground example `{name}` failed: {error}")
+            }))
+            .unwrap();
+        assert_eq!(tree["kind"], "element", "{name}");
+        assert_ui_tree_shape(&tree, name);
+    }
+}
+
+#[test]
+fn syntax_conversion_preserves_a_ui_module() {
+    let source = include_str!("../../../playground/examples/todos.lisp");
+    let nodes = parse_source(source, "lisp").unwrap();
+    let json = format_source(&nodes, "json").unwrap();
+    let yaml = format_source(&nodes, "yaml").unwrap();
+
+    let mut json_session = PlaygroundSession::new();
+    let mut yaml_session = PlaygroundSession::new();
+    assert!(json_session.load_source_syntax(&json, "json").is_ok());
+    assert!(yaml_session.load_source_syntax(&yaml, "yaml").is_ok());
+}
+
+#[test]
+fn update_todo_example_updates_draft_then_adds_a_task() {
     let mut session = PlaygroundSession::new();
     let first: Value = serde_json::from_str(
         &session
@@ -135,6 +180,20 @@ fn contains_prop_value(tree: &Value, property: &str, value: &str) -> bool {
                     .iter()
                     .any(|child| contains_prop_value(child, property, value))
             })
+}
+
+fn assert_ui_tree_shape(tree: &Value, name: &str) {
+    if tree["kind"] == "text" {
+        return;
+    }
+    assert_eq!(tree["kind"], "element", "{name} must contain UI nodes");
+    assert!(
+        tree["classes"].is_array(),
+        "{name} must serialize classes as an array"
+    );
+    for child in tree["children"].as_array().expect("element children") {
+        assert_ui_tree_shape(child, name);
+    }
 }
 
 #[test]

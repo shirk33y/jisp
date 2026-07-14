@@ -314,8 +314,8 @@ impl Lowerer {
         }
         module.ui_app = Some(UiApp {
             init: expect_symbol(&items[1], "ui.app init binding")?.to_owned(),
-            reduce: expect_symbol(&items[2], "ui.app reducer binding")?.to_owned(),
-            view: expect_symbol(&items[3], "ui.app view binding")?.to_owned(),
+            update: expect_symbol(&items[2], "ui.app update binding")?.to_owned(),
+            app: expect_symbol(&items[3], "ui.app app binding")?.to_owned(),
             span,
         });
         Ok(())
@@ -798,8 +798,8 @@ fn validate_ui_app(module: &Module, diagnostics: &mut Vec<Diagnostic>) {
         .collect::<std::collections::BTreeSet<_>>();
     for (role, name) in [
         ("init binding", &app.init),
-        ("reducer binding", &app.reduce),
-        ("view binding", &app.view),
+        ("update binding", &app.update),
+        ("app binding", &app.app),
     ] {
         if !definitions.contains(name.as_str()) {
             diagnostics.push(

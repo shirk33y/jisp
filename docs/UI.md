@@ -54,7 +54,7 @@ turn a name into a class: `aria-label`, `data-id`, and `http-equiv` belong in
 | `(prop name value)` | Renderer property. The static HTML renderer currently serializes scalar props as attributes. |
 | `(class name...)` | Enables each named utility class. |
 | `(class-if name condition)` | Enables the named utility class only when the boolean condition is true. |
-| `(on event (emit action))` | Creates a delayed handler. The interactive host supplies `event`, evaluates `action`, then passes that value to the app reducer. Static HTML deliberately does not serialize it. |
+| `(on event (emit action))` | Creates a delayed handler. The interactive host supplies `event`, evaluates `action`, then passes that value to the app update function. Static HTML deliberately does not serialize it. |
 | `(on event handler)` | Stores an explicit function handler for an interactive host. Use this when the handler needs more than one expression. |
 | `(key value)` | Stores an identity key for reconciliation. Static HTML deliberately ignores it. |
 | `(for binding collection child)` | Maps `child` over `collection`; nested result lists are flattened as children. |
@@ -65,7 +65,7 @@ within their own directive category; a duplicate `attr`, `prop`, `class`, or
 
 `emit` is only valid as the handler argument of `on`. It introduces an implicit
 single `event` argument, so input values can be turned into actions without
-browser state leaking into the reducer:
+browser state leaking into the update function:
 
 ```lisp
 (input
@@ -73,25 +73,27 @@ browser state leaking into the reducer:
   (on input (emit (Draft (. event "value")))))
 ```
 
-## Reducer applications
+## Update-driven applications
 
 An interactive module declares its three host entry points with:
 
 ```lisp
-(ui.app init reduce view)
+(ui.app init update app)
 ```
 
-`init` is an immutable initial value, `reduce` has the shape
-`(state action) -> state`, and `view` has the shape `(state) -> ui.node`.
+`init` is an immutable initial value, `update` has the shape
+`(state action) -> state`, and `app` is a component with the shape
+`(state) -> ui.node`. The third argument names that component directly, so no
+extra `(def view app)` alias is needed.
 The declaration does not create a JavaScript store or an effect system: it is
 metadata that lets each host keep the same execution contract.
 
-```lisp test=ui.reducer-example mode=check
+```lisp test=ui.update-example mode=check
 (type Action (Increment))
 
 (def init (obj "count" 0))
 
-(defn reduce (state action)
+(defn update (state action)
   (case action
     ((Increment) (obj.set state "count" (+ (. state "count") 1)))))
 
@@ -100,13 +102,12 @@ metadata that lets each host keep the same execution contract.
     (on click (emit Increment))
     (text (str "Count: " ,(str.from (. state "count"))))))
 
-(def view counter)
-(ui.app init reduce view)
+(ui.app init update counter)
 ```
 
 The browser playground currently uses this contract. On each event it calls
 the selected Jisp handler with a small JSON-shaped event object, calls
-`reduce(state, action)`, then calls `view(next-state)` and replaces the preview
+`update(state, action)`, then calls `app(next-state)` and replaces the preview
 tree. This is deliberately a simple full-render host: keyed reconciliation,
 effects, subscriptions, async commands, persistence, and native widget
 adapters are not defined yet.
@@ -129,4 +130,6 @@ The GitHub Pages playground runs this same interpreter through the
 `jisp-wasm` WebAssembly entry point. JavaScript loads the module, renders the
 returned structural tree in an isolated preview, and forwards browser events;
 it does not parse or evaluate a second UI language, and it does not implement
-the reducer.
+the update function. Its Lisp, JSON, and YAML selector converts the parsed
+module before reloading it through the selected reader. Comments are not part
+of the shared syntax tree, so conversion intentionally drops them.

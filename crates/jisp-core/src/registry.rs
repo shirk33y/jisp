@@ -221,7 +221,7 @@ pub const SPECIAL_FORMS: &[SpecialFormSpec] = &[
         min_args: 3,
         max_args: Some(3),
         top_level: true,
-        summary: "Declare init, reducer, and view bindings for a host-managed UI app.",
+        summary: "Declare init, update, and app bindings for a host-managed UI app.",
     },
     SpecialFormSpec {
         name: "fn",

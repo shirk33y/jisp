@@ -1,7 +1,10 @@
 //! Browser-facing WebAssembly entry points for the interpreter-backed playground.
 
-use jisp::jisp_core::Span;
+use jisp::jisp_core::{Node, NodeKind, SourceId, Span, SyntaxParser};
 use jisp::jisp_eval::{Evaluator, Value};
+use jisp_syntax_json::JsonParser;
+use jisp_syntax_lisp::LispParser;
+use jisp_syntax_yaml::YamlParser;
 use serde_json::{json, Map, Number, Value as JsonValue};
 use wasm_bindgen::prelude::*;
 
@@ -10,10 +13,10 @@ pub fn render_html(source: &str) -> Result<String, JsValue> {
     render_html_source(source).map_err(|error| JsValue::from_str(&error))
 }
 
-/// A reducer-driven Jisp UI program loaded by a browser host.
+/// An update-driven Jisp UI program loaded by a browser host.
 ///
 /// `load` evaluates the program once and creates the initial state. Each
-/// `dispatch` invokes the event closure, passes its result to the reducer, and
+/// `dispatch` invokes the event closure, passes its result to the update function, and
 /// returns a fresh renderer-neutral tree as JSON.
 #[wasm_bindgen]
 pub struct PlaygroundSession {
@@ -29,7 +32,7 @@ impl Default for PlaygroundSession {
 struct Runtime {
     evaluator: Evaluator,
     state: Value,
-    reducer: Value,
+    update: Value,
     view: Value,
     handlers: Vec<Value>,
     span: Span,
@@ -47,7 +50,12 @@ impl PlaygroundSession {
         self.load_source(source).map_err(js_error)
     }
 
-    /// Process a browser event through one event handler and the declared reducer.
+    /// Compile and evaluate source in one of the playground's supported syntaxes.
+    pub fn load_syntax(&mut self, source: &str, syntax: &str) -> Result<String, JsValue> {
+        self.load_source_syntax(source, syntax).map_err(js_error)
+    }
+
+    /// Process a browser event through one event handler and the declared update function.
     pub fn dispatch(&mut self, handler: usize, event_json: &str) -> Result<String, JsValue> {
         self.dispatch_event(handler, event_json).map_err(js_error)
     }
@@ -55,13 +63,18 @@ impl PlaygroundSession {
 
 impl PlaygroundSession {
     fn load_source(&mut self, source: &str) -> Result<String, String> {
-        let parsed =
-            jisp::check_detailed("playground.lisp", source).map_err(render_module_error)?;
+        self.load_source_syntax(source, "lisp")
+    }
+
+    fn load_source_syntax(&mut self, source: &str, syntax: &str) -> Result<String, String> {
+        let extension = syntax_extension(syntax)?;
+        let name = format!("playground.{extension}");
+        let parsed = jisp::check_detailed(&name, source).map_err(render_module_error)?;
         if !parsed.module.imports.is_empty() {
             return Err("Playground ui.app programs cannot import local files yet".to_owned());
         }
         let app = parsed.module.ui_app.clone().ok_or_else(|| {
-            "Playground source must declare `(ui.app init reduce view)`".to_owned()
+            "Playground source must declare `(ui.app init update app)`".to_owned()
         })?;
         let mut evaluator = Evaluator::new();
         let loaded = evaluator
@@ -71,19 +84,19 @@ impl PlaygroundSession {
             .env
             .lookup(&app.init)
             .map_err(|error| error.to_string())?;
-        let reducer = loaded
+        let update = loaded
             .env
-            .lookup(&app.reduce)
+            .lookup(&app.update)
             .map_err(|error| error.to_string())?;
         let view = loaded
             .env
-            .lookup(&app.view)
+            .lookup(&app.app)
             .map_err(|error| error.to_string())?;
 
         self.runtime = Some(Runtime {
             evaluator,
             state,
-            reducer,
+            update,
             view,
             handlers: vec![],
             span: app.span,
@@ -111,7 +124,7 @@ impl PlaygroundSession {
         runtime.state = runtime
             .evaluator
             .apply(
-                runtime.reducer.clone(),
+                runtime.update.clone(),
                 &[runtime.state.clone(), action],
                 runtime.span,
             )
@@ -136,6 +149,144 @@ impl PlaygroundSession {
         let tree = ui_node(&vnode, &mut handlers)?;
         runtime.handlers = handlers;
         serde_json::to_string(&tree).map_err(|error| error.to_string())
+    }
+}
+
+/// Convert a complete Jisp module between Lisp, canonical JSON, and restricted YAML syntax.
+#[wasm_bindgen]
+pub fn convert_source(source: &str, from: &str, to: &str) -> Result<String, JsValue> {
+    let nodes = parse_source(source, from).map_err(js_error)?;
+    format_source(&nodes, to).map_err(js_error)
+}
+
+fn syntax_extension(syntax: &str) -> Result<&'static str, String> {
+    match syntax {
+        "lisp" => Ok("lisp"),
+        "json" => Ok("json"),
+        "yaml" => Ok("yaml"),
+        _ => Err(format!("unsupported playground syntax `{syntax}`")),
+    }
+}
+
+fn parse_source(source: &str, syntax: &str) -> Result<Vec<Node>, String> {
+    let parsed = match syntax_extension(syntax)? {
+        "lisp" => LispParser.parse_module(SourceId(0), source),
+        "json" => JsonParser.parse_module(SourceId(0), source),
+        "yaml" => YamlParser.parse_module(SourceId(0), source),
+        _ => unreachable!("syntax_extension returns a closed set"),
+    };
+    parsed.map_err(|error| error.to_string())
+}
+
+fn format_source(nodes: &[Node], syntax: &str) -> Result<String, String> {
+    match syntax_extension(syntax)? {
+        "lisp" => Ok(format_lisp_module(nodes)),
+        "json" => serde_json::to_string_pretty(&serde_json::Value::Array(
+            nodes.iter().map(json_node).collect(),
+        ))
+        .map(|text| format!("{text}\n"))
+        .map_err(|error| error.to_string()),
+        "yaml" => Ok(format!(
+            "[{}]\n",
+            nodes
+                .iter()
+                .map(format_yaml_node)
+                .collect::<Vec<_>>()
+                .join(", ")
+        )),
+        _ => unreachable!("syntax_extension returns a closed set"),
+    }
+}
+
+fn json_node(node: &Node) -> serde_json::Value {
+    match &node.kind {
+        NodeKind::Null => serde_json::Value::Null,
+        NodeKind::Bool(value) => serde_json::Value::Bool(*value),
+        NodeKind::Int(value) => serde_json::json!(value),
+        NodeKind::Float(value) => serde_json::json!(value),
+        NodeKind::Symbol(value) => serde_json::json!(value.as_str()),
+        NodeKind::String(value) => serde_json::json!(["str", value]),
+        NodeKind::Form(items) => {
+            let string_template = matches!(
+                items.first().and_then(Node::as_symbol),
+                Some("str" | "str.lines")
+            );
+            serde_json::Value::Array(
+                items
+                    .iter()
+                    .enumerate()
+                    .map(|(index, item)| {
+                        if string_template && index > 0 {
+                            if let NodeKind::String(value) = &item.kind {
+                                return serde_json::json!(value);
+                            }
+                        }
+                        json_node(item)
+                    })
+                    .collect(),
+            )
+        }
+    }
+}
+
+fn format_lisp_module(nodes: &[Node]) -> String {
+    format!(
+        "{}\n",
+        nodes
+            .iter()
+            .map(format_lisp_node)
+            .collect::<Vec<_>>()
+            .join("\n")
+    )
+}
+
+fn format_lisp_node(node: &Node) -> String {
+    match &node.kind {
+        NodeKind::Null => "null".to_owned(),
+        NodeKind::Bool(value) => value.to_string(),
+        NodeKind::Int(value) => value.to_string(),
+        NodeKind::Float(value) => value.to_string(),
+        NodeKind::Symbol(value) => value.to_string(),
+        NodeKind::String(value) => serde_json::to_string(value.as_ref()).expect("valid string"),
+        NodeKind::Form(items)
+            if matches!(
+                items.first().and_then(Node::as_symbol),
+                Some("`" | "," | ",@")
+            ) && items.len() == 2 =>
+        {
+            format!(
+                "{}{}",
+                items[0].as_symbol().expect("quoted form symbol"),
+                format_lisp_node(&items[1])
+            )
+        }
+        NodeKind::Form(items) => format!(
+            "({})",
+            items
+                .iter()
+                .map(format_lisp_node)
+                .collect::<Vec<_>>()
+                .join(" ")
+        ),
+    }
+}
+
+fn format_yaml_node(node: &Node) -> String {
+    match &node.kind {
+        NodeKind::Null => "null".to_owned(),
+        NodeKind::Bool(value) => value.to_string(),
+        NodeKind::Int(value) => value.to_string(),
+        NodeKind::Float(value) => value.to_string(),
+        NodeKind::Symbol(value) => value.to_string(),
+        NodeKind::String(value) => serde_json::to_string(value.as_ref()).expect("valid string"),
+        NodeKind::Form(items) => format!(
+            "[{}]",
+            items
+                .iter()
+                .map(format_yaml_node)
+                .collect::<Vec<_>>()
+                .join(", ")
+        ),
     }
 }
 
@@ -264,8 +415,14 @@ fn object_json(value: Option<&Value>) -> Result<JsonValue, String> {
 }
 
 fn classes_json(value: Option<&Value>) -> Result<JsonValue, String> {
-    let Some(Value::Obj(classes)) = value else {
-        return object_json(value);
+    let Some(value) = value else {
+        return Ok(JsonValue::Array(vec![]));
+    };
+    let Value::Obj(classes) = value else {
+        return Err(format!(
+            "UI classes must be an object, got {}",
+            value.type_name()
+        ));
     };
     let classes = classes
         .iter()
