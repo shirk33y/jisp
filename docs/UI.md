@@ -158,7 +158,7 @@ capability contract lives in [UI_EFFECTS.md](UI_EFFECTS.md). A UI component
 remains a pure function of its supplied state and props.
 
 For development diagnostics, `PlaygroundSession.metrics()` reports render
-counts plus the latest JUIR slot, block, and component reuse counts. The
+counts plus the latest JUIR slot, block, keyed-item, and component reuse counts. The
 browser host separately records DOM mounts, replacements, text writes,
 element/child patches, and forwarded events. The playground exposes the latest
 decision in its status pill and both JSON payloads as that pill's tooltip.

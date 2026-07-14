@@ -5,8 +5,8 @@ use jisp_syntax_lisp::LispParser;
 use jisp_types::{Inferencer, TypedModule};
 
 use crate::{
-    changed_paths, compile, execute, execute_incremental, render_static_html, ChangeSet,
-    Dependency, DependencyPath, Node, Scalar, Slot,
+    changed_paths, compile, execute, execute_incremental, execute_incremental_cached,
+    render_static_html, ChangeSet, Dependency, DependencyPath, Node, Scalar, Slot,
 };
 
 fn typed(source: &str) -> TypedModule {
@@ -460,6 +460,182 @@ fn incremental_executor_matches_full_execution_across_block_updates() {
 }
 
 #[test]
+fn cached_incremental_executor_reuses_unchanged_each_items_after_a_list_update() {
+    let typed = typed(
+        r#"
+(component row (item)
+  (li
+    (key (. item "id"))
+    (button (on click (emit (. item "id"))) (text (. item "title")))))
+
+(component app (state)
+  (ul
+    (for item (. state "items")
+      (row item))))
+"#,
+    );
+    let program = compile(&typed).unwrap();
+    let before = app_state("Inbox", true, &["Plan", "Ship"]);
+    let after = app_state("Inbox", true, &["Plan", "Review"]);
+    let reordered = state_with_items(&[(2, "Review"), (1, "Plan")]);
+    let mut evaluator = Evaluator::new();
+    let loaded = evaluator.load_module(&typed.module).unwrap();
+    let ui_html = evaluator.root_env().lookup("ui.html").unwrap();
+
+    let first = execute_incremental_cached(
+        &program,
+        &mut evaluator,
+        &loaded.env,
+        "app",
+        std::slice::from_ref(&before),
+        None,
+        &ChangeSet {
+            unknown: true,
+            ..ChangeSet::default()
+        },
+    )
+    .unwrap();
+    let second = execute_incremental_cached(
+        &program,
+        &mut evaluator,
+        &loaded.env,
+        "app",
+        std::slice::from_ref(&after),
+        Some(&first),
+        &changed_paths("state", &before, &after),
+    )
+    .unwrap();
+    let full = execute(
+        &program,
+        &mut evaluator,
+        &loaded.env,
+        "app",
+        std::slice::from_ref(&after),
+    )
+    .unwrap();
+
+    assert_eq!(second.stats.reused_items, 1);
+    assert_eq!(
+        evaluator
+            .apply(
+                ui_html.clone(),
+                &[second.value.clone()],
+                typed.module.definitions[1].span
+            )
+            .unwrap()
+            .display_string(),
+        evaluator
+            .apply(ui_html.clone(), &[full], typed.module.definitions[1].span)
+            .unwrap()
+            .display_string()
+    );
+
+    let third = execute_incremental_cached(
+        &program,
+        &mut evaluator,
+        &loaded.env,
+        "app",
+        std::slice::from_ref(&reordered),
+        Some(&second),
+        &changed_paths("state", &after, &reordered),
+    )
+    .unwrap();
+    let full_reordered = execute(
+        &program,
+        &mut evaluator,
+        &loaded.env,
+        "app",
+        std::slice::from_ref(&reordered),
+    )
+    .unwrap();
+
+    assert_eq!(third.stats.reused_items, 2);
+    assert_eq!(
+        evaluator
+            .apply(
+                ui_html.clone(),
+                &[third.value],
+                typed.module.definitions[1].span
+            )
+            .unwrap()
+            .display_string(),
+        evaluator
+            .apply(ui_html, &[full_reordered], typed.module.definitions[1].span)
+            .unwrap()
+            .display_string()
+    );
+}
+
+#[test]
+fn cached_each_rows_rerender_when_an_external_body_dependency_changes() {
+    let typed = typed(
+        r#"
+(component app (state)
+  (ul
+    (for item (. state "items")
+      (li
+        (key (. item "id"))
+        (text (. state "title"))
+        (text (. item "title"))))))
+"#,
+    );
+    let program = compile(&typed).unwrap();
+    let before = app_state("Inbox", true, &["Plan", "Ship"]);
+    let after = app_state("Today", true, &["Plan", "Review"]);
+    let mut evaluator = Evaluator::new();
+    let loaded = evaluator.load_module(&typed.module).unwrap();
+
+    let first = execute_incremental_cached(
+        &program,
+        &mut evaluator,
+        &loaded.env,
+        "app",
+        std::slice::from_ref(&before),
+        None,
+        &ChangeSet {
+            unknown: true,
+            ..ChangeSet::default()
+        },
+    )
+    .unwrap();
+    let second = execute_incremental_cached(
+        &program,
+        &mut evaluator,
+        &loaded.env,
+        "app",
+        std::slice::from_ref(&after),
+        Some(&first),
+        &changed_paths("state", &before, &after),
+    )
+    .unwrap();
+    let full = execute(
+        &program,
+        &mut evaluator,
+        &loaded.env,
+        "app",
+        std::slice::from_ref(&after),
+    )
+    .unwrap();
+    let ui_html = evaluator.root_env().lookup("ui.html").unwrap();
+
+    assert_eq!(second.stats.reused_items, 0);
+    assert_eq!(
+        evaluator
+            .apply(
+                ui_html.clone(),
+                &[second.value],
+                typed.module.definitions[0].span
+            )
+            .unwrap()
+            .display_string(),
+        evaluator
+            .apply(ui_html, &[full], typed.module.definitions[0].span)
+            .unwrap()
+            .display_string()
+    );
+}
+
+#[test]
 fn compiles_a_conditional_component_root() {
     let program = compile(&typed(
         r#"
@@ -576,4 +752,21 @@ fn app_state(title: &str, show: bool, items: &[&str]) -> Value {
             ),
         ),
     ]))
+}
+
+fn state_with_items(items: &[(i64, &str)]) -> Value {
+    Value::Obj(indexmap::IndexMap::from([(
+        "items".to_owned(),
+        Value::List(
+            items
+                .iter()
+                .map(|(id, title)| {
+                    Value::Obj(indexmap::IndexMap::from([
+                        ("id".to_owned(), Value::Int(*id)),
+                        ("title".to_owned(), Value::string(*title)),
+                    ]))
+                })
+                .collect(),
+        ),
+    )]))
 }

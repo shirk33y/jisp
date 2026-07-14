@@ -152,6 +152,7 @@ pub fn changed_paths(root: impl Into<String>, before: &Value, after: &Value) -> 
 #[derive(Clone, Debug)]
 pub struct Event {
     pub handler: Expr,
+    pub dependencies: Vec<Dependency>,
     pub policy: EventPolicy,
     pub span: Span,
 }
@@ -309,12 +310,20 @@ pub struct ExecutionStats {
     pub evaluated_slots: usize,
     pub reused_slots: usize,
     pub reused_blocks: usize,
+    pub reused_items: usize,
     pub reused_components: usize,
 }
 
 pub struct Execution {
     pub value: Value,
     pub stats: ExecutionStats,
+    each_cache: BTreeMap<String, Vec<CachedEachItem>>,
+}
+
+#[derive(Clone)]
+struct CachedEachItem {
+    value: Value,
+    rendered: Value,
 }
 
 /// Execute JUIR while conservatively reusing unaffected scalar slots and
@@ -328,17 +337,59 @@ pub fn execute_incremental(
     previous: Option<&Value>,
     changes: &ChangeSet,
 ) -> Result<Execution, ExecuteError> {
+    execute_incremental_inner(
+        program, evaluator, module_env, component, arguments, previous, None, changes,
+    )
+}
+
+/// Execute JUIR with an execution cache from the prior turn. Besides scalar
+/// slots and whole blocks, this can retain rendered rows whose immutable item
+/// value is unchanged even when a keyed collection itself changed.
+pub fn execute_incremental_cached(
+    program: &Program,
+    evaluator: &mut Evaluator,
+    module_env: &Env,
+    component: &str,
+    arguments: &[Value],
+    previous: Option<&Execution>,
+    changes: &ChangeSet,
+) -> Result<Execution, ExecuteError> {
+    execute_incremental_inner(
+        program,
+        evaluator,
+        module_env,
+        component,
+        arguments,
+        previous.map(|execution| &execution.value),
+        previous.map(|execution| &execution.each_cache),
+        changes,
+    )
+}
+
+fn execute_incremental_inner(
+    program: &Program,
+    evaluator: &mut Evaluator,
+    module_env: &Env,
+    component: &str,
+    arguments: &[Value],
+    previous: Option<&Value>,
+    previous_each_cache: Option<&BTreeMap<String, Vec<CachedEachItem>>>,
+    changes: &ChangeSet,
+) -> Result<Execution, ExecuteError> {
     let mut executor = Executor {
         program,
         evaluator,
         module_env,
         changes,
         stats: ExecutionStats::default(),
+        previous_each_cache,
+        each_cache: BTreeMap::new(),
     };
-    let value = executor.component(component, arguments, previous)?;
+    let value = executor.component(component, arguments, previous, "root")?;
     Ok(Execution {
         value,
         stats: executor.stats,
+        each_cache: executor.each_cache,
     })
 }
 
@@ -364,11 +415,13 @@ impl Compiler<'_> {
             });
         }
         if let Some((binding, collection, body)) = each_parts(expr) {
+            let mut body_parameters = parameters.to_vec();
+            body_parameters.push(binding.to_owned());
             return Ok(Node::Each {
                 binding: binding.to_owned(),
                 collection: collection.clone(),
                 dependencies: expression_dependencies(collection, parameters),
-                body: Box::new(self.node(body, parameters)?),
+                body: Box::new(self.node(body, &body_parameters)?),
                 span: expr.span,
             });
         }
@@ -407,7 +460,7 @@ impl Compiler<'_> {
             attrs: self.slots(fields.get("attrs"), parameters)?,
             props: self.slots(fields.get("props"), parameters)?,
             classes: self.slots(fields.get("classes"), parameters)?,
-            events: self.events(fields.get("events"))?,
+            events: self.events(fields.get("events"), parameters)?,
             key: fields
                 .get("key")
                 .map(|expr| self.slot(expr, parameters))
@@ -453,7 +506,11 @@ impl Compiler<'_> {
             .collect()
     }
 
-    fn events(&self, expr: Option<&&Expr>) -> Result<IndexMap<String, Event>, CompileError> {
+    fn events(
+        &self,
+        expr: Option<&&Expr>,
+        parameters: &[String],
+    ) -> Result<IndexMap<String, Event>, CompileError> {
         let Some(expr) = expr else {
             return Ok(IndexMap::new());
         };
@@ -468,6 +525,7 @@ impl Compiler<'_> {
                     static_string(name)?,
                     Event {
                         span: descriptor.span,
+                        dependencies: expression_dependencies(&handler, parameters),
                         handler,
                         policy,
                     },
@@ -549,14 +607,30 @@ struct Executor<'a> {
     module_env: &'a Env,
     changes: &'a ChangeSet,
     stats: ExecutionStats,
+    previous_each_cache: Option<&'a BTreeMap<String, Vec<CachedEachItem>>>,
+    each_cache: BTreeMap<String, Vec<CachedEachItem>>,
 }
 
 impl Executor<'_> {
+    fn each_body_uses_only_stable_inputs(&self, body: &Node, binding: &str) -> bool {
+        if self.changes.unknown {
+            return false;
+        }
+        node_dependencies(body)
+            .into_iter()
+            .all(|dependency| match &dependency {
+                Dependency::Unknown => false,
+                Dependency::Path { root, .. } if root == binding => true,
+                Dependency::Path { .. } => !self.changes.affects(&[dependency]),
+            })
+    }
+
     fn component(
         &mut self,
         name: &str,
         arguments: &[Value],
         previous: Option<&Value>,
+        path: &str,
     ) -> Result<Value, ExecuteError> {
         let component = self.program.components.get(name).cloned().ok_or_else(|| {
             ExecuteError::UnknownComponent {
@@ -583,7 +657,7 @@ impl Executor<'_> {
         if let Some(rest) = &component.rest {
             env.define(rest.clone(), Value::List(arguments[expected..].to_vec()));
         }
-        self.node(&component.root, &env, previous)
+        self.node(&component.root, &env, previous, path)
     }
 
     fn node(
@@ -591,6 +665,7 @@ impl Executor<'_> {
         node: &Node,
         env: &Env,
         previous: Option<&Value>,
+        path: &str,
     ) -> Result<Value, ExecuteError> {
         match node {
             Node::Text(slot) => Ok(Value::Obj(IndexMap::from([
@@ -600,7 +675,7 @@ impl Executor<'_> {
                     self.slot(slot, env, previous.and_then(text_value))?,
                 ),
             ]))),
-            Node::Element(element) => self.element(element, env, previous),
+            Node::Element(element) => self.element(element, env, previous, path),
             Node::If {
                 condition,
                 then_branch,
@@ -608,9 +683,9 @@ impl Executor<'_> {
                 ..
             } => {
                 if self.evaluator.eval_in(condition, env)?.truthy() {
-                    self.node(then_branch, env, previous)
+                    self.node(then_branch, env, previous, path)
                 } else {
-                    self.node(else_branch, env, previous)
+                    self.node(else_branch, env, previous, path)
                 }
             }
             Node::Each {
@@ -624,6 +699,13 @@ impl Executor<'_> {
                 if !self.changes.affects(dependencies) {
                     if let Some(Value::List(previous)) = previous {
                         self.stats.reused_blocks += 1;
+                        if let Some(cache) = self
+                            .previous_each_cache
+                            .and_then(|cache| cache.get(path))
+                            .cloned()
+                        {
+                            self.each_cache.insert(path.to_owned(), cache);
+                        }
                         return Ok(Value::List(previous.clone()));
                     }
                 }
@@ -637,15 +719,42 @@ impl Executor<'_> {
                         ),
                     ));
                 };
-                values
-                    .into_iter()
-                    .map(|value| {
-                        let item_env = env.child();
-                        item_env.define(binding.clone(), value);
-                        self.node(body, &item_env, None)
-                    })
-                    .collect::<Result<Vec<_>, _>>()
-                    .map(Value::List)
+                let mut reusable = if self.each_body_uses_only_stable_inputs(body, binding) {
+                    self.previous_each_cache
+                        .and_then(|cache| cache.get(path))
+                        .cloned()
+                        .unwrap_or_default()
+                } else {
+                    vec![]
+                };
+                let mut cached = Vec::with_capacity(values.len());
+                let mut rendered = Vec::with_capacity(values.len());
+                for (index, value) in values.into_iter().enumerate() {
+                    if let Some(previous_index) = reusable
+                        .iter()
+                        .position(|previous| values_equal(&previous.value, &value))
+                    {
+                        let previous = reusable.remove(previous_index);
+                        self.stats.reused_items += 1;
+                        rendered.push(previous.rendered.clone());
+                        cached.push(CachedEachItem {
+                            value,
+                            rendered: previous.rendered,
+                        });
+                        continue;
+                    }
+                    let item_env = env.child();
+                    item_env.define(binding.clone(), value.clone());
+                    let rendered_item =
+                        self.node(body, &item_env, None, &format!("{path}.item.{index}"))?;
+                    cached.push(CachedEachItem {
+                        value,
+                        rendered: rendered_item.clone(),
+                    });
+                    rendered.push(rendered_item);
+                }
+                self.each_cache.insert(path.to_owned(), cached);
+                Ok(Value::List(rendered))
             }
             Node::ComponentCall {
                 name,
@@ -663,7 +772,7 @@ impl Executor<'_> {
                     .iter()
                     .map(|argument| self.evaluator.eval_in(argument, env).map_err(Into::into))
                     .collect::<Result<Vec<_>, ExecuteError>>()?;
-                self.component(name, &values, previous)
+                self.component(name, &values, previous, path)
             }
             Node::Dynamic {
                 expression,
@@ -687,6 +796,7 @@ impl Executor<'_> {
         element: &Element,
         env: &Env,
         previous: Option<&Value>,
+        path: &str,
     ) -> Result<Value, ExecuteError> {
         let previous_fields = previous.and_then(object_fields_value);
         let mut fields = IndexMap::new();
@@ -741,6 +851,7 @@ impl Executor<'_> {
                             child,
                             env,
                             previous_children.and_then(|children| children.get(index)),
+                            &format!("{path}.child.{index}"),
                         )
                     })
                     .collect::<Result<Vec<_>, _>>()
@@ -946,6 +1057,62 @@ fn values_equal(left: &Value, right: &Value) -> bool {
         // Treat them as changed, which is safe for an incremental scheduler.
         (Value::Closure(_), Value::Closure(_)) => false,
         _ => false,
+    }
+}
+
+fn node_dependencies(node: &Node) -> Vec<Dependency> {
+    let mut dependencies = vec![];
+    append_node_dependencies(node, &mut dependencies);
+    dependencies
+}
+
+fn append_node_dependencies(node: &Node, output: &mut Vec<Dependency>) {
+    match node {
+        Node::Text(slot) => append_slot_dependencies(slot, output),
+        Node::Element(element) => {
+            for slot in element
+                .attrs
+                .values()
+                .chain(element.props.values())
+                .chain(element.classes.values())
+            {
+                append_slot_dependencies(slot, output);
+            }
+            if let Some(key) = &element.key {
+                append_slot_dependencies(key, output);
+            }
+            for event in element.events.values() {
+                output.extend(event.dependencies.iter().cloned());
+            }
+            for child in &element.children {
+                append_node_dependencies(child, output);
+            }
+        }
+        Node::If {
+            dependencies,
+            then_branch,
+            else_branch,
+            ..
+        } => {
+            output.extend(dependencies.iter().cloned());
+            append_node_dependencies(then_branch, output);
+            append_node_dependencies(else_branch, output);
+        }
+        Node::Each {
+            dependencies, body, ..
+        } => {
+            output.extend(dependencies.iter().cloned());
+            append_node_dependencies(body, output);
+        }
+        Node::ComponentCall { dependencies, .. } | Node::Dynamic { dependencies, .. } => {
+            output.extend(dependencies.iter().cloned());
+        }
+    }
+}
+
+fn append_slot_dependencies(slot: &Slot, output: &mut Vec<Dependency>) {
+    if let Slot::Dynamic { dependencies, .. } = slot {
+        output.extend(dependencies.iter().cloned());
     }
 }
 

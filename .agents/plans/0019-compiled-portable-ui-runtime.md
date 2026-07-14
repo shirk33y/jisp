@@ -24,8 +24,10 @@ as whole subtrees. The playground surfaces per-render reuse/skip diagnostics
 from the Wasm executor plus DOM mount/replacement/write counters from the
 browser host. Browser event updates now receive a batched structural patch
 protocol rather than a complete tree; a full snapshot is reserved for initial
-mount and recovery. Per-item keyed-block invalidation remains the next M3
-milestone.
+mount and recovery. Keyed `for` blocks also retain rows whose immutable item
+value is unchanged when a collection changes or reorders; a changed external
+dependency still conservatively rerenders every affected row. The cache is
+internal to the JUIR executor and does not alter the structural-tree contract.
 M4's pre-implementation ownership and capability contract is documented in
 [`docs/UI_EFFECTS.md`](../../docs/UI_EFFECTS.md): effects remain reducer data,
 carry stable owner/id/generation identity, and require deterministic fake-host

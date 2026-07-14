@@ -185,7 +185,7 @@ function setRuntimeStatus(label) {
   const metrics = JSON.parse(session.metrics());
   const execution = metrics.execution;
   const reused = execution
-    ? execution.reusedSlots + execution.reusedBlocks + execution.reusedComponents
+    ? execution.reusedSlots + execution.reusedBlocks + execution.reusedItems + execution.reusedComponents
     : 0;
   const detail = metrics.lastRenderSkipped
     ? "render skipped"

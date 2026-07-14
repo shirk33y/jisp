@@ -8,8 +8,8 @@ use jisp::jisp_eval::{Evaluator, Value};
 use jisp::jisp_types::Inferencer;
 #[cfg(feature = "juir")]
 use jisp::jisp_ui::{
-    changed_paths, compile as compile_juir, execute_incremental, ChangeSet, ExecutionStats,
-    Program as JuirProgram,
+    changed_paths, compile as compile_juir, execute_incremental_cached, ChangeSet,
+    Execution as JuirExecution, ExecutionStats, Program as JuirProgram,
 };
 use jisp_syntax_json::JsonParser;
 use jisp_syntax_lisp::LispParser;
@@ -69,6 +69,8 @@ struct Runtime {
     changes: ChangeSet,
     #[cfg(feature = "juir")]
     last_execution: ExecutionStats,
+    #[cfg(feature = "juir")]
+    last_juir_execution: Option<JuirExecution>,
     handlers: Vec<Value>,
     last_render: Option<String>,
     last_tree: Option<JsonValue>,
@@ -197,6 +199,8 @@ impl PlaygroundSession {
             },
             #[cfg(feature = "juir")]
             last_execution: ExecutionStats::default(),
+            #[cfg(feature = "juir")]
+            last_juir_execution: None,
             handlers: vec![],
             last_render: None,
             last_tree: None,
@@ -274,21 +278,22 @@ impl PlaygroundSession {
             .as_mut()
             .ok_or_else(|| "load a ui.app program before rendering".to_owned())?;
         #[cfg(feature = "juir")]
-        let execution = execute_incremental(
+        let execution = execute_incremental_cached(
             &runtime.program,
             &mut runtime.evaluator,
             &runtime.module_env,
             &runtime.component,
             std::slice::from_ref(&runtime.state),
-            runtime.last_value.as_ref(),
+            runtime.last_juir_execution.as_ref(),
             &runtime.changes,
         )
         .map_err(|error| error.to_string())?;
         #[cfg(feature = "juir")]
-        let vnode = execution.value;
+        let vnode = execution.value.clone();
         #[cfg(feature = "juir")]
         {
-            runtime.last_execution = execution.stats;
+            runtime.last_execution = execution.stats.clone();
+            runtime.last_juir_execution = Some(execution);
         }
         #[cfg(not(feature = "juir"))]
         let vnode = runtime
@@ -338,6 +343,7 @@ impl PlaygroundSession {
                 "evaluatedSlots": runtime.last_execution.evaluated_slots,
                 "reusedSlots": runtime.last_execution.reused_slots,
                 "reusedBlocks": runtime.last_execution.reused_blocks,
+                "reusedItems": runtime.last_execution.reused_items,
                 "reusedComponents": runtime.last_execution.reused_components,
             },
         });

@@ -414,6 +414,15 @@ fn update_todo_example_updates_draft_then_adds_a_task() {
     )
     .unwrap();
     assert!(contains_text(&added, "Review docs"));
+
+    #[cfg(feature = "juir")]
+    {
+        let metrics: Value = serde_json::from_str(&session.metrics_json().unwrap()).unwrap();
+        assert!(
+            metrics["execution"]["reusedItems"].as_u64().unwrap() >= 3,
+            "adding one todo should retain the already rendered keyed rows"
+        );
+    }
 }
 
 #[test]
