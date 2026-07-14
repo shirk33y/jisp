@@ -1,5 +1,7 @@
-use super::{format_source, parse_source, render_html_source, PlaygroundSession};
-use serde_json::Value;
+use super::{
+    collect_tree_patches, format_source, parse_source, render_html_source, PlaygroundSession,
+};
+use serde_json::{json, Value};
 
 #[test]
 fn renders_a_component_program_with_the_real_interpreter() {
@@ -87,6 +89,33 @@ fn update_session_emits_local_tree_patches() {
     assert_eq!(update["patches"][0]["op"], "text");
     assert_eq!(update["patches"][0]["path"], "0.0");
     assert_eq!(update["patches"][0]["value"], "1");
+}
+
+#[test]
+fn tree_patches_reconcile_keyed_reorders_at_the_collection_boundary() {
+    let before = json!({
+        "kind": "element", "tag": "ul", "key": null,
+        "attrs": {}, "props": {}, "classes": [], "events": {},
+        "children": [
+            { "kind": "element", "tag": "li", "key": 1, "attrs": {}, "props": {}, "classes": [], "events": {}, "children": [] },
+            { "kind": "element", "tag": "li", "key": 2, "attrs": {}, "props": {}, "classes": [], "events": {}, "children": [] }
+        ]
+    });
+    let after = json!({
+        "kind": "element", "tag": "ul", "key": null,
+        "attrs": {}, "props": {}, "classes": [], "events": {},
+        "children": [
+            { "kind": "element", "tag": "li", "key": 2, "attrs": {}, "props": {}, "classes": [], "events": {}, "children": [] },
+            { "kind": "element", "tag": "li", "key": 1, "attrs": {}, "props": {}, "classes": [], "events": {}, "children": [] }
+        ]
+    });
+    let mut patches = vec![];
+    collect_tree_patches(&before, &after, "0", &mut patches);
+
+    assert_eq!(patches.len(), 1);
+    assert_eq!(patches[0]["op"], "children");
+    assert_eq!(patches[0]["path"], "0");
+    assert_eq!(patches[0]["trees"][0]["key"], 2);
 }
 
 #[test]
