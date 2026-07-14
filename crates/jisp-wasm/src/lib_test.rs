@@ -29,10 +29,9 @@ fn renders_a_component_program_with_the_real_interpreter() {
 #[test]
 fn update_session_rebuilds_the_view_after_an_emitted_action() {
     let mut session = PlaygroundSession::new();
-    let first: Value = serde_json::from_str(
-        &session
-            .load_source(
-                r#"
+    let first_text = session
+        .load_source(
+            r#"
 (def init (obj "count" 0))
 
 (defn update (state next-count)
@@ -45,16 +44,44 @@ fn update_session_rebuilds_the_view_after_an_emitted_action() {
 
 (ui.app init update counter)
 "#,
-            )
-            .unwrap(),
-    )
-    .unwrap();
+        )
+        .unwrap();
+    let first: Value = serde_json::from_str(&first_text).unwrap();
     assert_eq!(first["children"][0]["value"], "Count: 0");
     assert_eq!(first["events"]["click"], 0);
 
     let second: Value =
         serde_json::from_str(&session.dispatch_event(0, r#"{"type":"click"}"#).unwrap()).unwrap();
     assert_eq!(second["children"][0]["value"], "Count: 1");
+}
+
+#[cfg(feature = "juir")]
+#[test]
+fn juir_reuses_the_previous_tree_when_update_returns_the_same_state() {
+    let mut session = PlaygroundSession::new();
+    let first_text = session
+        .load_source(
+            r#"
+(def init (obj "count" 0))
+(defn update (state action) state)
+(component app (state)
+  (button
+    (on click (emit null))
+    (text (str.from (. state "count")))))
+(ui.app init update app)
+"#,
+        )
+        .unwrap();
+    let first: Value = serde_json::from_str(&first_text).unwrap();
+    let handler = usize::try_from(first["events"]["click"].as_u64().unwrap()).unwrap();
+    assert_eq!(session.runtime.as_ref().unwrap().renders, 1);
+
+    let second = session
+        .dispatch_event(handler, r#"{"type":"click"}"#)
+        .unwrap();
+
+    assert_eq!(second, first_text);
+    assert_eq!(session.runtime.as_ref().unwrap().renders, 1);
 }
 
 #[test]

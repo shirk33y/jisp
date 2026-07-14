@@ -4,7 +4,10 @@ use jisp_ir::Lowerer;
 use jisp_syntax_lisp::LispParser;
 use jisp_types::{Inferencer, TypedModule};
 
-use crate::{compile, execute, render_static_html, Dependency, Node, Scalar, Slot};
+use crate::{
+    changed_paths, compile, execute, render_static_html, Dependency, DependencyPath, Node, Scalar,
+    Slot,
+};
 
 fn typed(source: &str) -> TypedModule {
     let nodes = LispParser.parse_module(SourceId(0), source).unwrap();
@@ -249,4 +252,45 @@ fn executor_evaluates_event_handlers_in_component_scope() {
         panic!("expected event bindings");
     };
     assert!(matches!(events.get("click"), Some(Value::Closure(_))));
+}
+
+#[test]
+fn changed_paths_only_invalidate_intersecting_static_dependencies() {
+    let before = Value::Obj(indexmap::IndexMap::from([
+        ("title".to_owned(), Value::string("Plan")),
+        ("count".to_owned(), Value::Int(1)),
+        ("todos".to_owned(), Value::List(vec![Value::Int(1)])),
+    ]));
+    let after = Value::Obj(indexmap::IndexMap::from([
+        ("title".to_owned(), Value::string("Plan")),
+        ("count".to_owned(), Value::Int(2)),
+        (
+            "todos".to_owned(),
+            Value::List(vec![Value::Int(1), Value::Int(2)]),
+        ),
+    ]));
+
+    let changes = changed_paths("state", &before, &after);
+    assert_eq!(
+        changes.paths,
+        std::collections::BTreeSet::from([
+            DependencyPath {
+                root: "state".to_owned(),
+                fields: vec!["count".to_owned()],
+            },
+            DependencyPath {
+                root: "state".to_owned(),
+                fields: vec!["todos".to_owned()],
+            },
+        ])
+    );
+    assert!(!changes.affects(&[Dependency::Path {
+        root: "state".to_owned(),
+        fields: vec!["title".to_owned()],
+    }]));
+    assert!(changes.affects(&[Dependency::Path {
+        root: "state".to_owned(),
+        fields: vec!["todos".to_owned(), "done".to_owned()],
+    }]));
+    assert!(changes.affects(&[Dependency::Unknown]));
 }

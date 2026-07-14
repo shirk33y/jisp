@@ -101,6 +101,46 @@ pub enum Dependency {
     Unknown,
 }
 
+/// A conservative set of state paths changed by one reducer turn.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct ChangeSet {
+    pub paths: std::collections::BTreeSet<DependencyPath>,
+    pub unknown: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub struct DependencyPath {
+    pub root: String,
+    pub fields: Vec<String>,
+}
+
+impl ChangeSet {
+    /// Returns whether reevaluating an expression with `dependencies` is
+    /// necessary. `Unknown` on either side deliberately disables skipping.
+    pub fn affects(&self, dependencies: &[Dependency]) -> bool {
+        self.unknown
+            || dependencies.iter().any(|dependency| match dependency {
+                Dependency::Unknown => true,
+                Dependency::Path { root, fields } => self.paths.iter().any(|change| {
+                    change.root == *root
+                        && (is_path_prefix(&change.fields, fields)
+                            || is_path_prefix(fields, &change.fields))
+                }),
+            })
+    }
+}
+
+/// Compare two immutable Jisp values under one root parameter. List changes
+/// intentionally collapse to their containing field path for now; that causes
+/// a keyed `for` block to rerun conservatively until per-item invalidation is
+/// implemented.
+pub fn changed_paths(root: impl Into<String>, before: &Value, after: &Value) -> ChangeSet {
+    let root = root.into();
+    let mut changes = ChangeSet::default();
+    collect_changed_paths(before, after, &root, &mut Vec::new(), &mut changes);
+    changes
+}
+
 #[derive(Clone, Debug)]
 pub struct Event {
     pub handler: Expr,
@@ -567,6 +607,115 @@ fn scalar_value(value: &Scalar) -> Value {
         Scalar::Int(value) => Value::Int(*value),
         Scalar::Float(value) => Value::Float(*value),
         Scalar::Str(value) => Value::string(value.clone()),
+    }
+}
+
+fn is_path_prefix(prefix: &[String], path: &[String]) -> bool {
+    prefix.len() <= path.len() && prefix.iter().zip(path).all(|(left, right)| left == right)
+}
+
+fn collect_changed_paths(
+    before: &Value,
+    after: &Value,
+    root: &str,
+    fields: &mut Vec<String>,
+    changes: &mut ChangeSet,
+) {
+    match (before, after) {
+        (Value::Obj(before), Value::Obj(after)) => {
+            let keys = before
+                .keys()
+                .chain(after.keys())
+                .collect::<std::collections::BTreeSet<_>>();
+            for key in keys {
+                let Some(before) = before.get(key) else {
+                    fields.push(key.clone());
+                    record_change(root, fields, changes);
+                    fields.pop();
+                    continue;
+                };
+                let Some(after) = after.get(key) else {
+                    fields.push(key.clone());
+                    record_change(root, fields, changes);
+                    fields.pop();
+                    continue;
+                };
+                fields.push(key.clone());
+                collect_changed_paths(before, after, root, fields, changes);
+                fields.pop();
+            }
+        }
+        (Value::List(before), Value::List(after)) => {
+            if before.len() != after.len()
+                || before
+                    .iter()
+                    .zip(after)
+                    .any(|(before, after)| !values_equal(before, after))
+            {
+                record_change(root, fields, changes);
+            }
+        }
+        _ if values_equal(before, after) => {}
+        _ => record_change(root, fields, changes),
+    }
+}
+
+fn record_change(root: &str, fields: &[String], changes: &mut ChangeSet) {
+    changes.paths.insert(DependencyPath {
+        root: root.to_owned(),
+        fields: fields.to_vec(),
+    });
+}
+
+fn values_equal(left: &Value, right: &Value) -> bool {
+    match (left, right) {
+        (Value::Null, Value::Null) => true,
+        (Value::Bool(left), Value::Bool(right)) => left == right,
+        (Value::Int(left), Value::Int(right)) => left == right,
+        (Value::BigInt(left), Value::BigInt(right)) => left == right,
+        (Value::Float(left), Value::Float(right)) => left.to_bits() == right.to_bits(),
+        (Value::Str(left), Value::Str(right)) => left == right,
+        (Value::List(left), Value::List(right)) => {
+            left.len() == right.len()
+                && left
+                    .iter()
+                    .zip(right)
+                    .all(|(left, right)| values_equal(left, right))
+        }
+        (Value::Obj(left), Value::Obj(right)) => {
+            left.len() == right.len()
+                && left.iter().all(|(key, left)| {
+                    right
+                        .get(key)
+                        .is_some_and(|right| values_equal(left, right))
+                })
+        }
+        (
+            Value::Variant {
+                tag: left_tag,
+                fields: left_fields,
+            },
+            Value::Variant {
+                tag: right_tag,
+                fields: right_fields,
+            },
+        ) => {
+            left_tag == right_tag
+                && left_fields.len() == right_fields.len()
+                && left_fields
+                    .iter()
+                    .zip(right_fields)
+                    .all(|(left, right)| values_equal(left, right))
+        }
+        (Value::Builtin(left), Value::Builtin(right)) => left.name == right.name,
+        (Value::Constructor(left), Value::Constructor(right)) => {
+            left.name == right.name && left.arity == right.arity
+        }
+        (Value::Uninitialized(left), Value::Uninitialized(right)) => left == right,
+        // Closures could observe lexical state that is not structurally exposed.
+        // Treat them as changed, which is safe for an incremental scheduler.
+        (Value::Closure(_), Value::Closure(_)) => false,
+        _ => false,
     }
 }
 

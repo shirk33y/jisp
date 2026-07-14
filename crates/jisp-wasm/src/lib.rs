@@ -7,7 +7,9 @@ use jisp::jisp_eval::{Evaluator, Value};
 #[cfg(feature = "juir")]
 use jisp::jisp_types::Inferencer;
 #[cfg(feature = "juir")]
-use jisp::jisp_ui::{compile as compile_juir, execute as execute_juir, Program as JuirProgram};
+use jisp::jisp_ui::{
+    changed_paths, compile as compile_juir, execute as execute_juir, Program as JuirProgram,
+};
 use jisp_syntax_json::JsonParser;
 use jisp_syntax_lisp::LispParser;
 use jisp_syntax_ws::WsParser;
@@ -49,6 +51,8 @@ struct Runtime {
     #[cfg(feature = "juir")]
     component: String,
     handlers: Vec<Value>,
+    last_render: Option<String>,
+    renders: usize,
     span: Span,
 }
 
@@ -135,6 +139,8 @@ impl PlaygroundSession {
             #[cfg(feature = "juir")]
             component: app.app,
             handlers: vec![],
+            last_render: None,
+            renders: 0,
             span: app.span,
         });
         self.render()
@@ -157,6 +163,8 @@ impl PlaygroundSession {
             .evaluator
             .apply(handler, &[event], runtime.span)
             .map_err(|error| error.to_string())?;
+        #[cfg(feature = "juir")]
+        let previous_state = runtime.state.clone();
         runtime.state = runtime
             .evaluator
             .apply(
@@ -165,6 +173,16 @@ impl PlaygroundSession {
                 runtime.span,
             )
             .map_err(|error| error.to_string())?;
+        #[cfg(feature = "juir")]
+        if changed_paths("state", &previous_state, &runtime.state)
+            .paths
+            .is_empty()
+        {
+            return runtime
+                .last_render
+                .clone()
+                .ok_or_else(|| "JUIR runtime has no initial render to reuse".to_owned());
+        }
         self.render()
     }
 
@@ -194,7 +212,10 @@ impl PlaygroundSession {
         let mut handlers = vec![];
         let tree = ui_node(&vnode, &mut handlers)?;
         runtime.handlers = handlers;
-        serde_json::to_string(&tree).map_err(|error| error.to_string())
+        let rendered = serde_json::to_string(&tree).map_err(|error| error.to_string())?;
+        runtime.renders += 1;
+        runtime.last_render = Some(rendered.clone());
+        Ok(rendered)
     }
 }
 
