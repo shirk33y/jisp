@@ -248,10 +248,7 @@ fn resource_reconciliation_is_atomic_across_commands_and_subscriptions() {
 
 #[test]
 fn disposing_a_component_cancels_each_owned_resource_once() {
-    let owner = Owner::Component {
-        template: "todo-row".to_owned(),
-        key: "42".to_owned(),
-    };
+    let owner = Owner::component("todo-row", "42");
     let mut host = FakeHost::with_capabilities([storage(), timer()]);
     host.reconcile_resources(DesiredResources {
         commands: vec![Command {
@@ -275,6 +272,46 @@ fn disposing_a_component_cancels_each_owned_resource_once() {
     assert_eq!(cancelled, 2);
     assert!(!host.deliver(Owner::App, "save:1", 1));
     assert!(!host.deliver_subscription(owner, "refresh", 2, Delivery::Ok(json!(null))));
+}
+
+#[test]
+fn nested_owner_paths_keep_same_keyed_component_instances_independent() {
+    let left_pane = Owner::App.child("pane", "left");
+    let right_pane = Owner::App.child("pane", "right");
+    let left = left_pane.child("todo-row", "42");
+    let right = right_pane.child("todo-row", "42");
+    assert_ne!(left, right);
+    assert_eq!(
+        left.component_path().unwrap(),
+        [
+            super::ComponentInstance {
+                template: "pane".to_owned(),
+                key: "left".to_owned(),
+            },
+            super::ComponentInstance {
+                template: "todo-row".to_owned(),
+                key: "42".to_owned(),
+            },
+        ]
+    );
+
+    let mut host = FakeHost::with_capabilities([timer()]);
+    host.reconcile_subscriptions(vec![
+        subscription(left.clone(), 1000, true),
+        subscription(right.clone(), 1000, true),
+    ])
+    .unwrap();
+
+    host.dispose(&left_pane);
+    assert!(host.deliver_subscription(right.clone(), "refresh", 2, Delivery::Ok(json!(1))));
+    assert!(!host.deliver_subscription(left.clone(), "refresh", 1, Delivery::Ok(json!(1))));
+    assert_eq!(
+        host.trace
+            .iter()
+            .filter(|entry| matches!(entry, Trace::Cancel { owner, .. } if owner == &left))
+            .count(),
+        1
+    );
 }
 
 #[test]

@@ -62,6 +62,9 @@ successes or stable errors through declared action templates and the ordinary
 reducer. The browser Wasm session exposes declarations without executing them;
 its fixture-only test entry point runs that deterministic simulation. Real host
 execution and component-local state remain subsequent M4 work.
+The fake host's component owner identity is now a complete ordered ancestry,
+not merely the terminal `(template, key)`, so equal keyed descendants beneath
+different parents cannot collide before local ownership is exposed in source.
 `PlaygroundSession` now also exposes an opt-in generation-safe effect-host
 boundary: an embedding host configures immutable versioned capabilities, reads
 active resource generations from `jisp-ui-resources/1`, and returns an

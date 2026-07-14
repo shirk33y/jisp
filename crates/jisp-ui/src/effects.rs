@@ -15,12 +15,70 @@ pub use effects_decode::{decode_resources, DecodeError, ReconcileError};
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Owner {
     App,
-    /// An identified component instance. This is a lifecycle identity only;
-    /// component-local Jisp state is not implemented yet.
+    /// An identified component instance path. The full ancestry is part of the
+    /// identity: two independently mounted `todo-row` components may use the
+    /// same key without sharing local resources. This is a lifecycle identity
+    /// only; component-local Jisp state is not implemented yet.
     Component {
-        template: String,
-        key: String,
+        path: Vec<ComponentInstance>,
     },
+}
+
+/// One stable segment of a component instance owner path.
+///
+/// `key` is supplied by a keyed dynamic parent. A later local-state surface
+/// may derive a static call-site identity outside dynamic lists, but it must
+/// never fall back to a list position for a repeated child.
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub struct ComponentInstance {
+    pub template: String,
+    pub key: String,
+}
+
+impl Owner {
+    /// Create the first component segment below the app root.
+    pub fn component(template: impl Into<String>, key: impl Into<String>) -> Self {
+        Self::Component {
+            path: vec![ComponentInstance {
+                template: template.into(),
+                key: key.into(),
+            }],
+        }
+    }
+
+    /// Create a nested component owner while retaining the complete ancestry.
+    pub fn child(&self, template: impl Into<String>, key: impl Into<String>) -> Self {
+        let mut path = match self {
+            Self::App => vec![],
+            Self::Component { path } => path.clone(),
+        };
+        path.push(ComponentInstance {
+            template: template.into(),
+            key: key.into(),
+        });
+        Self::Component { path }
+    }
+
+    /// Return the complete component ancestry, if this is not the app root.
+    pub fn component_path(&self) -> Option<&[ComponentInstance]> {
+        match self {
+            Self::App => None,
+            Self::Component { path } => Some(path),
+        }
+    }
+
+    fn is_same_or_descendant_of(&self, ancestor: &Self) -> bool {
+        match (self, ancestor) {
+            (_, Self::App) => true,
+            (Self::App, Self::Component { .. }) => false,
+            (
+                Self::Component { path },
+                Self::Component {
+                    path: ancestor_path,
+                },
+            ) => path.starts_with(ancestor_path),
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -496,9 +554,9 @@ impl FakeHost {
         self.deliver_subscription_action(owner, id, generation, result)
     }
 
-    /// Cancels every resource owned by precisely this app/component instance.
-    /// It is idempotent, so unmount paths can call it exactly once without
-    /// needing host-specific bookkeeping.
+    /// Cancels every resource in this app/component ownership subtree. It is
+    /// idempotent, so unmount paths can dispose a parent once without needing
+    /// separate bookkeeping for every descendant instance.
     pub fn dispose(&mut self, owner: &Owner) {
         Self::dispose_map(&mut self.commands, owner, &mut self.trace);
         Self::dispose_map(&mut self.subscriptions, owner, &mut self.trace);
@@ -622,7 +680,7 @@ impl FakeHost {
     ) {
         let keys = active
             .keys()
-            .filter(|(active_owner, _)| active_owner == owner)
+            .filter(|(active_owner, _)| active_owner.is_same_or_descendant_of(owner))
             .cloned()
             .collect::<Vec<_>>();
         for key in keys {

@@ -106,16 +106,18 @@ not cancel underlying work.
 
 A subscription is a desired long-lived event source, not a command that runs
 forever. It uses the same identity/reconciliation rules and yields many actions
-until removed. Initially only `app` owns resources. Future local resources use:
+until removed. Initially only `app` owns resources. Future local resources use a
+complete, not leaf-only, instance path:
 
 ```text
 OwnerPath = app | app / Component(template-id, key) / ...
 ```
 
-Unkeyed dynamic lists cannot own local state, commands, or subscriptions. A
-keyed `for` retains an instance on moves, disposes its resources once on
-removal, and replaces it when component type changes. This avoids hook-order
-semantics.
+The entire ancestry is part of the key, so two `todo-row` instances with key
+`"42"` below different parent components cannot collide. Unkeyed dynamic lists
+cannot own local state, commands, or subscriptions. A keyed `for` retains an
+instance on moves, disposes its resources once on removal, and replaces it when
+component type changes. This avoids hook-order semantics.
 
 ## Capability negotiation and testing
 
@@ -140,9 +142,10 @@ rejects duplicate `(kind, owner, id)` triples atomically, preserves equal active
 requests, requires explicit replacement permission, and ignores a completion
 whose generation is no longer active. `reconcile_resources` validates both
 desired lists before changing either one. `dispose(owner)` cancels every command
-and subscription of exactly that keyed component/app owner and is idempotent.
-It is an in-memory reference implementation, not a browser or native capability
-provider.
+and subscription in that full keyed component/app ownership subtree and is
+idempotent. Disposing an ancestor therefore also disposes its descendants, but
+not a sibling with the same terminal `(template, key)`. It is an in-memory
+reference implementation, not a browser or native capability provider.
 
 Tests cover success/failure, duplicate id, replacement, late completion,
 owner disposal, subscription removal, cross-kind atomic validation, and
