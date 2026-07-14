@@ -184,6 +184,62 @@ the event payload projection, and a Jisp action expression. FFI-backed explicit
 handlers remain an eventual, capability-gated escape hatch; they are not part
 of portable UI semantics.
 
+### Event cancellation and host effects
+
+`preventDefault` and propagation control are **synchronous host policies**, not
+reducer effects. A reducer receives an already-projected, JSON-shaped event
+value, which is intentionally detached from the browser/native event object.
+By then a browser default action may already have run, and an async, remote, or
+out-of-process host cannot retroactively cancel it. Dioxus documents this exact
+constraint for `prevent_default`; it is unavailable to its websocket LiveView
+renderer because it must happen during native event dispatch. React and the DOM
+also distinguish cancellation from propagation: stopping propagation does not
+cancel the default action, and vice versa. [Dioxus event API](https://docs.rs/dioxus/latest/dioxus/prelude/struct.Event.html), [React event guide](https://react.dev/learn/responding-to-events), [MDN DOM events](https://developer.mozilla.org/en-US/docs/Web/API/Document_Object_Model/Events).
+
+Therefore the portable surface should use declarative, statically visible
+metadata on `on`, evaluated by the host before it sends an action to `update`:
+
+```lisp
+(button
+  (on click (stop-propagation) (emit (MenuToggle menu.id)))
+  (text menu.title))
+
+(form
+  (on submit (prevent-default) (emit (Save draft)))
+  ...)
+```
+
+The lowering accepts at most one handler expression and the opt-in modifiers
+`prevent-default`, `stop-propagation`, and, only when a host supports it,
+`capture`. Their order is not semantic. A named pure action builder remains
+valid, but it receives the portable event snapshot, not a host object:
+
+```lisp
+(defn menu-click (event) (MenuToggle menu.id))
+(button (on click (stop-propagation) menu-click) (text menu.title))
+```
+
+The per-dispatch order is: host applies supported policies synchronously;
+projects the safe event payload; evaluates the Jisp handler; sends its action
+to `update`; then executes any commands returned by `update`. A host must
+diagnose a required unsupported policy rather than silently ignore it. `capture`
+is deliberately advanced/rare (primarily router and analytics use), while
+`stop-immediate-propagation`, arbitrary DOM method calls, host event object
+storage, and arbitrary view-side FFI are excluded from portable Jisp. The DOM
+has separate same-target listener ordering semantics, so exposing
+`stop-immediate-propagation` would create a portability trap.
+
+This is intentionally less flexible than React's
+`event => { event.stopPropagation(); dispatch(...) }`: React handlers are
+host-language closures over a synthetic DOM event. That flexibility is useful
+inside a browser app, but it would make a Jisp UI program browser-specific,
+non-serializable, and hard to execute on native, SSR, or remote hosts. If a
+native extension genuinely needs imperative handling, it belongs in an explicit
+host capability with a documented fallback, never in `view` or a normal
+portable event handler. Network, timers, storage, navigation, focus, clipboard,
+and FFI likewise belong to data commands/subscriptions owned by `update`, not
+to an event callback or view.
+
 ### Components and identity
 
 Keep ordinary `(component name (args...) root)` calls valid. Add an opt-in
@@ -228,7 +284,7 @@ wire encoding are implementation details, but it must express the following.
 | `IfBlock` | Anchored conditional region with mount/update/dispose branches. |
 | `EachBlock` | Anchored keyed collection with per-item template and key expression. |
 | `ComponentCall` | Mounted child component with stable input slots and identity. |
-| `Event` | Event type, a safe payload projection, and an action expression. |
+| `Event` | Event type, required synchronous policy, safe payload projection, and action expression. |
 | `Anchor` | Host-neutral position at which a dynamic region can be mounted. |
 | `SourceMap` | Source span and component/template provenance for diagnostics/tools. |
 
@@ -296,7 +352,8 @@ The first production executor should:
 - use comment or equivalent anchors for `if` and `for` regions;
 - reconcile keyed blocks with a stable `key -> instance` map;
 - delegate serializable events from the root where compatible with the event
-  type, while preserving required DOM event semantics;
+  type, while preserving required DOM event semantics; install a direct listener
+  when a required synchronous policy or non-delegatable event needs one;
 - preserve browser-controlled input values, focus, selection, and scroll unless
   the Jisp program intentionally updates the relevant property.
 
@@ -418,7 +475,8 @@ problems before deeper compiler work.
 
 - Add a UI-specific typed lowering pass after Core IR/type inference.
 - Compile static elements, text, static attrs/classes, dynamic scalar slots,
-  event descriptors, source maps, and component calls into JUIR.
+  event descriptors (including cancellation/propagation policy), source maps,
+  and component calls into JUIR.
 - Implement a structural/JUIR test executor and an initial DOM executor.
 - Use the JUIR executor behind a feature flag in the playground.
 
@@ -455,6 +513,10 @@ problems before deeper compiler work.
 
 - Design a capability-based command/subscription protocol and its type-level
   representation.
+- Keep host-event cancellation separate from commands: `prevent-default`,
+  `stop-propagation`, and supported capture policy run synchronously at event
+  dispatch; navigation, focus, clipboard, network, timers, storage, and FFI
+  are explicit command capabilities with ownership and fallbacks.
 - Add deterministic fake hosts for tests and explicit cancellation/disposal.
 - Introduce opt-in component-local state only after instance identity and
   unmount semantics are proven.
