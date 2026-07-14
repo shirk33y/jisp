@@ -331,10 +331,32 @@ pub fn environment() -> BTreeMap<String, Scheme> {
         &mut env,
         "ui.result",
         scheme(
-            vec![0, 1, 2],
+            vec![0],
             fun(
-                vec![var(0), list(var(1)), list(var(2))],
+                vec![var(0), list(ui_command()), list(ui_subscription())],
                 ui_update_result(var(0)),
+            ),
+        ),
+    );
+    add(
+        &mut env,
+        "ui.command",
+        scheme(
+            vec![0],
+            fun(
+                vec![Type::Str, Type::Str, Type::Int, var(0), Type::Bool],
+                ui_command(),
+            ),
+        ),
+    );
+    add(
+        &mut env,
+        "ui.subscription",
+        scheme(
+            vec![0],
+            fun(
+                vec![Type::Str, Type::Str, Type::Int, var(0), Type::Bool],
+                ui_subscription(),
             ),
         ),
     );
@@ -545,6 +567,20 @@ fn ui_update_result(state: Type) -> Type {
     Type::Named {
         name: "ui.update-result".to_owned(),
         arguments: vec![state],
+    }
+}
+
+fn ui_command() -> Type {
+    Type::Named {
+        name: "ui.command".to_owned(),
+        arguments: vec![],
+    }
+}
+
+fn ui_subscription() -> Type {
+    Type::Named {
+        name: "ui.subscription".to_owned(),
+        arguments: vec![],
     }
 }
 

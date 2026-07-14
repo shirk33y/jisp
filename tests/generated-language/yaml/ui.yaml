@@ -30,4 +30,10 @@
       ],
     ],
   ],
+  [
+    test-error,
+    "ui.result rejects raw objects in the command list",
+    "cannot unify",
+    [module, [def, invalid-result, [ui.result, 0, [list, [obj, "id", "raw"]], [list]]]],
+  ],
 ]

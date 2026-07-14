@@ -87,6 +87,8 @@ pub fn install_builtins(evaluator: &mut Evaluator) {
         ("ui.html", ui_html),
         ("ui.node", ui_node),
         ("ui.result", ui_result),
+        ("ui.command", ui_command),
+        ("ui.subscription", ui_subscription),
         ("result.try", result_try),
         ("result.map", result_map),
         ("result.map-err", result_map_err),
@@ -860,7 +862,7 @@ fn ui_result(_: &mut Evaluator, args: &[Value], span: Span) -> Result<Value, Run
     if !commands
         .iter()
         .chain(subscriptions)
-        .all(is_portable_effect_data)
+        .all(is_json_effect_data)
     {
         return Err(RuntimeError::at(
             span,
@@ -874,17 +876,77 @@ fn ui_result(_: &mut Evaluator, args: &[Value], span: Span) -> Result<Value, Run
     ))
 }
 
-fn is_portable_effect_data(value: &Value) -> bool {
+/// Create a canonical, host-neutral command descriptor. The returned object is
+/// opaque at the type level (`ui.command`) so only `ui.result` can declare it.
+fn ui_command(_: &mut Evaluator, args: &[Value], span: Span) -> Result<Value, RuntimeError> {
+    ui_resource_descriptor("command", args, span)
+}
+
+/// Create a canonical, host-neutral subscription descriptor.
+fn ui_subscription(_: &mut Evaluator, args: &[Value], span: Span) -> Result<Value, RuntimeError> {
+    ui_resource_descriptor("subscription", args, span)
+}
+
+fn ui_resource_descriptor(kind: &str, args: &[Value], span: Span) -> Result<Value, RuntimeError> {
+    arity(args, 5, span)?;
+    let id = expect_str(&args[0], span)?;
+    if id.is_empty() {
+        return Err(RuntimeError::at(
+            span,
+            format!("ui.{kind} id must not be empty"),
+        ));
+    }
+    let capability = expect_str(&args[1], span)?;
+    if capability.is_empty() {
+        return Err(RuntimeError::at(
+            span,
+            format!("ui.{kind} capability must not be empty"),
+        ));
+    }
+    let version = u32::try_from(expect_int(&args[2], span)?)
+        .ok()
+        .filter(|version| *version > 0)
+        .ok_or_else(|| {
+            RuntimeError::at(
+                span,
+                format!("ui.{kind} capability version must be a positive u32"),
+            )
+        })?;
+    if !is_json_effect_data(&args[3]) {
+        return Err(RuntimeError::at(
+            span,
+            format!("ui.{kind} request must be JSON-shaped portable data"),
+        ));
+    }
+    let Value::Bool(replace) = args[4] else {
+        return Err(RuntimeError::at(
+            span,
+            format!("ui.{kind} replace must be a bool"),
+        ));
+    };
+    Ok(Value::Obj(IndexMap::from([
+        ("kind".to_owned(), Value::string(kind)),
+        ("id".to_owned(), Value::string(id)),
+        (
+            "capability".to_owned(),
+            Value::Obj(IndexMap::from([
+                ("name".to_owned(), Value::string(capability)),
+                ("version".to_owned(), Value::Int(i64::from(version))),
+            ])),
+        ),
+        ("request".to_owned(), args[3].clone()),
+        ("replace".to_owned(), Value::Bool(replace)),
+    ])))
+}
+
+fn is_json_effect_data(value: &Value) -> bool {
     match value {
-        Value::Null
-        | Value::Bool(_)
-        | Value::Int(_)
-        | Value::BigInt(_)
-        | Value::Float(_)
-        | Value::Str(_) => true,
-        Value::List(values) => values.iter().all(is_portable_effect_data),
-        Value::Obj(fields) => fields.values().all(is_portable_effect_data),
-        Value::Variant { fields, .. } => fields.iter().all(is_portable_effect_data),
+        Value::Null | Value::Bool(_) | Value::Int(_) | Value::Str(_) => true,
+        Value::Float(value) => value.is_finite(),
+        Value::List(values) => values.iter().all(is_json_effect_data),
+        Value::Obj(fields) => fields.values().all(is_json_effect_data),
+        Value::Variant { fields, .. } => fields.iter().all(is_json_effect_data),
+        Value::BigInt(_) => false,
         Value::Builtin(_) | Value::Closure(_) | Value::Constructor(_) | Value::Uninitialized(_) => {
             false
         }

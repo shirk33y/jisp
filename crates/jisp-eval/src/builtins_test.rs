@@ -47,3 +47,74 @@ fn ui_result_rejects_nonportable_resource_data() {
 
     assert!(error.message.contains("must contain portable data"));
 }
+
+#[test]
+fn ui_resource_constructors_produce_canonical_portable_descriptors() {
+    let mut evaluator = Evaluator::new();
+    let command = evaluator
+        .apply(
+            evaluator.root_env().lookup("ui.command").unwrap(),
+            &[
+                Value::string("save:1"),
+                Value::string("storage.write"),
+                Value::Int(1),
+                Value::Obj(indexmap::IndexMap::from([(
+                    "key".to_owned(),
+                    Value::string("draft"),
+                )])),
+                Value::Bool(true),
+            ],
+            span(),
+        )
+        .unwrap();
+    let Value::Obj(command) = command else {
+        panic!("ui.command must return an object descriptor");
+    };
+    assert!(matches!(command.get("kind"), Some(Value::Str(kind)) if kind.as_ref() == "command"));
+    assert!(matches!(command.get("id"), Some(Value::Str(id)) if id.as_ref() == "save:1"));
+    let Some(Value::Obj(capability)) = command.get("capability") else {
+        panic!("ui.command must include a capability object");
+    };
+    assert!(
+        matches!(capability.get("name"), Some(Value::Str(name)) if name.as_ref() == "storage.write")
+    );
+    assert!(matches!(capability.get("version"), Some(Value::Int(1))));
+    assert!(matches!(command.get("replace"), Some(Value::Bool(true))));
+}
+
+#[test]
+fn ui_resource_constructors_reject_invalid_identity_and_nonportable_request() {
+    let mut evaluator = Evaluator::new();
+    let command = evaluator.root_env().lookup("ui.command").unwrap();
+    let invalid_version = evaluator
+        .apply(
+            command.clone(),
+            &[
+                Value::string("save:1"),
+                Value::string("storage.write"),
+                Value::Int(0),
+                Value::Null,
+                Value::Bool(true),
+            ],
+            span(),
+        )
+        .unwrap_err();
+    assert!(invalid_version.message.contains("positive u32"));
+
+    let invalid_request = evaluator
+        .apply(
+            command,
+            &[
+                Value::string("save:1"),
+                Value::string("storage.write"),
+                Value::Int(1),
+                evaluator.root_env().lookup("ui.node").unwrap(),
+                Value::Bool(true),
+            ],
+            span(),
+        )
+        .unwrap_err();
+    assert!(invalid_request
+        .message
+        .contains("JSON-shaped portable data"));
+}

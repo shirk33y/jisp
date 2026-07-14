@@ -44,6 +44,20 @@ fn ui_app_accepts_plain_state_and_explicit_update_result() {
 "#
     );
     infer(&explicit).unwrap();
+
+    let resources = format!(
+        r#"
+(def init 0)
+(defn update (state action)
+  (ui.result
+    (+ state 1)
+    (list (ui.command "save:1" "storage.write" 1 (obj "key" "draft") true))
+    (list (ui.subscription "clock" "timer.tick" 1 (obj "every-ms" 1000) false))))
+{VIEW}
+(ui.app init update app)
+"#
+    );
+    infer(&resources).unwrap();
 }
 
 #[test]
@@ -69,4 +83,15 @@ fn ui_app_rejects_reducer_or_view_that_breaks_its_contract() {
     assert!(infer(bad_view)
         .unwrap_err()
         .contains("app component must return ui.node"));
+
+    let raw_resource = format!(
+        r#"
+(def init 0)
+(defn update (state action)
+  (ui.result state (list (obj "id" "raw")) (list)))
+{VIEW}
+(ui.app init update app)
+"#
+    );
+    assert!(infer(&raw_resource).unwrap_err().contains("cannot unify"));
 }

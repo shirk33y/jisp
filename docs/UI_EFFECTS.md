@@ -26,9 +26,26 @@ form is deliberately narrow:
 (ui.result next-state commands subscriptions)
 ```
 
-`commands` and `subscriptions` must be lists of portable data: scalar values,
-lists, objects, and variants are accepted; functions, constructors, and host
-objects are rejected. `ui.result` only declares work. It neither runs a
+The two resource lists are nominal: only `ui.command` values may appear in
+`commands`, and only `ui.subscription` values may appear in `subscriptions`.
+Create those values with the canonical constructors:
+
+```lisp
+(ui.command "save:42" "storage.write" 1
+  (obj "key" "draft:42" "value" (obj "title" "Plan"))
+  true)
+
+(ui.subscription "clock" "timer.tick" 1
+  (obj "every-ms" 1000)
+  false)
+```
+
+Their arguments are `(id capability-name capability-version request replace)`.
+`id` and `capability-name` are nonempty strings, version is a positive `u32`,
+`replace` is a boolean, and request is JSON-shaped portable data. The resulting
+descriptor has exactly `kind`, `id`, `capability {name, version}`, `request`,
+and `replace`; callers cannot forge a partially valid object through the typed
+`ui.result` surface. `ui.result` only declares work. It neither runs a
 capability nor lets a view register work.
 
 Type checking connects all three `ui.app` bindings: `update` receives the init

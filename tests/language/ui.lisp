@@ -17,3 +17,9 @@
   (assert
     (= "<ul aria-label=\"Tasks\"><li class=\"rounded px-2\" data-id=\"Plan\"><span>Plan</span></li><li class=\"rounded px-2\" data-id=\"Ship\"><span>Ship</span></li></ul>"
       (ui.html (todo-list (list "Plan" "Ship"))))))
+
+(test-error "ui.result rejects raw objects in the command list"
+  "cannot unify"
+  (module
+    (def invalid-result
+      (ui.result 0 (list (obj "id" "raw")) (list)))))

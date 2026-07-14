@@ -23,3 +23,11 @@ test "ui components render explicit attributes classes and repeated children"
       ui.html
         todo-list
           list "Plan" "Ship"
+
+test-error "ui.result rejects raw objects in the command list" "cannot unify"
+  module
+    def invalid-result
+      ui.result 0
+        list
+          obj "id" "raw"
+        (list)

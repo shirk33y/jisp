@@ -463,8 +463,8 @@ fn update_result_updates_state_and_exposes_declared_resources() {
 (defn update (state action)
   (ui.result
     (obj.set state "count" (+ (. state "count") 1))
-    (list (obj "id" "save:1" "kind" "command"))
-    (list (obj "id" "clock" "kind" "subscription"))))
+    (list (ui.command "save:1" "storage.write" 1 (obj "key" "draft") true))
+    (list (ui.subscription "clock" "timer.tick" 1 (obj "every-ms" 1000) false))))
 
 (component app (state)
   (button
@@ -489,6 +489,10 @@ fn update_result_updates_state_and_exposes_declared_resources() {
     let resources: Value =
         serde_json::from_str(&session.desired_resources_json().unwrap()).unwrap();
     assert_eq!(resources["commands"][0]["id"], "save:1");
+    assert_eq!(
+        resources["commands"][0]["capability"]["name"],
+        "storage.write"
+    );
     assert_eq!(resources["subscriptions"][0]["id"], "clock");
 }
 

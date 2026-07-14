@@ -354,8 +354,11 @@ intentionally ignores events and keys. An interactive host can instead use
 handler with an event value, updates `(state, action)` to next state, and asks
 `app` for a fresh node tree. A reducer may instead return
 `(ui.result next-state commands subscriptions)` to declare portable resource
-data; declarations are not effect execution and views must still return only a
-UI node. Reconciliation, capability execution, subscriptions, and native widget
+data. Lists are built with `(ui.command id capability version request replace)`
+and `(ui.subscription id capability version request replace)`; these nominal
+values keep resource kinds and the versioned descriptor schema explicit.
+Declarations are not effect execution and views must still return only a UI
+node. Reconciliation, capability execution, subscriptions, and native widget
 contracts remain deferred. See [UI.md](UI.md) and [UI_EFFECTS.md](UI_EFFECTS.md).
 
 `[., object, key]` is field/map lookup only. Jisp has no method syntax or

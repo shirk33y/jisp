@@ -168,6 +168,9 @@ from it. `option` deliberately has only its constructors; consume it with
 | --- | --- | --- | --- |
 | `ui.html` | `(A) -> str` | Static HTML renderer for a UI node; escapes text and attributes, flattens child lists, and ignores event/key metadata. See [UI.md](UI.md). | `(ui.html (save-button))` |
 | `ui.node` | `(A) -> ui.node` | Internal identity marker emitted by the UI lowerer so heterogeneous UI children share one renderer-neutral type. UI source should use explicit elements and `text`, not call this directly. | `(button (text "Save"))` |
+| `ui.command` | `(str, str, int, A, bool) -> ui.command` | Creates a versioned, JSON-shaped command declaration: `(id capability version request replace)`. Only valid command declarations can enter the command list of `ui.result`. | `(ui.command "save:1" "storage.write" 1 (obj "key" "draft") true)` |
+| `ui.subscription` | `(str, str, int, A, bool) -> ui.subscription` | Creates a versioned, JSON-shaped subscription declaration with the same argument order as `ui.command`. | `(ui.subscription "clock" "timer.tick" 1 (obj "every-ms" 1000) false)` |
+| `ui.result` | `(A, list<ui.command>, list<ui.subscription>) -> ui.update-result<A>` | Explicit reducer result carrying next state and declarative resources; it does not execute effects and is invalid from a view. | `(ui.result next-state (list command) (list subscription))` |
 | `io.println` | `(A) -> null` | Writes a display value followed by a newline. | `(io.println "Hello")` |
 
 ## Runnable examples

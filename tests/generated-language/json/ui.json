@@ -111,5 +111,44 @@
         ]
       ]
     ]
+  ],
+  [
+    "test-error",
+    [
+      "str",
+      "ui.result rejects raw objects in the command list"
+    ],
+    [
+      "str",
+      "cannot unify"
+    ],
+    [
+      "module",
+      [
+        "def",
+        "invalid-result",
+        [
+          "ui.result",
+          0,
+          [
+            "list",
+            [
+              "obj",
+              [
+                "str",
+                "id"
+              ],
+              [
+                "str",
+                "raw"
+              ]
+            ]
+          ],
+          [
+            "list"
+          ]
+        ]
+      ]
+    ]
   ]
 ]
