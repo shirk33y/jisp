@@ -57,6 +57,39 @@ fn update_session_rebuilds_the_view_after_an_emitted_action() {
 }
 
 #[test]
+fn update_session_emits_local_tree_patches() {
+    let mut session = PlaygroundSession::new();
+    let first: Value = serde_json::from_str(
+        &session
+            .load_source(
+                r#"
+(def init 0)
+(defn update (state action) action)
+(component app (state)
+  (button
+    (on click (emit (+ state 1)))
+    (text (str.from state))))
+(ui.app init update app)
+"#,
+            )
+            .unwrap(),
+    )
+    .unwrap();
+    let handler = usize::try_from(first["events"]["click"]["handler"].as_u64().unwrap()).unwrap();
+    let update: Value = serde_json::from_str(
+        &session
+            .dispatch_patch_event(handler, r#"{"type":"click"}"#)
+            .unwrap(),
+    )
+    .unwrap();
+
+    assert_eq!(update["patches"].as_array().unwrap().len(), 1);
+    assert_eq!(update["patches"][0]["op"], "text");
+    assert_eq!(update["patches"][0]["path"], "0.0");
+    assert_eq!(update["patches"][0]["value"], "1");
+}
+
+#[test]
 fn update_session_serializes_declared_event_policies() {
     let mut session = PlaygroundSession::new();
     let tree: Value = serde_json::from_str(

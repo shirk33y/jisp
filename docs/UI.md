@@ -143,11 +143,14 @@ the selected Jisp handler with a small JSON-shaped event object, calls
 `update(state, action)`, then evaluates the typed JUIR plan for
 `app(next-state)` through the canonical Jisp evaluator. That executor currently
 materializes the existing structural-tree contract as the semantic reference;
-the browser host reconciles matching DOM nodes in place: it updates changed text,
-attributes, properties, classes, and handlers, and retains/moves keyed sibling
-nodes. This preserves focused controls and their selection through ordinary
-updates. The reference-tree contract is intentionally retained while the
-compiled JUIR runtime is designed.
+the initial mount sends that tree once, while later events send a batch of
+text, element-metadata, child-list, or replacement patches. The browser host
+applies those patches in place: it updates changed text, attributes,
+properties, classes, and handlers, and retains/moves keyed sibling nodes. It
+also numbers input events so an older patch cannot overwrite a newer in-progress
+controlled edit. This preserves focused controls and their selection through
+ordinary updates. The structural tree remains the semantic oracle and recovery
+snapshot while the compiled JUIR runtime evolves.
 
 Effects, subscriptions, async commands, persistence, lifecycle boundaries, and
 native widget adapters are still undefined; a UI component must remain a pure
@@ -158,6 +161,11 @@ counts plus the latest JUIR slot, block, and component reuse counts. The
 playground exposes the latest decision in its status pill and the complete JSON
 payload as that pill's tooltip. These counters are observability data, never a
 part of a component's public result.
+
+`PlaygroundSession.dispatch_patches(handler, event)` exposes the same update
+batch for another browser or native host. `snapshot()` returns the complete
+current tree only for initial mount or host recovery; it is not the normal
+event-update path.
 
 ## Lowered contract and host status
 

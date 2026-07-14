@@ -198,6 +198,7 @@ function previewDocument() {
 const allowedTags = new Set(["a", "article", "aside", "button", "div", "footer", "form", "h1", "h2", "h3", "header", "img", "input", "label", "li", "main", "nav", "ol", "option", "p", "section", "select", "span", "strong", "textarea", "ul"]);
 const allowedEvents = new Set(["blur", "change", "click", "focus", "input", "keydown", "keyup", "submit"]);
 const root = document.getElementById("root");
+let eventSequence = 0;
 
 function safeAttribute(element, name, value) {
   if (name.startsWith("on") || value === null || value === false) return false;
@@ -285,12 +286,16 @@ function resetProperty(element, name) {
   else element[name] = null;
 }
 
-function syncProperties(element, props) {
+function syncProperties(element, props, sequence = null) {
   const previous = element.__jispProps || new Map();
   const next = new Map();
   for (const [name, value] of Object.entries(props)) {
     if (name.startsWith("on") || !(name in element)) continue;
     next.set(name, value);
+    if (name === "value"
+      && element === document.activeElement
+      && Number.isInteger(sequence)
+      && element.__jispInputSequence > sequence) continue;
     if (!Object.is(previous.get(name), value) && !Object.is(element[name], value)) element[name] = value;
   }
   for (const name of previous.keys()) {
@@ -331,7 +336,9 @@ function syncEvents(element, events) {
         listener(event) {
           if (record.policy.preventDefault) event.preventDefault();
           if (record.policy.stopPropagation) event.stopPropagation();
-          parent.postMessage({ type: "jisp-event", handler: record.handler, event: browserEvent(event) }, "*");
+          const sequence = ++eventSequence;
+          if (event.target && "value" in event.target) event.target.__jispInputSequence = sequence;
+          parent.postMessage({ type: "jisp-event", handler: record.handler, event: browserEvent(event), sequence }, "*");
         },
       };
       records.set(name, record);
@@ -408,15 +415,68 @@ function restoreFocus(focus) {
   if (Number.isInteger(focus.start) && Number.isInteger(focus.end)) element.setSelectionRange(focus.start, focus.end);
 }
 
-addEventListener("message", (message) => {
-  if (message.source !== parent || message.data?.type !== "jisp-render") return;
+function nodeAt(path) {
+  const parts = String(path).split(".");
+  if (parts.shift() !== "0") return null;
+  let node = root.firstChild;
+  for (const part of parts) {
+    if (!node || !/^\\d+$/.test(part)) return null;
+    node = node.childNodes[Number(part)] || null;
+  }
+  return node;
+}
+
+function applyPatches(patches, sequence) {
   const focus = focusedControl();
-  const current = root.firstChild;
-  const next = patchNode(root, current, message.data.tree, "0");
-  for (const child of [...root.childNodes]) {
-    if (child !== next) child.remove();
+  for (const patch of patches) {
+    const node = nodeAt(patch.path);
+    if (patch.op === "text") {
+      if (node?.nodeType !== Node.TEXT_NODE) return false;
+      node.data = String(patch.value ?? "");
+      continue;
+    }
+    if (patch.op === "element") {
+      if (node?.nodeType !== Node.ELEMENT_NODE) return false;
+      if (Object.hasOwn(patch, "attrs")) syncAttributes(node, patch.attrs || {});
+      if (Object.hasOwn(patch, "props")) syncProperties(node, patch.props || {}, sequence);
+      if (Object.hasOwn(patch, "classes")) syncClasses(node, patch.classes || []);
+      if (Object.hasOwn(patch, "events")) syncEvents(node, patch.events || {});
+      continue;
+    }
+    if (patch.op === "children") {
+      if (node?.nodeType !== Node.ELEMENT_NODE || !Array.isArray(patch.trees)) return false;
+      reconcileChildren(node, patch.trees, patch.path);
+      continue;
+    }
+    if (patch.op === "replace") {
+      const parts = String(patch.path).split(".");
+      const index = Number(parts.pop());
+      const parent = parts.length ? nodeAt(parts.join(".")) : root;
+      if (!parent || !Number.isInteger(index) || !patch.tree) return false;
+      patchNode(parent, parent.childNodes[index], patch.tree, patch.path);
+      continue;
+    }
+    return false;
   }
   restoreFocus(focus);
+  return true;
+}
+
+addEventListener("message", (message) => {
+  if (message.source !== parent) return;
+  if (message.data?.type === "jisp-render") {
+    const focus = focusedControl();
+    const current = root.firstChild;
+    const next = patchNode(root, current, message.data.tree, "0");
+    for (const child of [...root.childNodes]) {
+      if (child !== next) child.remove();
+    }
+    restoreFocus(focus);
+    return;
+  }
+  if (message.data?.type === "jisp-patches" && !applyPatches(message.data.patches || [], message.data.sequence)) {
+    parent.postMessage({ type: "jisp-recover" }, "*");
+  }
 });
 <\/script></body></html>`;
 }
@@ -424,6 +484,11 @@ addEventListener("message", (message) => {
 function postTree(tree) {
   latestTree = tree;
   preview.contentWindow?.postMessage({ type: "jisp-render", tree }, "*");
+}
+
+function postPatches(patches, sequence) {
+  latestTree = null;
+  preview.contentWindow?.postMessage({ type: "jisp-patches", patches, sequence }, "*");
 }
 
 function sourceText() {
@@ -481,13 +546,20 @@ async function loadExample(path) {
 
 preview.addEventListener("load", () => {
   if (latestTree) postTree(latestTree);
+  else if (session) postTree(JSON.parse(session.snapshot()));
 });
 preview.srcdoc = previewDocument();
 
 window.addEventListener("message", (message) => {
-  if (message.source !== preview.contentWindow || message.data?.type !== "jisp-event" || !session) return;
+  if (message.source !== preview.contentWindow || !session) return;
+  if (message.data?.type === "jisp-recover") {
+    postTree(JSON.parse(session.snapshot()));
+    return;
+  }
+  if (message.data?.type !== "jisp-event") return;
   try {
-    postTree(JSON.parse(session.dispatch(message.data.handler, JSON.stringify(message.data.event))));
+    const update = JSON.parse(session.dispatch_patches(message.data.handler, JSON.stringify(message.data.event)));
+    postPatches(update.patches, message.data.sequence);
     error.classList.add("hidden");
     setRuntimeStatus("State updated");
   } catch (reason) {

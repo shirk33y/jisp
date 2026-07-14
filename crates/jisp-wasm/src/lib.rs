@@ -59,6 +59,7 @@ struct Runtime {
     last_execution: ExecutionStats,
     handlers: Vec<Value>,
     last_render: Option<String>,
+    last_tree: Option<JsonValue>,
     renders: usize,
     skipped_renders: usize,
     last_render_skipped: bool,
@@ -85,6 +86,24 @@ impl PlaygroundSession {
     /// Process a browser event through one event handler and the declared update function.
     pub fn dispatch(&mut self, handler: usize, event_json: &str) -> Result<String, JsValue> {
         self.dispatch_event(handler, event_json).map_err(js_error)
+    }
+
+    /// Process one event and return a compact, host-neutral patch batch.
+    pub fn dispatch_patches(
+        &mut self,
+        handler: usize,
+        event_json: &str,
+    ) -> Result<String, JsValue> {
+        self.dispatch_patch_event(handler, event_json)
+            .map_err(js_error)
+    }
+
+    /// Return the most recent complete renderer-neutral tree for recovery.
+    pub fn snapshot(&self) -> Result<String, JsValue> {
+        self.runtime
+            .as_ref()
+            .and_then(|runtime| runtime.last_render.clone())
+            .ok_or_else(|| JsValue::from_str("load a ui.app program before reading its snapshot"))
     }
 
     /// Return renderer-neutral execution counters for playground diagnostics.
@@ -163,6 +182,7 @@ impl PlaygroundSession {
             last_execution: ExecutionStats::default(),
             handlers: vec![],
             last_render: None,
+            last_tree: None,
             renders: 0,
             skipped_renders: 0,
             last_render_skipped: false,
@@ -214,6 +234,23 @@ impl PlaygroundSession {
         self.render()
     }
 
+    fn dispatch_patch_event(&mut self, handler: usize, event_json: &str) -> Result<String, String> {
+        let previous = self
+            .runtime
+            .as_ref()
+            .and_then(|runtime| runtime.last_tree.clone())
+            .ok_or_else(|| "load a ui.app program before dispatching events".to_owned())?;
+        self.dispatch_event(handler, event_json)?;
+        let current = self
+            .runtime
+            .as_ref()
+            .and_then(|runtime| runtime.last_tree.as_ref())
+            .ok_or_else(|| "JUIR runtime has no current tree after dispatch".to_owned())?;
+        let mut patches = vec![];
+        collect_tree_patches(&previous, current, "0", &mut patches);
+        serde_json::to_string(&json!({ "patches": patches })).map_err(|error| error.to_string())
+    }
+
     fn render(&mut self) -> Result<String, String> {
         let runtime = self
             .runtime
@@ -252,6 +289,7 @@ impl PlaygroundSession {
         runtime.renders += 1;
         runtime.last_render_skipped = false;
         runtime.last_render = Some(rendered.clone());
+        runtime.last_tree = Some(tree);
         #[cfg(feature = "juir")]
         {
             runtime.last_value = Some(vnode);
@@ -945,6 +983,87 @@ fn ui_node(value: &Value, handlers: &mut Vec<Value>) -> Result<JsonValue, String
         "key": key,
         "children": children,
     }))
+}
+
+fn collect_tree_patches(
+    before: &JsonValue,
+    after: &JsonValue,
+    path: &str,
+    patches: &mut Vec<JsonValue>,
+) {
+    if before == after {
+        return;
+    }
+    let before_kind = before.get("kind").and_then(JsonValue::as_str);
+    let after_kind = after.get("kind").and_then(JsonValue::as_str);
+    if before_kind == Some("text") && after_kind == Some("text") {
+        patches.push(json!({
+            "op": "text",
+            "path": path,
+            "value": after.get("value").cloned().unwrap_or(JsonValue::Null),
+        }));
+        return;
+    }
+
+    let same_element = before_kind == Some("element")
+        && after_kind == Some("element")
+        && before.get("tag") == after.get("tag")
+        && before.get("key") == after.get("key");
+    if !same_element {
+        patches.push(json!({ "op": "replace", "path": path, "tree": after }));
+        return;
+    }
+
+    let mut metadata = Map::new();
+    metadata.insert("op".to_owned(), JsonValue::String("element".to_owned()));
+    metadata.insert("path".to_owned(), JsonValue::String(path.to_owned()));
+    for field in ["attrs", "props", "classes", "events"] {
+        if before.get(field) != after.get(field) {
+            metadata.insert(
+                field.to_owned(),
+                after.get(field).cloned().unwrap_or(JsonValue::Null),
+            );
+        }
+    }
+    if metadata.len() > 2 {
+        patches.push(JsonValue::Object(metadata));
+    }
+
+    let before_children = before
+        .get("children")
+        .and_then(JsonValue::as_array)
+        .map(Vec::as_slice)
+        .unwrap_or(&[]);
+    let after_children = after
+        .get("children")
+        .and_then(JsonValue::as_array)
+        .map(Vec::as_slice)
+        .unwrap_or(&[]);
+    if !children_have_matching_identities(before_children, after_children) {
+        patches.push(json!({ "op": "children", "path": path, "trees": after_children }));
+        return;
+    }
+    for (index, (before, after)) in before_children.iter().zip(after_children).enumerate() {
+        collect_tree_patches(before, after, &format!("{path}.{index}"), patches);
+    }
+}
+
+fn children_have_matching_identities(before: &[JsonValue], after: &[JsonValue]) -> bool {
+    before.len() == after.len()
+        && before
+            .iter()
+            .zip(after)
+            .all(|(before, after)| child_identity(before) == child_identity(after))
+}
+
+fn child_identity(tree: &JsonValue) -> (&str, Option<&JsonValue>, Option<&str>) {
+    (
+        tree.get("kind")
+            .and_then(JsonValue::as_str)
+            .unwrap_or("invalid"),
+        tree.get("key"),
+        tree.get("tag").and_then(JsonValue::as_str),
+    )
 }
 
 fn field<'a>(

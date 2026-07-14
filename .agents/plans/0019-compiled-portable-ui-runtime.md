@@ -21,8 +21,10 @@ cannot be skipped. The browser Wasm executor retains the previous structural
 value, so this path is exercised by the playground rather than only by unit
 tests. Component calls with unaffected, statically tracked inputs are skipped
 as whole subtrees. The playground surfaces per-render reuse/skip diagnostics
-from the Wasm executor. Per-item keyed-block invalidation and direct DOM patch
-emission remain later milestones.
+from the Wasm executor. Browser event updates now receive a batched structural
+patch protocol rather than a complete tree; a full snapshot is reserved for
+initial mount and recovery. Per-item keyed-block invalidation remains the next
+M3 milestone.
 
 ## Goal
 
