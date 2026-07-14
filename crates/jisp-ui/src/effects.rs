@@ -1,12 +1,16 @@
 //! Deterministic reference host for the planned data-only UI effect protocol.
 //!
-//! It deliberately has no Jisp source syntax or real side effects.  Hosts can
-//! use it to prove reconciliation, cancellation, completion, and disposal
-//! semantics before reducers are allowed to return commands or subscriptions.
+//! It deliberately performs no real side effects. Hosts can use it to prove
+//! reconciliation, cancellation, completion, and disposal semantics for the
+//! declarative resource values returned by a reducer.
 
 use std::collections::{BTreeMap, BTreeSet};
 
 use serde_json::Value;
+
+#[path = "effects_decode.rs"]
+mod effects_decode;
+pub use effects_decode::{decode_resources, DecodeError, ReconcileError};
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Owner {
@@ -265,6 +269,19 @@ impl FakeHost {
             &mut self.next_generation,
             &mut self.trace,
         );
+        Ok(())
+    }
+
+    /// Decode canonical Jisp resource descriptors and reconcile them as the
+    /// app owner. This is the deterministic bridge used by host tests; it does
+    /// not call a real capability provider.
+    pub fn reconcile_declared_resources(
+        &mut self,
+        commands: &[jisp_eval::Value],
+        subscriptions: &[jisp_eval::Value],
+    ) -> Result<(), ReconcileError> {
+        let desired = decode_resources(commands, subscriptions)?;
+        self.reconcile_resources(desired)?;
         Ok(())
     }
 
