@@ -36,3 +36,5 @@ jobs:
       - run: cargo clippy --workspace --all-targets -- -D warnings
       - run: cargo test --workspace --exclude jisp-macros --quiet
       - run: cargo test -p jisp-macros --quiet
+      - run: rustup target add wasm32-wasip2
+      - run: cargo build -p jisp-ui-capability-component --target wasm32-wasip2 --release

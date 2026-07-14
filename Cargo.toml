@@ -12,6 +12,7 @@ members = [
   "crates/jisp-types",
   "crates/jisp-runtime",
   "crates/jisp-ui",
+  "crates/jisp-ui-capability-component",
   "crates/jisp-wit-check",
   "crates/jisp-wasm",
   "crates/jisp-eval",

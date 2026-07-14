@@ -195,8 +195,13 @@ is the source of truth. `FakeHost` exercises the same capability/version
 discipline at runtime, but is not itself a generated WIT binding.
 
 This is a generator-compatibility gate, not yet a packaged Wasm Component or a
-cross-language execution test. Component packaging and invoking the contract
-from two real host runtimes remain M6 work.
+cross-language execution test. The separate
+`jisp-ui-capability-component` crate now compiles a deterministic
+`wasm32-wasip2` implementation of that exported host world. It supports only
+request validation for `storage.write@1` and `timer.sleep@1`; navigation
+returns `unsupported-capability`, and it intentionally does no I/O. CI builds
+this component as a packaging/ABI gate. Invoking the contract from two real
+host runtimes remains M6 work.
 
 ## Deferred decisions
 
@@ -205,8 +210,8 @@ from two real host runtimes remain M6 work.
   and providers beyond the two narrow playground capabilities.
 - Capability serialization choices for SSR/resume beyond the current
   JSON-shaped descriptors and completion templates.
-- Component packaging and execution tests in two real host runtimes. WIT
-  describes this coarse capability boundary, never DOM patch operations.
+- Execution tests in two real host runtimes. WIT describes this coarse
+  capability boundary, never DOM patch operations.
 
 The browser Wasm session exposes the most recent declarations through
 `desired_resources`; it does not execute them. An embedding host may opt in to
