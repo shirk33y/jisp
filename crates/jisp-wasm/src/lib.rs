@@ -4,6 +4,7 @@ use jisp::jisp_core::{Node, NodeKind, SourceId, Span, SyntaxParser};
 use jisp::jisp_eval::{Evaluator, Value};
 use jisp_syntax_json::JsonParser;
 use jisp_syntax_lisp::LispParser;
+use jisp_syntax_ws::WsParser;
 use jisp_syntax_yaml::YamlParser;
 use serde_json::{json, Map, Number, Value as JsonValue};
 use wasm_bindgen::prelude::*;
@@ -164,6 +165,7 @@ fn syntax_extension(syntax: &str) -> Result<&'static str, String> {
         "lisp" => Ok("lisp"),
         "json" => Ok("json"),
         "yaml" => Ok("yaml"),
+        "ws" => Ok("ws"),
         _ => Err(format!("unsupported playground syntax `{syntax}`")),
     }
 }
@@ -173,6 +175,7 @@ fn parse_source(source: &str, syntax: &str) -> Result<Vec<Node>, String> {
         "lisp" => LispParser.parse_module(SourceId(0), source),
         "json" => JsonParser.parse_module(SourceId(0), source),
         "yaml" => YamlParser.parse_module(SourceId(0), source),
+        "ws" => WsParser.parse_module(SourceId(0), source),
         _ => unreachable!("syntax_extension returns a closed set"),
     };
     parsed.map_err(|error| error.to_string())
@@ -186,14 +189,8 @@ fn format_source(nodes: &[Node], syntax: &str) -> Result<String, String> {
         ))
         .map(|text| format!("{text}\n"))
         .map_err(|error| error.to_string()),
-        "yaml" => Ok(format!(
-            "[{}]\n",
-            nodes
-                .iter()
-                .map(format_yaml_node)
-                .collect::<Vec<_>>()
-                .join(", ")
-        )),
+        "yaml" => Ok(format_yaml_module(nodes)),
+        "ws" => Ok(format_ws_module(nodes)),
         _ => unreachable!("syntax_extension returns a closed set"),
     }
 }
@@ -366,23 +363,237 @@ fn format_lisp_inline(node: &Node) -> String {
     }
 }
 
+fn format_yaml_module(nodes: &[Node]) -> String {
+    format!("{}\n", format_yaml_items(nodes))
+}
+
+fn format_yaml_items(items: &[Node]) -> String {
+    let inline = format!(
+        "[{}]",
+        items
+            .iter()
+            .map(format_yaml_inline)
+            .collect::<Vec<_>>()
+            .join(", ")
+    );
+    if inline.chars().count() <= FORMAT_WIDTH {
+        return inline;
+    }
+    let mut lines = vec!["[".to_owned()];
+    for item in items {
+        lines.push(format!(
+            "  {},",
+            indent_yaml_block(&format_yaml_node(item), 2)
+        ));
+    }
+    lines.push("]".to_owned());
+    lines.join("\n")
+}
+
 fn format_yaml_node(node: &Node) -> String {
+    let inline = format_yaml_inline(node);
+    if inline.chars().count() <= FORMAT_WIDTH || !matches!(node.kind, NodeKind::Form(_)) {
+        return inline;
+    }
+    let NodeKind::Form(items) = &node.kind else {
+        return inline;
+    };
+    format_yaml_items(items)
+}
+
+fn format_yaml_inline(node: &Node) -> String {
     match &node.kind {
         NodeKind::Null => "null".to_owned(),
         NodeKind::Bool(value) => value.to_string(),
         NodeKind::Int(value) => value.to_string(),
         NodeKind::Float(value) => value.to_string(),
-        NodeKind::Symbol(value) => value.to_string(),
+        NodeKind::Symbol(value) => match value.as_str() {
+            "`" => "quasiquote".to_owned(),
+            "," => "unquote".to_owned(),
+            ",@" => "unquote-splicing".to_owned(),
+            value => value.to_owned(),
+        },
         NodeKind::String(value) => serde_json::to_string(value.as_ref()).expect("valid string"),
         NodeKind::Form(items) => format!(
             "[{}]",
             items
                 .iter()
-                .map(format_yaml_node)
+                .map(format_yaml_inline)
                 .collect::<Vec<_>>()
                 .join(", ")
         ),
     }
+}
+
+fn indent_yaml_block(text: &str, indent: usize) -> String {
+    let continuation = format!("\n{}", " ".repeat(indent));
+    text.replace('\n', &continuation)
+}
+
+fn format_ws_module(nodes: &[Node]) -> String {
+    format!(
+        "{}\n",
+        nodes
+            .iter()
+            .map(|node| format_ws_layout(node, 0))
+            .collect::<Vec<_>>()
+            .join("\n\n")
+    )
+}
+
+fn format_ws_layout(node: &Node, indent: usize) -> String {
+    if !matches!(node.kind, NodeKind::Form(_)) || is_reader_node(node) {
+        return format!("{}{}", " ".repeat(indent), format_ws_inline(node));
+    }
+    let NodeKind::Form(items) = &node.kind else {
+        unreachable!("checked form node")
+    };
+    if items.len() <= 1 {
+        return format!("{}{}", " ".repeat(indent), format_lisp_inline(node));
+    }
+
+    let head = &items[0];
+    let prefix = " ".repeat(indent);
+    if let Some(head_name) = head.as_symbol() {
+        if head_name == "obj" {
+            if let Some(layout) = format_ws_object(items, indent) {
+                return layout;
+            }
+        }
+    } else {
+        let mut lines = vec![format!("{prefix}{}", format_ws_inline(head))];
+        append_ws_children(&mut lines, &items[1..], indent);
+        return lines.join("\n");
+    }
+
+    let head_name = head.as_symbol().expect("symbol head");
+    let mut inline = vec![format_ws_inline(head)];
+    let mut inline_forms = 0;
+    let mut index = 1;
+    let mut broke_on_width = false;
+    while index < items.len() {
+        let item = &items[index];
+        if !can_ws_inline(item) {
+            break;
+        }
+        if is_ws_form_argument(item) {
+            if !allows_ws_inline_form(head_name, inline_forms) {
+                break;
+            }
+            inline_forms += 1;
+        }
+        let rendered = format_ws_inline(item);
+        let candidate = format!("{} {rendered}", inline.join(" "));
+        if prefix.chars().count() + candidate.chars().count() > FORMAT_WIDTH {
+            broke_on_width = true;
+            break;
+        }
+        inline.push(rendered);
+        index += 1;
+    }
+    if broke_on_width && items[1..].iter().all(is_ws_scalar) {
+        inline.truncate(1);
+        index = 1;
+    }
+    let mut lines = vec![format!("{prefix}{}", inline.join(" "))];
+    append_ws_children(&mut lines, &items[index..], indent);
+    lines.join("\n")
+}
+
+fn is_ws_scalar(node: &Node) -> bool {
+    !matches!(node.kind, NodeKind::Form(_)) || is_reader_node(node)
+}
+
+fn is_reader_node(node: &Node) -> bool {
+    matches!(&node.kind, NodeKind::Form(items) if is_reader_form(items))
+}
+
+fn is_ws_form_argument(node: &Node) -> bool {
+    matches!(node.kind, NodeKind::Form(_)) && !is_reader_node(node)
+}
+
+fn allows_ws_inline_form(head: &str, count: usize) -> bool {
+    matches!(head, "fn" | "defn" | "let" | "component") && count == 0
+}
+
+fn can_ws_inline(node: &Node) -> bool {
+    is_ws_scalar(node) || (ws_node_count(node) <= 8 && ws_form_depth(node) <= 3)
+}
+
+fn ws_node_count(node: &Node) -> usize {
+    match &node.kind {
+        NodeKind::Form(items) => 1 + items.iter().map(ws_node_count).sum::<usize>(),
+        _ => 1,
+    }
+}
+
+fn ws_form_depth(node: &Node) -> usize {
+    match &node.kind {
+        NodeKind::Form(items) => 1 + items.iter().map(ws_form_depth).max().unwrap_or_default(),
+        _ => 0,
+    }
+}
+
+fn append_ws_children(lines: &mut Vec<String>, items: &[Node], indent: usize) {
+    let child_indent = indent + 2;
+    let mut index = 0;
+    while index < items.len() {
+        if is_ws_scalar(&items[index]) {
+            let start = index;
+            while index < items.len() && is_ws_scalar(&items[index]) {
+                index += 1;
+            }
+            for item in &items[start..index] {
+                lines.push(format!(
+                    "{}{}",
+                    " ".repeat(child_indent),
+                    format_ws_inline(item)
+                ));
+            }
+        } else {
+            lines.push(format_ws_layout(&items[index], child_indent));
+            index += 1;
+        }
+    }
+}
+
+fn format_ws_object(items: &[Node], indent: usize) -> Option<String> {
+    if !(items.len() - 1).is_multiple_of(2) {
+        return None;
+    }
+    let prefix = " ".repeat(indent);
+    let child_prefix = " ".repeat(indent + 2);
+    let mut lines = vec![format!("{prefix}obj")];
+    let mut can_extend_head = true;
+    for pair in items[1..].chunks_exact(2) {
+        if can_ws_inline(&pair[0]) && can_ws_inline(&pair[1]) {
+            let rendered = format!(
+                "{} {}",
+                format_ws_inline(&pair[0]),
+                format_ws_inline(&pair[1])
+            );
+            if can_extend_head
+                && prefix.chars().count() + 4 + rendered.chars().count() <= FORMAT_WIDTH
+            {
+                lines[0] = format!("{prefix}obj {rendered}");
+                can_extend_head = false;
+                continue;
+            }
+            if child_prefix.chars().count() + 4 + rendered.chars().count() <= FORMAT_WIDTH {
+                lines.push(format!("{child_prefix}... {rendered}"));
+                can_extend_head = false;
+                continue;
+            }
+        }
+        lines.push(format_ws_layout(&pair[0], indent + 2));
+        lines.push(format_ws_layout(&pair[1], indent + 2));
+        can_extend_head = false;
+    }
+    Some(lines.join("\n"))
+}
+
+fn format_ws_inline(node: &Node) -> String {
+    format_lisp_inline(node)
 }
 
 fn render_module_error(error: jisp::ModuleError) -> String {

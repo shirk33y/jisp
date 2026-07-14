@@ -1,10 +1,13 @@
-import init, { convert_source, PlaygroundSession } from "./pkg/jisp_wasm.js";
 import { EditorView, keymap } from "https://esm.sh/@codemirror/view@6.43.6";
-import { EditorState } from "https://esm.sh/@codemirror/state@6.7.1";
+import { Compartment, EditorState } from "https://esm.sh/@codemirror/state@6.7.1";
 import { StreamLanguage } from "https://esm.sh/@codemirror/language@6.12.4";
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "https://esm.sh/@codemirror/commands@6.10.4";
 import { clojure } from "https://esm.sh/@codemirror/legacy-modes@6.5.0/mode/clojure";
 import { oneDark } from "https://esm.sh/@codemirror/theme-one-dark@6.1.2";
+
+const assetVersion = new URL(import.meta.url).searchParams.get("v") || "dev";
+const wasmModule = await import(`./pkg/jisp_wasm.js?v=${encodeURIComponent(assetVersion)}`);
+const { default: init, convert_source, PlaygroundSession } = wasmModule;
 
 const examples = [
   ["Todo updates", "examples/todos.lisp"],
@@ -43,6 +46,7 @@ app.innerHTML = `
               <label class="cursor-pointer rounded-md px-2 py-1 text-xs font-semibold text-slate-300 has-[:checked]:bg-cyan-400 has-[:checked]:text-slate-950"><input class="sr-only" type="radio" name="syntax" value="lisp" checked> Lisp</label>
               <label class="cursor-pointer rounded-md px-2 py-1 text-xs font-semibold text-slate-300 has-[:checked]:bg-cyan-400 has-[:checked]:text-slate-950"><input class="sr-only" type="radio" name="syntax" value="json"> JSON</label>
               <label class="cursor-pointer rounded-md px-2 py-1 text-xs font-semibold text-slate-300 has-[:checked]:bg-cyan-400 has-[:checked]:text-slate-950"><input class="sr-only" type="radio" name="syntax" value="yaml"> YAML</label>
+              <label class="cursor-pointer rounded-md px-2 py-1 text-xs font-semibold text-slate-300 has-[:checked]:bg-cyan-400 has-[:checked]:text-slate-950"><input class="sr-only" type="radio" name="syntax" value="ws"> WS</label>
             </fieldset>
           </div>
           <button id="reset" class="rounded-md px-2 py-1 text-xs font-semibold text-cyan-300 hover:bg-slate-800">Reset</button>
@@ -74,6 +78,35 @@ let ready = false;
 let renderTimer;
 let latestTree = null;
 let session = null;
+const language = new Compartment();
+const clojureLanguage = StreamLanguage.define(clojure);
+const wsLanguage = StreamLanguage.define({
+  startState() {
+    return { head: false };
+  },
+  token(stream, state) {
+    if (stream.sol()) {
+      stream.eatSpace();
+      state.head = true;
+    }
+    if (stream.eatSpace()) return null;
+    if (stream.match(";")) {
+      stream.skipToEnd();
+      return "comment";
+    }
+    if (stream.match(/"(?:[^"\\]|\\.)*"/)) return "string";
+    if (stream.match(/-?\d+(?:\.\d+)?/)) return "number";
+    if (stream.match(/\.\.\./)) return "keyword";
+    if (stream.match(/[^\s]+/)) {
+      const token = stream.current();
+      const style = state.head ? "keyword" : /^(true|false|null)$/.test(token) ? "bool" : "variableName";
+      state.head = false;
+      return style;
+    }
+    stream.next();
+    return null;
+  },
+});
 
 for (const [name, path] of examples) {
   const option = document.createElement("option");
@@ -187,14 +220,19 @@ function setSource(text) {
   editor.dispatch({ changes: { from: 0, to: editor.state.doc.length, insert: text } });
 }
 
+function setEditorLanguage() {
+  editor.dispatch({ effects: language.reconfigure(syntax === "ws" ? wsLanguage : clojureLanguage) });
+}
+
 async function loadExample(path) {
   setStatus("bg-amber-100 text-amber-700", "Loading example");
   try {
-    const response = await fetch(path);
+    const response = await fetch(`${path}?v=${encodeURIComponent(assetVersion)}`, { cache: "no-store" });
     if (!response.ok) throw new Error(`Could not load ${path}: ${response.status}`);
     initialSource = await response.text();
     syntax = "lisp";
     syntaxInputs.find((input) => input.value === syntax).checked = true;
+    setEditorLanguage();
     setSource(initialSource);
     renderPreview();
   } catch (reason) {
@@ -229,7 +267,7 @@ editor = new EditorView({
       history(),
       keymap.of([...defaultKeymap, ...historyKeymap, indentWithTab]),
       EditorView.lineWrapping,
-      StreamLanguage.define(clojure),
+      language.of(clojureLanguage),
       oneDark,
       EditorView.updateListener.of((update) => {
         if (!update.docChanged) return;
@@ -247,6 +285,7 @@ syntaxInputs.forEach((input) => input.addEventListener("change", () => {
   try {
     const converted = convert_source(sourceText(), syntax, input.value);
     syntax = input.value;
+    setEditorLanguage();
     setSource(converted);
     renderPreview();
     setStatus("bg-emerald-100 text-emerald-700", `Converted to ${syntax.toUpperCase()}`);
@@ -270,7 +309,7 @@ reset.addEventListener("click", () => {
 });
 
 try {
-  await init();
+  await init({ module_or_path: new URL(`./pkg/jisp_wasm_bg.wasm?v=${encodeURIComponent(assetVersion)}`, import.meta.url) });
   ready = true;
   await loadExample(select.value);
 } catch (reason) {

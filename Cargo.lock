@@ -376,6 +376,7 @@ dependencies = [
  "jisp-core",
  "jisp-syntax-json",
  "jisp-syntax-lisp",
+ "jisp-syntax-ws",
  "jisp-syntax-yaml",
  "serde_json",
  "wasm-bindgen",

@@ -6,10 +6,23 @@
     <meta name="theme-color" content="#0f172a" />
     <title>Jisp UI playground</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="stylesheet" href="./style.css" />
   </head>
   <body class="bg-slate-950 text-slate-100 antialiased">
     <main id="app"></main>
-    <script type="module" src="./app.js"></script>
+    <script type="module">
+      let build = "dev";
+      try {
+        const response = await fetch(`./version.json?now=${Date.now()}`, { cache: "no-store" });
+        if (response.ok) ({ build } = await response.json());
+      } catch {
+        // Local file previews still work without a deployment manifest.
+      }
+      const stylesheet = new URL("./style.css", import.meta.url);
+      stylesheet.searchParams.set("v", build);
+      document.head.append(Object.assign(document.createElement("link"), { rel: "stylesheet", href: stylesheet }));
+      const app = new URL("./app.js", import.meta.url);
+      app.searchParams.set("v", build);
+      await import(app.href);
+    </script>
   </body>
 </html>

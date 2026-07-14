@@ -130,6 +130,7 @@ The GitHub Pages playground runs this same interpreter through the
 `jisp-wasm` WebAssembly entry point. JavaScript loads the module, renders the
 returned structural tree in an isolated preview, and forwards browser events;
 it does not parse or evaluate a second UI language, and it does not implement
-the update function. Its Lisp, JSON, and YAML selector converts the parsed
-module before reloading it through the selected reader. Comments are not part
-of the shared syntax tree, so conversion intentionally drops them.
+the update function. Its Lisp, JSON, YAML, and indentation-based WS selector
+converts the parsed module before reloading it through the selected reader.
+Comments are not part of the shared syntax tree, so conversion intentionally
+drops them.

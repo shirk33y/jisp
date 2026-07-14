@@ -110,14 +110,21 @@ fn syntax_conversion_preserves_a_ui_module() {
     let json = format_source(&nodes, "json").unwrap();
     let yaml = format_source(&nodes, "yaml").unwrap();
     let lisp = format_source(&parse_source(&json, "json").unwrap(), "lisp").unwrap();
+    let ws = format_source(&parse_source(&json, "json").unwrap(), "ws").unwrap();
 
     let mut json_session = PlaygroundSession::new();
     let mut yaml_session = PlaygroundSession::new();
     let mut lisp_session = PlaygroundSession::new();
+    let mut ws_session = PlaygroundSession::new();
     assert!(json_session.load_source_syntax(&json, "json").is_ok());
     assert!(yaml_session.load_source_syntax(&yaml, "yaml").is_ok());
     assert!(lisp.contains("\n  ("));
+    assert!(yaml.contains("\n  ["));
+    assert!(ws.contains("\n  "));
     assert!(lisp_session.load_source_syntax(&lisp, "lisp").is_ok());
+    ws_session
+        .load_source_syntax(&ws, "ws")
+        .unwrap_or_else(|error| panic!("formatted WS did not load: {error}\n\n{ws}"));
 }
 
 #[test]

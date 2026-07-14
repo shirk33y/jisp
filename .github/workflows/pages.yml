@@ -32,6 +32,7 @@ jobs:
       - run: rustup target add wasm32-unknown-unknown
       - uses: jetli/wasm-pack-action@v0.4.0
       - run: wasm-pack build crates/jisp-wasm --target web --release --out-dir ../../playground/pkg --out-name jisp_wasm
+      - run: printf '{"build":"%s"}\n' "${GITHUB_SHA}" > playground/version.json
       - uses: actions/upload-pages-artifact@v3
         with:
           path: playground
