@@ -1,6 +1,6 @@
 //! Browser-facing WebAssembly entry points for the interpreter-backed playground.
 
-use jisp::jisp_core::{Node, NodeKind, SourceId, Span, SyntaxParser};
+use jisp::jisp_core::{ui_element, Node, NodeKind, SourceId, Span, SyntaxParser};
 use jisp::jisp_eval::{Evaluator, Value};
 use jisp_syntax_json::JsonParser;
 use jisp_syntax_lisp::LispParser;
@@ -184,43 +184,89 @@ fn parse_source(source: &str, syntax: &str) -> Result<Vec<Node>, String> {
 fn format_source(nodes: &[Node], syntax: &str) -> Result<String, String> {
     match syntax_extension(syntax)? {
         "lisp" => Ok(format_lisp_module(nodes)),
-        "json" => serde_json::to_string_pretty(&serde_json::Value::Array(
-            nodes.iter().map(json_node).collect(),
-        ))
-        .map(|text| format!("{text}\n"))
-        .map_err(|error| error.to_string()),
+        "json" => Ok(format_json_module(nodes)),
         "yaml" => Ok(format_yaml_module(nodes)),
         "ws" => Ok(format_ws_module(nodes)),
         _ => unreachable!("syntax_extension returns a closed set"),
     }
 }
 
-fn json_node(node: &Node) -> serde_json::Value {
+fn format_json_module(nodes: &[Node]) -> String {
+    format!("{}\n", format_json_items(nodes, 0))
+}
+
+fn format_json_items(items: &[Node], indent: usize) -> String {
+    let inline = format!(
+        "[{}]",
+        items
+            .iter()
+            .map(format_json_inline)
+            .collect::<Vec<_>>()
+            .join(", ")
+    );
+    if indent + inline.chars().count() <= FORMAT_WIDTH {
+        return inline;
+    }
+
+    let child_indent = indent + 2;
+    let mut output = String::from("[");
+    for (index, item) in items.iter().enumerate() {
+        output.push('\n');
+        output.push_str(&" ".repeat(child_indent));
+        output.push_str(&format_json_layout(item, child_indent));
+        if index + 1 < items.len() {
+            output.push(',');
+        }
+    }
+    output.push('\n');
+    output.push_str(&" ".repeat(indent));
+    output.push(']');
+    output
+}
+
+fn format_json_layout(node: &Node, indent: usize) -> String {
+    let inline = format_json_inline(node);
+    if indent + inline.chars().count() <= FORMAT_WIDTH || !matches!(node.kind, NodeKind::Form(_)) {
+        return inline;
+    }
+    let NodeKind::Form(items) = &node.kind else {
+        return inline;
+    };
+    format_json_items(items, indent)
+}
+
+fn format_json_inline(node: &Node) -> String {
     match &node.kind {
-        NodeKind::Null => serde_json::Value::Null,
-        NodeKind::Bool(value) => serde_json::Value::Bool(*value),
-        NodeKind::Int(value) => serde_json::json!(value),
-        NodeKind::Float(value) => serde_json::json!(value),
-        NodeKind::Symbol(value) => serde_json::json!(value.as_str()),
-        NodeKind::String(value) => serde_json::json!(["str", value]),
+        NodeKind::Null => "null".to_owned(),
+        NodeKind::Bool(value) => value.to_string(),
+        NodeKind::Int(value) => value.to_string(),
+        NodeKind::Float(value) => value.to_string(),
+        NodeKind::Symbol(value) => serde_json::to_string(value.as_str()).expect("valid symbol"),
+        NodeKind::String(value) => format!(
+            "[\"str\", {}]",
+            serde_json::to_string(value.as_ref()).expect("valid string")
+        ),
         NodeKind::Form(items) => {
             let string_template = matches!(
                 items.first().and_then(Node::as_symbol),
                 Some("str" | "str.lines")
             );
-            serde_json::Value::Array(
+            format!(
+                "[{}]",
                 items
                     .iter()
                     .enumerate()
                     .map(|(index, item)| {
                         if string_template && index > 0 {
                             if let NodeKind::String(value) = &item.kind {
-                                return serde_json::json!(value);
+                                return serde_json::to_string(value.as_ref())
+                                    .expect("valid string template part");
                             }
                         }
-                        json_node(item)
+                        format_json_inline(item)
                     })
-                    .collect(),
+                    .collect::<Vec<_>>()
+                    .join(", ")
             )
         }
     }
@@ -245,12 +291,12 @@ const FORMAT_WIDTH: usize = 88;
 
 fn format_lisp_layout(node: &Node, indent: usize) -> String {
     let inline = format_lisp_inline(node);
-    if indent + inline.chars().count() <= FORMAT_WIDTH {
-        return inline;
-    }
     let NodeKind::Form(items) = &node.kind else {
         return inline;
     };
+    if indent + inline.chars().count() <= FORMAT_WIDTH && !prefers_lisp_block(items) {
+        return inline;
+    }
     if items.is_empty() {
         return "()".to_owned();
     }
@@ -277,7 +323,8 @@ fn format_lisp_layout(node: &Node, indent: usize) -> String {
                 .unwrap_or_default()
                 .chars()
                 .count();
-        if !matches!(item.kind, NodeKind::Form(_))
+        if (!matches!(item.kind, NodeKind::Form(_))
+            || matches!(&item.kind, NodeKind::Form(children) if children.is_empty()))
             && current_width + 1 + item_inline.chars().count() <= FORMAT_WIDTH
         {
             output.push(' ');
@@ -286,15 +333,27 @@ fn format_lisp_layout(node: &Node, indent: usize) -> String {
         }
         output.push('\n');
         output.push_str(&" ".repeat(child_indent));
-        output.push_str(&indent_lisp_block(
-            &format_lisp_layout(item, child_indent),
-            child_indent,
-        ));
+        output.push_str(&format_lisp_layout(item, child_indent));
     }
     output.push('\n');
     output.push_str(&" ".repeat(indent));
     output.push(')');
     output
+}
+
+fn prefers_lisp_block(items: &[Node]) -> bool {
+    let Some(head) = items.first().and_then(Node::as_symbol) else {
+        return false;
+    };
+    let has_form_child = items[1..]
+        .iter()
+        .any(|item| matches!(item.kind, NodeKind::Form(_)));
+    has_form_child
+        && (ui_element(head).is_some()
+            || matches!(
+                head,
+                "component" | "def" | "defn" | "export" | "type" | "ui.app"
+            ))
 }
 
 fn format_lisp_object(items: &[Node], indent: usize) -> String {
@@ -313,21 +372,13 @@ fn format_lisp_object(items: &[Node], indent: usize) -> String {
             output.push_str(&key);
             output.push('\n');
             output.push_str(&" ".repeat(child_indent));
-            output.push_str(&indent_lisp_block(
-                &format_lisp_layout(&pair[1], child_indent),
-                child_indent,
-            ));
+            output.push_str(&format_lisp_layout(&pair[1], child_indent));
         }
     }
     output.push('\n');
     output.push_str(&" ".repeat(indent));
     output.push(')');
     output
-}
-
-fn indent_lisp_block(text: &str, indent: usize) -> String {
-    let continuation = format!("\n{}", " ".repeat(indent));
-    text.replace('\n', &continuation)
 }
 
 fn is_reader_form(items: &[Node]) -> bool {

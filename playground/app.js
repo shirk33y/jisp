@@ -3,6 +3,8 @@ import { Compartment, EditorState } from "https://esm.sh/@codemirror/state@6.7.1
 import { StreamLanguage } from "https://esm.sh/@codemirror/language@6.12.4";
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "https://esm.sh/@codemirror/commands@6.10.4";
 import { clojure } from "https://esm.sh/@codemirror/legacy-modes@6.5.0/mode/clojure";
+import { json } from "https://esm.sh/@codemirror/lang-json@6.0.2";
+import { yaml } from "https://esm.sh/@codemirror/lang-yaml@6.1.2";
 import { oneDark } from "https://esm.sh/@codemirror/theme-one-dark@6.1.2";
 
 const assetVersion = new URL(import.meta.url).searchParams.get("v") || "dev";
@@ -25,10 +27,13 @@ app.innerHTML = `
         <p class="text-sm font-semibold uppercase tracking-[0.2em] text-cyan-400">Experimental</p>
         <h1 class="mt-1 text-2xl font-bold text-white">Jisp UI playground</h1>
       </div>
-      <label class="flex items-center gap-3 text-sm font-medium text-slate-300">
-        Example
-        <select id="example" class="rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-white outline-none focus:border-cyan-400"></select>
-      </label>
+      <div class="flex items-center gap-4">
+        <label class="flex items-center gap-3 text-sm font-medium text-slate-300">
+          Example
+          <select id="example" class="rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-white outline-none focus:border-cyan-400"></select>
+        </label>
+        <a href="https://github.com/shirk33y/jisp" target="_blank" rel="noreferrer" class="rounded-lg border border-slate-700 px-3 py-2 text-sm font-semibold text-slate-200 transition hover:border-cyan-400 hover:text-cyan-300">GitHub ↗</a>
+      </div>
     </div>
   </header>
   <main class="mx-auto max-w-[1600px] px-5 py-6">
@@ -80,6 +85,8 @@ let latestTree = null;
 let session = null;
 const language = new Compartment();
 const clojureLanguage = StreamLanguage.define(clojure);
+const jsonLanguage = json();
+const yamlLanguage = yaml();
 const wsLanguage = StreamLanguage.define({
   startState() {
     return { head: false };
@@ -146,7 +153,7 @@ function browserEvent(event) {
 
 function treeKey(tree) {
   if (tree?.kind !== "element" || tree.key === null || tree.key === undefined) return null;
-  return `${typeof tree.key}:${JSON.stringify(tree.key)}`;
+  return \`\${typeof tree.key}:\${JSON.stringify(tree.key)}\`;
 }
 
 function isElementTree(tree) {
@@ -358,7 +365,13 @@ function setSource(text) {
 }
 
 function setEditorLanguage() {
-  editor.dispatch({ effects: language.reconfigure(syntax === "ws" ? wsLanguage : clojureLanguage) });
+  const nextLanguage = {
+    lisp: clojureLanguage,
+    json: jsonLanguage,
+    yaml: yamlLanguage,
+    ws: wsLanguage,
+  }[syntax];
+  editor.dispatch({ effects: language.reconfigure(nextLanguage) });
 }
 
 async function loadExample(path) {

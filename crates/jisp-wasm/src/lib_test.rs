@@ -128,6 +128,28 @@ fn syntax_conversion_preserves_a_ui_module() {
 }
 
 #[test]
+fn source_conversion_uses_compact_json_and_structured_lisp_layouts() {
+    let nodes = parse_source(
+        r#"
+(component app ()
+  (div (span (text "hello"))))
+"#,
+        "lisp",
+    )
+    .unwrap();
+
+    let json = format_source(&nodes, "json").unwrap();
+    let lisp = format_source(&nodes, "lisp").unwrap();
+
+    assert!(json.contains(r#"["str", "hello"]"#));
+    assert!(!json.contains("[\n          \"str\""));
+    assert_eq!(
+        lisp,
+        "(component app ()\n  (div\n    (span\n      (text \"hello\")\n    )\n  )\n)\n"
+    );
+}
+
+#[test]
 fn update_todo_example_updates_draft_then_adds_a_task() {
     let mut session = PlaygroundSession::new();
     let first: Value = serde_json::from_str(
