@@ -74,6 +74,18 @@ fn escapes_text_and_attribute_values() {
 }
 
 #[test]
+fn rejects_javascript_urls_in_static_html() {
+    let node = obj([
+        ("tag", string("a")),
+        ("attrs", obj([("href", string("  JaVaScRiPt:alert(1)"))])),
+    ]);
+
+    let error = render_html(&node, span()).unwrap_err();
+
+    assert!(error.message.contains("must not use a javascript: URL"));
+}
+
+#[test]
 fn rejects_non_bool_class_flags() {
     let node = obj([
         ("tag", string("div")),

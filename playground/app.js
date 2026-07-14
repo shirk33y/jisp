@@ -206,6 +206,7 @@ const hostMetrics = {
   textWrites: 0,
   elementPatches: 0,
   childReconciliations: 0,
+  hydrations: 0,
   events: 0,
 };
 
@@ -488,6 +489,18 @@ function applyPatches(patches, sequence) {
   return true;
 }
 
+function hydrateTree(payload) {
+  if (!payload || typeof payload.html !== "string" || !payload.tree) return false;
+  root.innerHTML = payload.html;
+  const next = patchNode(root, root.firstChild, payload.tree, "0");
+  for (const child of [...root.childNodes]) {
+    if (child !== next) child.remove();
+  }
+  hostMetrics.hydrations += 1;
+  reportHostMetrics();
+  return true;
+}
+
 addEventListener("message", (message) => {
   if (message.source !== parent) return;
   if (message.data?.type === "jisp-render") {
@@ -499,6 +512,10 @@ addEventListener("message", (message) => {
     }
     restoreFocus(focus);
     reportHostMetrics();
+    return;
+  }
+  if (message.data?.type === "jisp-hydrate") {
+    if (!hydrateTree(message.data.payload)) parent.postMessage({ type: "jisp-recover" }, "*");
     return;
   }
   if (message.data?.type === "jisp-patches" && !applyPatches(message.data.patches || [], message.data.sequence)) {
@@ -518,6 +535,11 @@ function postPatches(patches, sequence) {
   preview.contentWindow?.postMessage({ type: "jisp-patches", patches, sequence }, "*");
 }
 
+function postHydrate(payload) {
+  latestTree = payload.tree;
+  preview.contentWindow?.postMessage({ type: "jisp-hydrate", payload }, "*");
+}
+
 function sourceText() {
   return editor.state.doc.toString();
 }
@@ -526,7 +548,8 @@ function renderPreview() {
   if (!ready) return;
   try {
     session = new PlaygroundSession();
-    postTree(JSON.parse(session.load_syntax(sourceText(), syntax)));
+    session.load_syntax(sourceText(), syntax);
+    postHydrate(JSON.parse(session.ssr()));
     error.classList.add("hidden");
     setRuntimeStatus("Update ready");
   } catch (reason) {

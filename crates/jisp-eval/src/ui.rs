@@ -122,6 +122,7 @@ fn render_attribute(
             Ok(())
         }
         Value::Str(value) => {
+            validate_attribute_value(key, value, span)?;
             output.push(' ');
             output.push_str(key);
             output.push_str("=\"");
@@ -200,6 +201,21 @@ fn validate_attribute(attribute: &str, span: Span) -> Result<(), RuntimeError> {
             format!("invalid ui attribute `{attribute}`"),
         ))
     }
+}
+
+fn validate_attribute_value(attribute: &str, value: &str, span: Span) -> Result<(), RuntimeError> {
+    if matches!(attribute, "href" | "src")
+        && value
+            .trim_start()
+            .to_ascii_lowercase()
+            .starts_with("javascript:")
+    {
+        return Err(RuntimeError::at(
+            span,
+            format!("ui {attribute} must not use a javascript: URL"),
+        ));
+    }
+    Ok(())
 }
 
 fn is_html_name(value: &str) -> bool {

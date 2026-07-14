@@ -173,10 +173,11 @@ event-update path.
 `render_ssr(source)` and `PlaygroundSession.ssr()` return the versioned
 `jisp-ui-ssr/1` payload: escaped `html`, serializable initial `state`, and the
 same structural `tree` used by the interactive host. The embedding server owns
-safe document serialization and activation. The current browser runtime starts
-from the client tree rather than hydrating pre-existing DOM, so this payload is
-an SSR contract and conformance oracle, not a claim of completed hydration or
-resumability.
+safe document serialization and activation. The playground starts from the
+payload's HTML, then attaches the structural tree and listeners to matching
+existing nodes without replacing them. This proves the hydration contract
+locally; a production server-delivery adapter and resumability remain future
+work.
 
 ## Lowered contract and host status
 
