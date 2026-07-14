@@ -143,6 +143,7 @@ fn source_conversion_uses_compact_json_and_structured_lisp_layouts() {
 
     assert!(json.contains(r#"["str", "hello"]"#));
     assert!(!json.contains("[\n          \"str\""));
+    assert!(json.contains("[\"component\", \"app\", []"));
     assert_eq!(
         lisp,
         "(component app ()\n  (div\n    (span\n      (text \"hello\")\n    )\n  )\n)\n"

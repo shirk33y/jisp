@@ -237,47 +237,115 @@ fn format_source(nodes: &[Node], syntax: &str) -> Result<String, String> {
 }
 
 fn format_json_module(nodes: &[Node]) -> String {
-    format!("{}\n", format_json_items(nodes, 0))
-}
-
-fn format_json_items(items: &[Node], indent: usize) -> String {
+    if nodes.is_empty() {
+        return "[]\n".to_owned();
+    }
     let inline = format!(
         "[{}]",
-        items
+        nodes
             .iter()
             .map(format_json_inline)
             .collect::<Vec<_>>()
             .join(", ")
     );
-    if indent + inline.chars().count() <= FORMAT_WIDTH {
-        return inline;
+    if inline.chars().count() <= FORMAT_WIDTH {
+        return format!("{inline}\n");
     }
 
-    let child_indent = indent + 2;
     let mut output = String::from("[");
-    for (index, item) in items.iter().enumerate() {
+    for (index, node) in nodes.iter().enumerate() {
         output.push('\n');
-        output.push_str(&" ".repeat(child_indent));
-        output.push_str(&format_json_layout(item, child_indent));
-        if index + 1 < items.len() {
+        output.push_str("  ");
+        output.push_str(&format_json_layout(node, 2));
+        if index + 1 < nodes.len() {
             output.push(',');
         }
     }
-    output.push('\n');
-    output.push_str(&" ".repeat(indent));
-    output.push(']');
+    output.push_str("\n]\n");
     output
 }
 
 fn format_json_layout(node: &Node, indent: usize) -> String {
     let inline = format_json_inline(node);
-    if indent + inline.chars().count() <= FORMAT_WIDTH || !matches!(node.kind, NodeKind::Form(_)) {
+    if (indent + inline.chars().count() <= FORMAT_WIDTH && !prefers_json_block(node))
+        || !matches!(node.kind, NodeKind::Form(_))
+    {
         return inline;
     }
     let NodeKind::Form(items) = &node.kind else {
         return inline;
     };
-    format_json_items(items, indent)
+    format_json_form(items, indent)
+}
+
+fn prefers_json_block(node: &Node) -> bool {
+    let NodeKind::Form(items) = &node.kind else {
+        return false;
+    };
+    let Some(head) = items.first().and_then(Node::as_symbol) else {
+        return false;
+    };
+    items[1..]
+        .iter()
+        .any(|item| matches!(item.kind, NodeKind::Form(_)))
+        && matches!(
+            head,
+            "component" | "def" | "defn" | "export" | "type" | "ui.app"
+        )
+}
+
+fn format_json_form(items: &[Node], indent: usize) -> String {
+    if items.is_empty() {
+        return "[]".to_owned();
+    }
+    let child_indent = indent + 2;
+    let mut output = String::from("[");
+    let mut line_width = indent + 1;
+    let mut multiline = false;
+
+    for (index, item) in items.iter().enumerate() {
+        let rendered = format_json_layout(item, child_indent);
+        let is_block = is_json_block(item);
+        let separator_width = usize::from(index > 0) * 2;
+        if !is_block && line_width + separator_width + rendered.chars().count() <= FORMAT_WIDTH {
+            if index > 0 {
+                output.push_str(", ");
+                line_width += 2;
+            }
+            output.push_str(&rendered);
+            line_width += rendered.chars().count();
+            continue;
+        }
+
+        if index > 0 {
+            output.push(',');
+        }
+        output.push('\n');
+        output.push_str(&" ".repeat(child_indent));
+        output.push_str(&rendered);
+        line_width = child_indent
+            + rendered
+                .rsplit('\n')
+                .next()
+                .unwrap_or_default()
+                .chars()
+                .count();
+        multiline = true;
+    }
+
+    if multiline {
+        output.push('\n');
+        output.push_str(&" ".repeat(indent));
+    }
+    output.push(']');
+    output
+}
+
+fn is_json_block(node: &Node) -> bool {
+    let NodeKind::Form(items) = &node.kind else {
+        return false;
+    };
+    !items.is_empty() && !matches!(items.first().and_then(Node::as_symbol), Some("str"))
 }
 
 fn format_json_inline(node: &Node) -> String {

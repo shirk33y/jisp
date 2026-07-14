@@ -1,6 +1,6 @@
-import { EditorView, keymap } from "https://esm.sh/@codemirror/view@6.43.6";
-import { Compartment, EditorState } from "https://esm.sh/@codemirror/state@6.7.1";
-import { StreamLanguage } from "https://esm.sh/@codemirror/language@6.12.4";
+import { Decoration, EditorView, keymap, ViewPlugin } from "https://esm.sh/@codemirror/view@6.43.6";
+import { Compartment, EditorState, RangeSetBuilder } from "https://esm.sh/@codemirror/state@6.7.1";
+import { StreamLanguage, syntaxTree } from "https://esm.sh/@codemirror/language@6.12.4";
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "https://esm.sh/@codemirror/commands@6.10.4";
 import { clojure } from "https://esm.sh/@codemirror/legacy-modes@6.5.0/mode/clojure";
 import { json } from "https://esm.sh/@codemirror/lang-json@6.0.2";
@@ -87,6 +87,57 @@ const language = new Compartment();
 const clojureLanguage = StreamLanguage.define(clojure);
 const jsonLanguage = json();
 const yamlLanguage = yaml();
+const rainbowBracketClasses = [
+  "cm-rainbow-bracket-0",
+  "cm-rainbow-bracket-1",
+  "cm-rainbow-bracket-2",
+  "cm-rainbow-bracket-3",
+  "cm-rainbow-bracket-4",
+];
+const rainbowBracketDecorations = rainbowBracketClasses.map((className) => Decoration.mark({ class: className }));
+const rainbowBracketTheme = EditorView.baseTheme({
+  ".cm-rainbow-bracket-0": { color: "#f472b6", fontWeight: "700" },
+  ".cm-rainbow-bracket-1": { color: "#facc15", fontWeight: "700" },
+  ".cm-rainbow-bracket-2": { color: "#4ade80", fontWeight: "700" },
+  ".cm-rainbow-bracket-3": { color: "#38bdf8", fontWeight: "700" },
+  ".cm-rainbow-bracket-4": { color: "#c084fc", fontWeight: "700" },
+});
+const rainbowBrackets = ViewPlugin.fromClass(class {
+  constructor(view) {
+    this.decorations = rainbowBracketRanges(view);
+  }
+
+  update(update) {
+    this.decorations = rainbowBracketRanges(update.view);
+  }
+}, {
+  decorations: (plugin) => plugin.decorations,
+});
+
+function rainbowBracketRanges(view) {
+  const builder = new RangeSetBuilder();
+  const stack = [];
+  const pairs = { "(": ")", "[": "]", "{": "}" };
+  const text = view.state.doc.toString();
+  const tree = syntaxTree(view.state);
+  for (let position = 0; position < text.length; position += 1) {
+    const token = tree.resolveInner(position, 1).name;
+    if (/String|Comment/.test(token)) continue;
+    const character = text[position];
+    if (pairs[character]) {
+      const depth = stack.length;
+      builder.add(position, position + 1, rainbowBracketDecorations[depth % rainbowBracketDecorations.length]);
+      stack.push({ close: pairs[character], depth });
+      continue;
+    }
+    const opening = stack.at(-1);
+    if (opening?.close === character) {
+      builder.add(position, position + 1, rainbowBracketDecorations[opening.depth % rainbowBracketDecorations.length]);
+      stack.pop();
+    }
+  }
+  return builder.finish();
+}
 const wsLanguage = StreamLanguage.define({
   startState() {
     return { head: false };
@@ -419,6 +470,8 @@ editor = new EditorView({
       EditorView.lineWrapping,
       language.of(clojureLanguage),
       oneDark,
+      rainbowBracketTheme,
+      rainbowBrackets,
       EditorView.updateListener.of((update) => {
         if (!update.docChanged) return;
         clearTimeout(renderTimer);
