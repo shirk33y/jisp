@@ -313,6 +313,7 @@ pub fn execute(
 pub struct ExecutionStats {
     pub evaluated_slots: usize,
     pub reused_slots: usize,
+    pub reused_subtrees: usize,
     pub reused_blocks: usize,
     pub reused_items: usize,
     pub reused_components: usize,
@@ -694,13 +695,30 @@ impl Executor<'_> {
                     self.slot(slot, env, previous.and_then(text_value))?,
                 ),
             ]))),
-            Node::Element(element) => self.element(element, env, previous, path),
+            Node::Element(element) => {
+                if !self.changes.affects(&node_dependencies(node)) {
+                    if let Some(previous) = previous {
+                        self.stats.reused_subtrees += 1;
+                        return Ok(previous.clone());
+                    }
+                }
+                self.element(element, env, previous, path)
+            }
             Node::If {
                 condition,
                 then_branch,
                 else_branch,
+                dependencies,
                 ..
             } => {
+                // A previous structural value belongs to the branch selected
+                // on the preceding turn. Reusing it after the condition
+                // changed would let a static new branch inherit stale output.
+                let previous = if self.changes.affects(dependencies) {
+                    None
+                } else {
+                    previous
+                };
                 if self.evaluator.eval_in(condition, env)?.truthy() {
                     self.node(then_branch, env, previous, path)
                 } else {

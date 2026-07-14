@@ -645,6 +645,58 @@ fn cached_each_rows_rerender_when_an_external_body_dependency_changes() {
 }
 
 #[test]
+fn cached_incremental_executor_reuses_an_unaffected_static_subtree() {
+    let typed = typed(
+        r#"
+(component app (state)
+  (main
+    (section
+      (h1 (text "Static heading"))
+      (p (text "This subtree has no state reads.")))
+    (p (text (str.from (. state "count"))))))
+"#,
+    );
+    let program = compile(&typed).unwrap();
+    let before = Value::Obj(indexmap::IndexMap::from([(
+        "count".to_owned(),
+        Value::Int(1),
+    )]));
+    let after = Value::Obj(indexmap::IndexMap::from([(
+        "count".to_owned(),
+        Value::Int(2),
+    )]));
+    let mut evaluator = Evaluator::new();
+    let loaded = evaluator.load_module(&typed.module).unwrap();
+    let first = execute_incremental_cached(
+        &program,
+        &mut evaluator,
+        &loaded.env,
+        "app",
+        std::slice::from_ref(&before),
+        None,
+        &ChangeSet {
+            unknown: true,
+            ..ChangeSet::default()
+        },
+    )
+    .unwrap();
+    let second = execute_incremental_cached(
+        &program,
+        &mut evaluator,
+        &loaded.env,
+        "app",
+        std::slice::from_ref(&after),
+        Some(&first),
+        &changed_paths("state", &before, &after),
+    )
+    .unwrap();
+    let full = execute(&program, &mut evaluator, &loaded.env, "app", &[after]).unwrap();
+
+    assert!(second.stats.reused_subtrees >= 1);
+    assert!(second.value.structurally_equal(&full).unwrap());
+}
+
+#[test]
 fn native_widget_adapter_materializes_semantic_widgets_without_dom_types() {
     let tree = Value::Obj(indexmap::IndexMap::from([
         ("tag".to_owned(), Value::string("div")),

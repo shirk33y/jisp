@@ -384,6 +384,7 @@ impl PlaygroundSession {
             "execution": {
                 "evaluatedSlots": runtime.last_execution.evaluated_slots,
                 "reusedSlots": runtime.last_execution.reused_slots,
+                "reusedSubtrees": runtime.last_execution.reused_subtrees,
                 "reusedBlocks": runtime.last_execution.reused_blocks,
                 "reusedItems": runtime.last_execution.reused_items,
                 "reusedComponents": runtime.last_execution.reused_components,

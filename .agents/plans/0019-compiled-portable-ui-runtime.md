@@ -14,7 +14,8 @@ materializes the existing structural-tree contract before the DOM reconciler.
 Event descriptors retain explicit synchronous `prevent-default`,
 `stop-propagation`, and `capture` policy for the browser host; direct
 static-template DOM mount remains the next M2 increment.
-M3 now conservatively reuses JUIR scalar slots and whole `for` blocks. Proven
+M3 now conservatively reuses JUIR scalar slots, unaffected element subtrees,
+and whole `for` blocks. Proven
 parameter field paths are compared with immutable reducer changes; opaque,
 local, and module-level expressions are explicitly `Unknown` and therefore
 cannot be skipped. The browser Wasm executor retains the previous structural
@@ -31,7 +32,9 @@ internal to the JUIR executor and does not alter the structural-tree contract.
 Portable differential scenarios now cover keyed `for` rows, dynamic properties
 and classes, conditional branches, and nested component calls in all four
 source syntaxes; they compare the reference structural value to JUIR after
-each reducer action, including flattened dynamic child lists.
+each reducer action, including flattened dynamic child lists. A changed `if`
+condition explicitly discards the prior branch output before execution, so an
+otherwise static replacement branch cannot inherit stale structure.
 M4's pre-implementation ownership and capability contract is documented in
 [`docs/UI_EFFECTS.md`](../../docs/UI_EFFECTS.md): effects remain reducer data,
 carry stable owner/id/generation identity, and require deterministic fake-host
