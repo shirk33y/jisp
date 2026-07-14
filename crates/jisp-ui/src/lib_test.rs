@@ -4,6 +4,7 @@ use jisp_ir::Lowerer;
 use jisp_syntax_lisp::LispParser;
 use jisp_types::{Inferencer, TypedModule};
 
+use crate::native::{self, NativeError, NativeScalar, NativeWidgetKind};
 use crate::{
     changed_paths, compile, execute, execute_incremental, execute_incremental_cached,
     render_static_html, ChangeSet, Dependency, DependencyPath, Node, Scalar, Slot,
@@ -632,6 +633,78 @@ fn cached_each_rows_rerender_when_an_external_body_dependency_changes() {
             .apply(ui_html, &[full], typed.module.definitions[0].span)
             .unwrap()
             .display_string()
+    );
+}
+
+#[test]
+fn native_widget_adapter_materializes_semantic_widgets_without_dom_types() {
+    let tree = Value::Obj(indexmap::IndexMap::from([
+        ("tag".to_owned(), Value::string("div")),
+        (
+            "classes".to_owned(),
+            Value::Obj(indexmap::IndexMap::from([
+                ("panel".to_owned(), Value::Bool(true)),
+                ("hidden".to_owned(), Value::Bool(false)),
+            ])),
+        ),
+        (
+            "children".to_owned(),
+            Value::List(vec![Value::Obj(indexmap::IndexMap::from([
+                ("tag".to_owned(), Value::string("input")),
+                (
+                    "attrs".to_owned(),
+                    Value::Obj(indexmap::IndexMap::from([(
+                        "placeholder".to_owned(),
+                        Value::string("Task"),
+                    )])),
+                ),
+                (
+                    "props".to_owned(),
+                    Value::Obj(indexmap::IndexMap::from([(
+                        "value".to_owned(),
+                        Value::string("Plan"),
+                    )])),
+                ),
+                (
+                    "events".to_owned(),
+                    Value::Obj(indexmap::IndexMap::from([(
+                        "input".to_owned(),
+                        Value::Null,
+                    )])),
+                ),
+            ]))]),
+        ),
+    ]));
+
+    let native = native::render(&tree, &native::NativeRegistry::portable_baseline()).unwrap();
+
+    assert_eq!(native.kind, NativeWidgetKind::Container);
+    assert_eq!(
+        native.style_tokens,
+        std::collections::BTreeSet::from(["panel".to_owned()])
+    );
+    assert_eq!(native.children[0].kind, NativeWidgetKind::TextInput);
+    assert_eq!(
+        native.children[0].properties["value"],
+        NativeScalar::Str("Plan".to_owned())
+    );
+    assert!(native.children[0].events.contains("input"));
+}
+
+#[test]
+fn native_widget_adapter_reports_unsupported_host_capabilities() {
+    let image = Value::Obj(indexmap::IndexMap::from([(
+        "tag".to_owned(),
+        Value::string("img"),
+    )]));
+
+    let error = native::render(&image, &native::NativeRegistry::portable_baseline()).unwrap_err();
+
+    assert_eq!(
+        error,
+        NativeError::UnsupportedElement {
+            tag: "img".to_owned()
+        }
     );
 }
 

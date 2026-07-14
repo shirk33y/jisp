@@ -38,8 +38,10 @@ serializable state, and the structural tree. Its generated `data-jisp-path` and
 attributes to spoof them. The playground hydrates a matching existing tree by
 attaching paths/listeners in place and preserves pre-hydration form
 `value`/`checked` state until an actual reducer change writes the property.
-Production server delivery, block-level anchors, and a native-host prototype
-remain subsequent M5 work.
+Production server delivery and block-level anchors remain subsequent M5 work.
+`jisp-ui::native` now supplies an in-memory semantic-widget prototype with a
+deliberately small registry and explicit unsupported-element/metadata
+diagnostics; it is deliberately independent of DOM, CSS, and any GUI toolkit.
 
 ## Goal
 

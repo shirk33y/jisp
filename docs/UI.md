@@ -152,10 +152,10 @@ controlled edit. This preserves focused controls and their selection through
 ordinary updates. The structural tree remains the semantic oracle and recovery
 snapshot while the compiled JUIR runtime evolves.
 
-Effects, subscriptions, async commands, persistence, lifecycle boundaries, and
-native widget adapters are not implemented; their proposed ownership and
-capability contract lives in [UI_EFFECTS.md](UI_EFFECTS.md). A UI component
-remains a pure function of its supplied state and props.
+Effects, subscriptions, async commands, persistence, and lifecycle boundaries
+are not implemented; their proposed ownership and capability contract lives in
+[UI_EFFECTS.md](UI_EFFECTS.md). A UI component remains a pure function of its
+supplied state and props.
 
 For development diagnostics, `PlaygroundSession.metrics()` reports render
 counts plus the latest JUIR slot, block, keyed-item, and component reuse counts. The
@@ -169,6 +169,21 @@ result.
 batch for another browser or native host. `snapshot()` returns the complete
 current tree only for initial mount or host recovery; it is not the normal
 event-update path.
+
+### Native adapter prototype
+
+`jisp-ui::native` is an in-memory reference adapter for a deliberately small
+semantic widget registry. It maps the structural tree to `Container`, `Text`,
+`Button`, `TextInput`, `List`, `ListItem`, `Form`, and `Label` widgets, retains
+utility classes as opaque style tokens, and retains event names as declarative
+bindings. It has no DOM, CSS, JavaScript event, or toolkit dependency.
+
+The registry intentionally does not support every Jisp element yet: for
+example `img`, `a`, and `select` fail with `native host does not support Jisp
+element ...`. Unsupported native attributes, properties, and events fail just
+as explicitly. This is a contract/prototyping host, not a GUI backend; a future
+platform adapter owns retained-widget mount/update/dispose operations and maps
+only supported style tokens and capabilities.
 
 `render_ssr(source)` and `PlaygroundSession.ssr()` return the versioned
 `jisp-ui-ssr/1` payload: escaped `html`, serializable initial `state`, and the
