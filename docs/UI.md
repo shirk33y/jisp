@@ -153,10 +153,13 @@ controlled edit. This preserves focused controls and their selection through
 ordinary updates. The structural tree remains the semantic oracle and recovery
 snapshot while the compiled JUIR runtime evolves.
 
-Executable browser effects, subscriptions, async commands, persistence, and
-component lifecycle boundaries are not implemented; reducer resource
-declarations, deterministic test delivery, and the generation-safe Wasm host
-boundary live in [UI_EFFECTS.md](UI_EFFECTS.md).
+The playground executes two deliberately narrow browser capabilities through
+the generation-safe Wasm host boundary: `storage.write@1` and
+`timer.tick@1`. They demonstrate command persistence and a cancellable
+subscription, with exact portable request schemas; network, navigation, and
+general browser APIs remain out of scope. Reducer resource declarations,
+deterministic test delivery, and the capability contract live in
+[UI_EFFECTS.md](UI_EFFECTS.md).
 A UI component remains a pure function of its supplied state and props.
 
 For development diagnostics, `PlaygroundSession.metrics()` reports render

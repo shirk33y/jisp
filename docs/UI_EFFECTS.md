@@ -3,8 +3,8 @@
 > Design contract. `jisp-ui::effects::FakeHost` implements deterministic
 > command and subscription reconciliation for host tests. `ui.result` carries
 > reducer-declared resources as data. Fixture-only `ui.test` can deterministically
-> deliver their completion actions; browser/native command execution remains
-> intentionally unimplemented.
+> deliver their completion actions. The playground also provides two deliberately
+> narrow browser capabilities; it is not a general browser command runtime.
 
 Jisp UI keeps Model–View–Update: `view` is pure and `(update state action)`
 calculates the next immutable state. Effects are data emitted by `update`; they
@@ -153,6 +153,29 @@ completion action through the ordinary reducer. Timeout and real host
 cancellation remain capability-provider behavior to add to browser/native
 hosts.
 
+## Playground browser provider
+
+The playground opts in to the Wasm effect-host boundary and implements exactly
+two capabilities. They are useful executable examples of the lifecycle, not a
+permission model for arbitrary browser APIs:
+
+| Capability | Resource kind | Exact request | Completion |
+| --- | --- | --- | --- |
+| `storage.write@1` | command | `{ "key": nonempty-string, "value": json }` | `{ "ok": { "key": string } }` after writing the JSON-encoded value to the playground page's `localStorage` |
+| `timer.tick@1` | subscription | `{ "every-ms": integer, 10..86400000 }` | `{ "ok": 1 }`, `{ "ok": 2 }`, … at that interval |
+
+Unknown fields, a wrong kind, a wrong version, or an invalid request complete
+with a stable JSON-shaped error. A `localStorage` exception becomes
+`host-failure`. Removing or replacing a timer clears its interval. The host
+keys active work by `(kind, id)` and only delivers a completion when the Wasm
+runtime still reports the same opaque generation; this is defense in depth on
+top of the runtime's own stale-delivery check.
+
+The provider deliberately does **not** expose network, navigation, arbitrary
+storage reads, DOM handles, or an evaluator. Add each future capability with a
+versioned schema, explicit permission and cancellation policy, deterministic
+fake-host tests, and a browser integration test.
+
 ## WIT boundary prototype
 
 [`../wit/jisp-ui-capabilities.wit`](../wit/jisp-ui-capabilities.wit) declares
@@ -172,7 +195,7 @@ is not a generated WIT binding.
 
 - Local-state source syntax.
 - Concrete browser/native capability schemas, permissions, timeout policies,
-  and providers for the declared resource protocol.
+  and providers beyond the two narrow playground capabilities.
 - Capability serialization choices for SSR/resume beyond the current
   JSON-shaped descriptors and completion templates.
 - Generated WIT bindings and a component-toolchain validation gate. WIT
@@ -190,9 +213,10 @@ checks that the resource is still current, expands the source-declared action
 template, runs `update`, and atomically reconciles the next declarations.
 Duplicate configuration is rejected so active generations cannot be reset.
 
-This boundary performs no I/O and the playground does not yet attach browser
-providers to it. Its fixture-only `run_tests` entry point executes the
-deterministic `ui.test` simulation instead. A real command host must still
-validate capability schemas and implement cancellation against the same
-lifecycle rules. UI components remain effect-free. See also [UI.md](UI.md) and
+The Wasm boundary itself performs no I/O. The playground attaches the limited
+`storage.write@1` and `timer.tick@1` provider described above; its
+fixture-only `run_tests` entry point still executes the deterministic `ui.test`
+simulation rather than real browser I/O. Any other command host must validate
+its capability schemas and implement cancellation against the same lifecycle
+rules. UI components remain effect-free. See also [UI.md](UI.md) and
 [FFI_FUTURE.md](FFI_FUTURE.md).

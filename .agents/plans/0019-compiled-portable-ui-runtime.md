@@ -67,8 +67,12 @@ boundary: an embedding host configures immutable versioned capabilities, reads
 active resource generations from `jisp-ui-resources/1`, and returns an
 `{ok}`/`{error}` completion to Wasm. Wasm verifies the live generation,
 materializes the source-declared action template, runs the normal reducer, and
-reconciles the next desired set. This is an embedding protocol only; the
-playground does not yet attach browser I/O providers to it.
+reconciles the next desired set. The playground now attaches a deliberately
+narrow browser provider for `storage.write@1` commands and `timer.tick@1`
+subscriptions. It validates their exact portable schemas, cancels
+removed/replaced timers, and returns generation-safe completions through this
+embedding protocol. Browser I/O beyond those two demonstrator capabilities and
+component-local ownership remain subsequent M4 work.
 M6 now has a first WIT package at
 [`wit/jisp-ui-capabilities.wit`](../../wit/jisp-ui-capabilities.wit), limited to
 coarse versioned storage/timer/navigation capabilities; binding generation and

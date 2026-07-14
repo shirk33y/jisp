@@ -521,7 +521,7 @@ fn run_one(
                 result,
                 span,
             } => lookup(module_env, result, "delivery result")
-                .and_then(|result| portable_json(result))
+                .and_then(portable_json)
                 .and_then(|result| {
                     let host = host.as_mut().ok_or_else(|| {
                         UiTestError(

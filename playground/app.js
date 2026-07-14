@@ -17,6 +17,7 @@ const examples = [
   ["Product launch board", "examples/kanban.lisp"],
   ["Tiny rituals", "examples/habits.lisp"],
   ["Personal spend", "examples/finance.lisp"],
+  ["Effect host", "examples/effects.lisp"],
 ];
 
 const app = document.getElementById("app");
@@ -94,6 +95,11 @@ let hostMetrics = null;
 let previewHydrated = false;
 let latestSsrPayload = null;
 let latestMountPlan = null;
+const browserCapabilities = [
+  { name: "storage.write", version: 1 },
+  { name: "timer.tick", version: 1 },
+];
+const effectOperations = new Map();
 const language = new Compartment();
 const clojureLanguage = StreamLanguage.define(clojure);
 const jsonLanguage = json();
@@ -627,13 +633,146 @@ function sourceText() {
   return editor.state.doc.toString();
 }
 
+function effectKey(kind, id) {
+  return `${kind}:${id}`;
+}
+
+function clearEffectOperation(operation) {
+  if (operation.timer !== undefined) clearInterval(operation.timer);
+}
+
+function clearEffectOperations() {
+  for (const operation of effectOperations.values()) clearEffectOperation(operation);
+  effectOperations.clear();
+}
+
+function exactObject(value, keys) {
+  return value
+    && typeof value === "object"
+    && !Array.isArray(value)
+    && Object.keys(value).length === keys.length
+    && keys.every((key) => Object.hasOwn(value, key));
+}
+
+function effectError(code, message) {
+  return { error: { code, message: String(message) } };
+}
+
+function isCurrentEffect(operation) {
+  return effectOperations.get(effectKey(operation.kind, operation.id)) === operation;
+}
+
+function deliverEffect(operation, completion) {
+  queueMicrotask(() => {
+    if (!session || !isCurrentEffect(operation)) return;
+    try {
+      const tree = JSON.parse(session.deliverEffect(
+        operation.kind,
+        operation.id,
+        BigInt(operation.generation),
+        JSON.stringify(completion),
+      ));
+      postTree(tree);
+      syncEffectHost();
+      error.classList.add("hidden");
+      setRuntimeStatus("Effect completed");
+    } catch (reason) {
+      if (!isCurrentEffect(operation)) return;
+      status.removeAttribute("title");
+      error.textContent = String(reason);
+      error.classList.remove("hidden");
+      setStatus("bg-rose-100 text-rose-700", "Effect error");
+    }
+  });
+}
+
+function startStorageWrite(operation) {
+  const request = operation.descriptor.request;
+  if (!exactObject(request, ["key", "value"]) || typeof request.key !== "string" || !request.key) {
+    deliverEffect(operation, effectError("invalid-request", "storage.write@1 expects {key, value} with a nonempty key"));
+    return;
+  }
+  try {
+    localStorage.setItem(request.key, JSON.stringify(request.value));
+    deliverEffect(operation, { ok: { key: request.key } });
+  } catch (reason) {
+    deliverEffect(operation, effectError("host-failure", reason));
+  }
+}
+
+function startTimerTick(operation) {
+  const request = operation.descriptor.request;
+  if (!exactObject(request, ["every-ms"])
+    || !Number.isSafeInteger(request["every-ms"])
+    || request["every-ms"] < 10
+    || request["every-ms"] > 86_400_000) {
+    deliverEffect(operation, effectError("invalid-request", "timer.tick@1 expects every-ms between 10 and 86400000"));
+    return;
+  }
+  let ticks = 0;
+  operation.timer = setInterval(() => {
+    if (!isCurrentEffect(operation)) return;
+    ticks += 1;
+    deliverEffect(operation, { ok: ticks });
+  }, request["every-ms"]);
+}
+
+function startEffect(operation) {
+  const capability = operation.descriptor.capability;
+  if (!capability || typeof capability.name !== "string" || capability.version !== 1) {
+    deliverEffect(operation, effectError("unsupported-capability", "missing supported capability version"));
+    return;
+  }
+  if (operation.kind === "command" && capability.name === "storage.write") {
+    startStorageWrite(operation);
+    return;
+  }
+  if (operation.kind === "subscription" && capability.name === "timer.tick") {
+    startTimerTick(operation);
+    return;
+  }
+  deliverEffect(operation, effectError("unsupported-capability", `${operation.kind} does not support ${capability.name}@${capability.version}`));
+}
+
+function syncEffectHost() {
+  if (!session) return;
+  const resources = JSON.parse(session.desired_resources());
+  if (resources.protocol !== "jisp-ui-resources/1") throw new Error("Unsupported effect resource protocol");
+  const desired = new Set();
+  for (const kind of ["command", "subscription"]) {
+    const descriptors = resources[`${kind}s`];
+    if (!Array.isArray(descriptors)) throw new Error(`Invalid ${kind} declarations`);
+    for (const descriptor of descriptors) {
+      if (!descriptor || typeof descriptor.id !== "string" || !Number.isSafeInteger(descriptor.generation)) {
+        throw new Error(`Invalid active ${kind} declaration`);
+      }
+      const key = effectKey(kind, descriptor.id);
+      desired.add(key);
+      const existing = effectOperations.get(key);
+      if (existing?.generation === descriptor.generation) continue;
+      if (existing) clearEffectOperation(existing);
+      const operation = { kind, id: descriptor.id, generation: descriptor.generation, descriptor };
+      effectOperations.set(key, operation);
+      startEffect(operation);
+    }
+  }
+  for (const [key, operation] of effectOperations) {
+    if (desired.has(key)) continue;
+    clearEffectOperation(operation);
+    effectOperations.delete(key);
+  }
+}
+
 function renderPreview() {
   if (!ready) return;
   try {
+    clearEffectOperations();
     session = new PlaygroundSession();
     const tree = JSON.parse(session.load_syntax(sourceText(), syntax));
+    session.configure_effect_host(JSON.stringify(browserCapabilities));
     const plan = JSON.parse(session.mount_plan());
     postMount(tree, plan);
+    syncEffectHost();
     error.classList.add("hidden");
     setRuntimeStatus("Update ready");
   } catch (reason) {
@@ -742,6 +881,7 @@ window.addEventListener("message", (message) => {
   try {
     const update = JSON.parse(session.dispatch_patches(message.data.handler, JSON.stringify(message.data.event)));
     postPatches(update.patches, message.data.sequence);
+    syncEffectHost();
     error.classList.add("hidden");
     setRuntimeStatus("State updated");
   } catch (reason) {
