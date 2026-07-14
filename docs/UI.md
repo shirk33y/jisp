@@ -110,9 +110,10 @@ metadata that lets each host keep the same execution contract.
 
 The browser playground currently uses this contract. On each event it calls
 the selected Jisp handler with a small JSON-shaped event object, calls
-`update(state, action)`, then calls `app(next-state)`. The Jisp interpreter
-still produces a fresh structural tree as the reference output, but the browser
-host reconciles matching DOM nodes in place: it updates changed text,
+`update(state, action)`, then evaluates the typed JUIR plan for
+`app(next-state)` through the canonical Jisp evaluator. That executor currently
+materializes the existing structural-tree contract as the semantic reference;
+the browser host reconciles matching DOM nodes in place: it updates changed text,
 attributes, properties, classes, and handlers, and retains/moves keyed sibling
 nodes. This preserves focused controls and their selection through ordinary
 updates. The reference-tree contract is intentionally retained while the
@@ -132,9 +133,10 @@ children with HTML escaping. It purposefully ignores `events` and `key`.
 
 This is a declarative UI language with a deliberately small interactive host
 contract, not yet a React-equivalent runtime. Effect/lifecycle semantics,
-subscriptions, async commands, keyed reconciliation, native widget registries,
-and Tailwind-style token validation remain future runtime work. The static
-`ui.html` renderer still preserves neither event handlers nor keys.
+subscriptions, async commands, direct static-template DOM mounting, native
+widget registries, and Tailwind-style token validation remain future runtime
+work. The static `ui.html` renderer still preserves neither event handlers nor
+keys.
 
 The GitHub Pages playground runs this same interpreter through the
 `jisp-wasm` WebAssembly entry point. JavaScript loads the module, renders the

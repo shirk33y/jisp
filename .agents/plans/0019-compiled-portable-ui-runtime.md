@@ -7,9 +7,11 @@ change the current UI language contract. It defines the work required to move
 from the playground's correct-but-full-render host to a portable, incremental
 UI runtime.
 
-Progress: M0 and M1 are complete on `master`. The current browser host retains
-and moves scalar-keyed sibling DOM nodes, while the fresh structural tree remains
-the reference result. M2 is the next implementation milestone.
+Progress: M0 and M1 are complete on `master`. M2 now has a typed JUIR compiler
+and structural executor enabled by the browser Wasm crate's default `juir`
+feature. It evaluates Jisp expressions through the canonical evaluator and
+materializes the existing structural-tree contract before the DOM reconciler;
+direct static-template DOM mount remains the next M2 increment.
 
 ## Goal
 

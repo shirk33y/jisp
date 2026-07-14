@@ -7,7 +7,9 @@
 
 use std::collections::BTreeMap;
 
+use indexmap::IndexMap;
 use jisp_core::Span;
+use jisp_eval::{Env, Evaluator, RuntimeError, Value};
 use jisp_ir::{Definition, Expr, ExprKind, Literal};
 use jisp_types::{Type, TypedModule};
 
@@ -56,10 +58,10 @@ pub enum Node {
 #[derive(Clone, Debug)]
 pub struct Element {
     pub tag: String,
-    pub attrs: BTreeMap<String, Slot>,
-    pub props: BTreeMap<String, Slot>,
-    pub classes: BTreeMap<String, Slot>,
-    pub events: BTreeMap<String, Event>,
+    pub attrs: IndexMap<String, Slot>,
+    pub props: IndexMap<String, Slot>,
+    pub classes: IndexMap<String, Slot>,
+    pub events: IndexMap<String, Event>,
     pub key: Option<Slot>,
     pub children: Vec<Node>,
     pub span: Span,
@@ -119,6 +121,51 @@ impl std::fmt::Display for CompileError {
 
 impl std::error::Error for CompileError {}
 
+#[derive(Debug)]
+pub enum ExecuteError {
+    UnknownComponent {
+        name: String,
+    },
+    InvalidArguments {
+        component: String,
+        expected: String,
+        actual: usize,
+    },
+    InvalidValue {
+        span: Span,
+        message: String,
+    },
+    Runtime(RuntimeError),
+}
+
+impl std::fmt::Display for ExecuteError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::UnknownComponent { name } => {
+                write!(formatter, "JUIR component `{name}` does not exist")
+            }
+            Self::InvalidArguments {
+                component,
+                expected,
+                actual,
+            } => write!(
+                formatter,
+                "JUIR component `{component}` expects {expected} argument(s), got {actual}"
+            ),
+            Self::InvalidValue { message, .. } => formatter.write_str(message),
+            Self::Runtime(error) => error.fmt(formatter),
+        }
+    }
+}
+
+impl std::error::Error for ExecuteError {}
+
+impl From<RuntimeError> for ExecuteError {
+    fn from(error: RuntimeError) -> Self {
+        Self::Runtime(error)
+    }
+}
+
 pub fn compile(module: &TypedModule) -> Result<Program, CompileError> {
     let component_names = module
         .module
@@ -165,8 +212,26 @@ pub fn render_static_html(program: &Program, component: &str) -> Result<String, 
         ));
     }
     let mut output = String::new();
-    render_static_node(&component.root, &mut output)?;
+    render_static_node(program, &component.root, &mut output)?;
     Ok(output)
+}
+
+/// Execute a compiled UI component to the existing renderer-neutral Jisp UI
+/// value. Dynamic expressions run in the supplied Jisp evaluator and lexical
+/// module environment; a host never needs to interpret a Jisp expression.
+pub fn execute(
+    program: &Program,
+    evaluator: &mut Evaluator,
+    module_env: &Env,
+    component: &str,
+    arguments: &[Value],
+) -> Result<Value, ExecuteError> {
+    Executor {
+        program,
+        evaluator,
+        module_env,
+    }
+    .component(component, arguments)
 }
 
 struct Compiler<'a> {
@@ -246,31 +311,31 @@ impl Compiler<'_> {
         }
     }
 
-    fn slots(&self, expr: Option<&&Expr>) -> Result<BTreeMap<String, Slot>, CompileError> {
+    fn slots(&self, expr: Option<&&Expr>) -> Result<IndexMap<String, Slot>, CompileError> {
         let Some(expr) = expr else {
-            return Ok(BTreeMap::new());
+            return Ok(IndexMap::new());
         };
         let ExprKind::Object(fields) = &expr.kind else {
             return Err(invalid(expr.span, "JUIR metadata must be an object"));
         };
-        object_fields(fields)?
-            .into_iter()
-            .map(|(name, value)| Ok((name, self.slot(value)?)))
+        fields
+            .iter()
+            .map(|(name, value)| Ok((static_string(name)?, self.slot(value)?)))
             .collect()
     }
 
-    fn events(&self, expr: Option<&&Expr>) -> Result<BTreeMap<String, Event>, CompileError> {
+    fn events(&self, expr: Option<&&Expr>) -> Result<IndexMap<String, Event>, CompileError> {
         let Some(expr) = expr else {
-            return Ok(BTreeMap::new());
+            return Ok(IndexMap::new());
         };
         let ExprKind::Object(fields) = &expr.kind else {
             return Err(invalid(expr.span, "JUIR events must be an object"));
         };
-        object_fields(fields)?
-            .into_iter()
+        fields
+            .iter()
             .map(|(name, handler)| {
                 Ok((
-                    name,
+                    static_string(name)?,
                     Event {
                         span: handler.span,
                         handler: handler.clone(),
@@ -304,6 +369,177 @@ impl Compiler<'_> {
                 .unwrap_or(Type::Never),
             span: expr.span,
         }
+    }
+}
+
+struct Executor<'a> {
+    program: &'a Program,
+    evaluator: &'a mut Evaluator,
+    module_env: &'a Env,
+}
+
+impl Executor<'_> {
+    fn component(&mut self, name: &str, arguments: &[Value]) -> Result<Value, ExecuteError> {
+        let component = self.program.components.get(name).cloned().ok_or_else(|| {
+            ExecuteError::UnknownComponent {
+                name: name.to_owned(),
+            }
+        })?;
+        let expected = component.params.len();
+        if arguments.len() < expected || (component.rest.is_none() && arguments.len() != expected) {
+            return Err(ExecuteError::InvalidArguments {
+                component: name.to_owned(),
+                expected: format!(
+                    "{}{}",
+                    expected,
+                    if component.rest.is_some() { "+" } else { "" }
+                ),
+                actual: arguments.len(),
+            });
+        }
+
+        let env = self.module_env.child();
+        for (parameter, argument) in component.params.iter().zip(arguments) {
+            env.define(parameter.clone(), argument.clone());
+        }
+        if let Some(rest) = &component.rest {
+            env.define(rest.clone(), Value::List(arguments[expected..].to_vec()));
+        }
+        self.node(&component.root, &env)
+    }
+
+    fn node(&mut self, node: &Node, env: &Env) -> Result<Value, ExecuteError> {
+        match node {
+            Node::Text(slot) => Ok(Value::Obj(IndexMap::from([
+                ("tag".to_owned(), Value::string("text")),
+                ("value".to_owned(), self.slot(slot, env)?),
+            ]))),
+            Node::Element(element) => self.element(element, env),
+            Node::If {
+                condition,
+                then_branch,
+                else_branch,
+                ..
+            } => {
+                if self.evaluator.eval_in(condition, env)?.truthy() {
+                    self.node(then_branch, env)
+                } else {
+                    self.node(else_branch, env)
+                }
+            }
+            Node::Each {
+                binding,
+                collection,
+                body,
+                span,
+            } => {
+                let values = self.evaluator.eval_in(collection, env)?;
+                let Value::List(values) = values else {
+                    return Err(invalid_value(
+                        *span,
+                        format!(
+                            "JUIR each collection must be a list, got {}",
+                            values.type_name()
+                        ),
+                    ));
+                };
+                values
+                    .into_iter()
+                    .map(|value| {
+                        let item_env = env.child();
+                        item_env.define(binding.clone(), value);
+                        self.node(body, &item_env)
+                    })
+                    .collect::<Result<Vec<_>, _>>()
+                    .map(Value::List)
+            }
+            Node::ComponentCall {
+                name, arguments, ..
+            } => {
+                let values = arguments
+                    .iter()
+                    .map(|argument| self.evaluator.eval_in(argument, env).map_err(Into::into))
+                    .collect::<Result<Vec<_>, ExecuteError>>()?;
+                self.component(name, &values)
+            }
+            Node::Dynamic { expression, .. } => {
+                self.evaluator.eval_in(expression, env).map_err(Into::into)
+            }
+        }
+    }
+
+    fn element(&mut self, element: &Element, env: &Env) -> Result<Value, ExecuteError> {
+        let mut fields = IndexMap::new();
+        fields.insert("tag".to_owned(), Value::string(element.tag.clone()));
+        self.insert_slots(&mut fields, "attrs", &element.attrs, env)?;
+        self.insert_slots(&mut fields, "props", &element.props, env)?;
+        self.insert_slots(&mut fields, "classes", &element.classes, env)?;
+        if !element.events.is_empty() {
+            let mut events = IndexMap::new();
+            for (name, event) in &element.events {
+                events.insert(name.clone(), self.evaluator.eval_in(&event.handler, env)?);
+            }
+            fields.insert("events".to_owned(), Value::Obj(events));
+        }
+        if let Some(key) = &element.key {
+            fields.insert("key".to_owned(), self.slot(key, env)?);
+        }
+        if !element.children.is_empty() {
+            fields.insert(
+                "children".to_owned(),
+                element
+                    .children
+                    .iter()
+                    .map(|child| self.node(child, env))
+                    .collect::<Result<Vec<_>, _>>()
+                    .map(Value::List)?,
+            );
+        }
+        Ok(Value::Obj(fields))
+    }
+
+    fn insert_slots(
+        &mut self,
+        fields: &mut IndexMap<String, Value>,
+        name: &str,
+        slots: &IndexMap<String, Slot>,
+        env: &Env,
+    ) -> Result<(), ExecuteError> {
+        if slots.is_empty() {
+            return Ok(());
+        }
+        let mut values = IndexMap::new();
+        for (name, slot) in slots {
+            values.insert(name.clone(), self.slot(slot, env)?);
+        }
+        fields.insert(name.to_owned(), Value::Obj(values));
+        Ok(())
+    }
+
+    fn slot(&mut self, slot: &Slot, env: &Env) -> Result<Value, ExecuteError> {
+        match slot {
+            Slot::Static(value) => Ok(scalar_value(value)),
+            Slot::Dynamic { expression, .. } => {
+                self.evaluator.eval_in(expression, env).map_err(Into::into)
+            }
+        }
+    }
+}
+
+fn scalar_value(value: &Scalar) -> Value {
+    match value {
+        Scalar::Null => Value::Null,
+        Scalar::Bool(value) => Value::Bool(*value),
+        Scalar::Int(value) => Value::Int(*value),
+        Scalar::Float(value) => Value::Float(*value),
+        Scalar::Str(value) => Value::string(value.clone()),
+    }
+}
+
+fn invalid_value(span: Span, message: impl Into<String>) -> ExecuteError {
+    ExecuteError::InvalidValue {
+        span,
+        message: message.into(),
     }
 }
 
@@ -419,7 +655,11 @@ fn dynamic_error(span: Span, message: impl Into<String>) -> CompileError {
     invalid(span, message)
 }
 
-fn render_static_node(node: &Node, output: &mut String) -> Result<(), CompileError> {
+fn render_static_node(
+    program: &Program,
+    node: &Node,
+    output: &mut String,
+) -> Result<(), CompileError> {
     match node {
         Node::Text(slot) => output.push_str(&escape_text(&static_slot(slot)?)),
         Node::Element(element) => {
@@ -441,16 +681,32 @@ fn render_static_node(node: &Node, output: &mut String) -> Result<(), CompileErr
             }
             output.push('>');
             for child in &element.children {
-                render_static_node(child, output)?;
+                render_static_node(program, child, output)?;
             }
             output.push_str("</");
             output.push_str(&element.tag);
             output.push('>');
         }
-        Node::If { span, .. }
-        | Node::Each { span, .. }
-        | Node::ComponentCall { span, .. }
-        | Node::Dynamic { span, .. } => return Err(dynamic_error(*span, "JUIR node is dynamic")),
+        Node::ComponentCall {
+            name,
+            arguments,
+            span,
+        } => {
+            if !arguments.is_empty() {
+                return Err(dynamic_error(*span, "JUIR node is dynamic"));
+            }
+            let component = program
+                .components
+                .get(name)
+                .ok_or_else(|| CompileError::UnknownComponent { name: name.clone() })?;
+            if !component.params.is_empty() || component.rest.is_some() {
+                return Err(dynamic_error(*span, "JUIR node is dynamic"));
+            }
+            render_static_node(program, &component.root, output)?;
+        }
+        Node::If { span, .. } | Node::Each { span, .. } | Node::Dynamic { span, .. } => {
+            return Err(dynamic_error(*span, "JUIR node is dynamic"))
+        }
     }
     Ok(())
 }

@@ -7,6 +7,10 @@ license.workspace = true
 [lib]
 crate-type = ["cdylib", "rlib"]
 
+[features]
+default = ["juir"]
+juir = []
+
 [dependencies]
 indexmap.workspace = true
 jisp.workspace = true

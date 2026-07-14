@@ -5,7 +5,9 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
+indexmap.workspace = true
 jisp-core.workspace = true
+jisp-eval.workspace = true
 jisp-ir.workspace = true
 jisp-types.workspace = true
 

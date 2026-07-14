@@ -1,7 +1,13 @@
 //! Browser-facing WebAssembly entry points for the interpreter-backed playground.
 
 use jisp::jisp_core::{ui_element, Node, NodeKind, SourceId, Span, SyntaxParser};
+#[cfg(feature = "juir")]
+use jisp::jisp_eval::Env;
 use jisp::jisp_eval::{Evaluator, Value};
+#[cfg(feature = "juir")]
+use jisp::jisp_types::Inferencer;
+#[cfg(feature = "juir")]
+use jisp::jisp_ui::{compile as compile_juir, execute as execute_juir, Program as JuirProgram};
 use jisp_syntax_json::JsonParser;
 use jisp_syntax_lisp::LispParser;
 use jisp_syntax_ws::WsParser;
@@ -34,7 +40,14 @@ struct Runtime {
     evaluator: Evaluator,
     state: Value,
     update: Value,
+    #[cfg(not(feature = "juir"))]
     view: Value,
+    #[cfg(feature = "juir")]
+    program: JuirProgram,
+    #[cfg(feature = "juir")]
+    module_env: Env,
+    #[cfg(feature = "juir")]
+    component: String,
     handlers: Vec<Value>,
     span: Span,
 }
@@ -77,6 +90,20 @@ impl PlaygroundSession {
         let app = parsed.module.ui_app.clone().ok_or_else(|| {
             "Playground source must declare `(ui.app init update app)`".to_owned()
         })?;
+        #[cfg(feature = "juir")]
+        let program = compile_juir(
+            &Inferencer::with_prelude()
+                .infer_typed_module(parsed.module.clone())
+                .map_err(|error| error.to_string())?,
+        )
+        .map_err(|error| error.to_string())?;
+        #[cfg(feature = "juir")]
+        if !program.components.contains_key(&app.app) {
+            return Err(format!(
+                "ui.app view `{}` must be a Jisp UI component",
+                app.app
+            ));
+        }
         let mut evaluator = Evaluator::new();
         let loaded = evaluator
             .load_module(&parsed.module)
@@ -89,6 +116,7 @@ impl PlaygroundSession {
             .env
             .lookup(&app.update)
             .map_err(|error| error.to_string())?;
+        #[cfg(not(feature = "juir"))]
         let view = loaded
             .env
             .lookup(&app.app)
@@ -98,7 +126,14 @@ impl PlaygroundSession {
             evaluator,
             state,
             update,
+            #[cfg(not(feature = "juir"))]
             view,
+            #[cfg(feature = "juir")]
+            program,
+            #[cfg(feature = "juir")]
+            module_env: loaded.env,
+            #[cfg(feature = "juir")]
+            component: app.app,
             handlers: vec![],
             span: app.span,
         });
@@ -138,6 +173,16 @@ impl PlaygroundSession {
             .runtime
             .as_mut()
             .ok_or_else(|| "load a ui.app program before rendering".to_owned())?;
+        #[cfg(feature = "juir")]
+        let vnode = execute_juir(
+            &runtime.program,
+            &mut runtime.evaluator,
+            &runtime.module_env,
+            &runtime.component,
+            std::slice::from_ref(&runtime.state),
+        )
+        .map_err(|error| error.to_string())?;
+        #[cfg(not(feature = "juir"))]
         let vnode = runtime
             .evaluator
             .apply(

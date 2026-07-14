@@ -372,7 +372,9 @@ dependencies = [
 name = "jisp-ui"
 version = "0.0.1"
 dependencies = [
+ "indexmap",
  "jisp-core",
+ "jisp-eval",
  "jisp-ir",
  "jisp-syntax-lisp",
  "jisp-types",
