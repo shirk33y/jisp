@@ -98,13 +98,28 @@ not a browser or native capability provider.
 Test success, failure, timeout, duplicate id, replacement, late completion,
 owner disposal, keyed-item removal/reorder, and unsupported capability.
 
+## WIT boundary prototype
+
+[`../wit/jisp-ui-capabilities.wit`](../wit/jisp-ui-capabilities.wit) declares
+the first Component Model boundary: version negotiation plus coarse
+`storage-write`, `timer-sleep`, and `navigate` operations. It intentionally
+does not expose the structural UI tree, DOM nodes, CSS tokens, event objects,
+or individual patch writes. Each request is typed by its named capability; the
+storage payload is canonical JSON selected and validated by that capability,
+not a universal evaluator `Value` ABI.
+
+This WIT package is a source-of-truth prototype. Binding generation for two
+real host languages and a component-toolchain validation gate remain M6 work;
+the in-memory `FakeHost` exercises the same capability/version discipline but
+is not a generated WIT binding.
+
 ## Deferred decisions
 
 - Public Jisp constructors and exact `UpdateResult` types.
 - The first capability set and action-builder serialization for SSR/resume.
 - Local-state source syntax.
-- WIT definitions. WIT describes this coarse capability boundary, never DOM
-  patch operations.
+- Generated WIT bindings and a component-toolchain validation gate. WIT
+  describes this coarse capability boundary, never DOM patch operations.
 
 Until these invariants are implemented, `update` returns state only and UI
 components remain effect-free. See also [UI.md](UI.md) and

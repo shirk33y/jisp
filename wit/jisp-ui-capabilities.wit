@@ -1,0 +1,25 @@
+package jisp:ui-capabilities@0.1.0;
+
+/// Coarse-grained host capabilities. No UI tree, DOM node, CSS token, or
+/// per-slot patch operation crosses this interface.
+interface capabilities {
+  record capability { name: string, version: u32 }
+  enum error-code { unsupported-capability, permission-denied, invalid-request, cancelled, host-failure }
+  record host-error { code: error-code, message: string }
+  record storage-write-request {
+    key: string,
+    /// Canonical JSON selected and schema-validated by this named capability,
+    /// not a universal evaluator Value ABI.
+    value-json: string,
+  }
+  record timer-sleep-request { milliseconds: u64 }
+  record navigation-request { target: string, replace: bool }
+
+  supported: func() -> list<capability>;
+  storage-write: func(request: storage-write-request) -> result<_, host-error>;
+  timer-sleep: func(request: timer-sleep-request) -> result<_, host-error>;
+  navigate: func(request: navigation-request) -> result<_, host-error>;
+}
+
+world jisp-ui-runtime { import capabilities; }
+world jisp-ui-host { export capabilities; }

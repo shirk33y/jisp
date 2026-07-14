@@ -36,6 +36,10 @@ now implements the command-only deterministic fake host: it reconciles desired
 commands by owner/id, validates versioned capabilities, cancels/replaces work,
 and ignores late generations. Source-level reducer results, subscriptions, and
 component-local ownership remain subsequent M4 work.
+M6 now has a first WIT package at
+[`wit/jisp-ui-capabilities.wit`](../../wit/jisp-ui-capabilities.wit), limited to
+coarse versioned storage/timer/navigation capabilities; binding generation and
+component-toolchain validation remain deliberately unclaimed.
 M5 has a versioned SSR payload (`jisp-ui-ssr/1`) containing escaped HTML,
 serializable state, and the structural tree. Its generated `data-jisp-path` and
 `data-jisp-key` markers provide stable element anchors without allowing source
