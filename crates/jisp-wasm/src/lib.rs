@@ -236,11 +236,111 @@ fn format_lisp_module(nodes: &[Node]) -> String {
             .iter()
             .map(format_lisp_node)
             .collect::<Vec<_>>()
-            .join("\n")
+            .join("\n\n")
     )
 }
 
 fn format_lisp_node(node: &Node) -> String {
+    format_lisp_layout(node, 0)
+}
+
+const FORMAT_WIDTH: usize = 88;
+
+fn format_lisp_layout(node: &Node, indent: usize) -> String {
+    let inline = format_lisp_inline(node);
+    if indent + inline.chars().count() <= FORMAT_WIDTH {
+        return inline;
+    }
+    let NodeKind::Form(items) = &node.kind else {
+        return inline;
+    };
+    if items.is_empty() {
+        return "()".to_owned();
+    }
+    if is_reader_form(items) {
+        let prefix = items[0].as_symbol().expect("quoted form symbol");
+        return format!(
+            "{prefix}{}",
+            format_lisp_layout(&items[1], indent + prefix.len())
+        );
+    }
+    if items.first().and_then(Node::as_symbol) == Some("obj") && items.len() % 2 == 1 {
+        return format_lisp_object(items, indent);
+    }
+
+    let head = format_lisp_inline(&items[0]);
+    let child_indent = indent + 2;
+    let mut output = format!("({head}");
+    for item in &items[1..] {
+        let item_inline = format_lisp_inline(item);
+        let current_width = indent
+            + output
+                .rsplit('\n')
+                .next()
+                .unwrap_or_default()
+                .chars()
+                .count();
+        if !matches!(item.kind, NodeKind::Form(_))
+            && current_width + 1 + item_inline.chars().count() <= FORMAT_WIDTH
+        {
+            output.push(' ');
+            output.push_str(&item_inline);
+            continue;
+        }
+        output.push('\n');
+        output.push_str(&" ".repeat(child_indent));
+        output.push_str(&indent_lisp_block(
+            &format_lisp_layout(item, child_indent),
+            child_indent,
+        ));
+    }
+    output.push('\n');
+    output.push_str(&" ".repeat(indent));
+    output.push(')');
+    output
+}
+
+fn format_lisp_object(items: &[Node], indent: usize) -> String {
+    let child_indent = indent + 2;
+    let mut output = "(obj".to_owned();
+    for pair in items[1..].chunks_exact(2) {
+        let key = format_lisp_inline(&pair[0]);
+        let value_inline = format_lisp_inline(&pair[1]);
+        output.push('\n');
+        output.push_str(&" ".repeat(child_indent));
+        if child_indent + key.chars().count() + 1 + value_inline.chars().count() <= FORMAT_WIDTH {
+            output.push_str(&key);
+            output.push(' ');
+            output.push_str(&value_inline);
+        } else {
+            output.push_str(&key);
+            output.push('\n');
+            output.push_str(&" ".repeat(child_indent));
+            output.push_str(&indent_lisp_block(
+                &format_lisp_layout(&pair[1], child_indent),
+                child_indent,
+            ));
+        }
+    }
+    output.push('\n');
+    output.push_str(&" ".repeat(indent));
+    output.push(')');
+    output
+}
+
+fn indent_lisp_block(text: &str, indent: usize) -> String {
+    let continuation = format!("\n{}", " ".repeat(indent));
+    text.replace('\n', &continuation)
+}
+
+fn is_reader_form(items: &[Node]) -> bool {
+    matches!(
+        items.first().and_then(Node::as_symbol),
+        Some("`" | "," | ",@")
+    ) && items.len() == 2
+}
+
+fn format_lisp_inline(node: &Node) -> String {
     match &node.kind {
         NodeKind::Null => "null".to_owned(),
         NodeKind::Bool(value) => value.to_string(),
@@ -248,23 +348,18 @@ fn format_lisp_node(node: &Node) -> String {
         NodeKind::Float(value) => value.to_string(),
         NodeKind::Symbol(value) => value.to_string(),
         NodeKind::String(value) => serde_json::to_string(value.as_ref()).expect("valid string"),
-        NodeKind::Form(items)
-            if matches!(
-                items.first().and_then(Node::as_symbol),
-                Some("`" | "," | ",@")
-            ) && items.len() == 2 =>
-        {
+        NodeKind::Form(items) if is_reader_form(items) => {
             format!(
                 "{}{}",
                 items[0].as_symbol().expect("quoted form symbol"),
-                format_lisp_node(&items[1])
+                format_lisp_inline(&items[1])
             )
         }
         NodeKind::Form(items) => format!(
             "({})",
             items
                 .iter()
-                .map(format_lisp_node)
+                .map(format_lisp_inline)
                 .collect::<Vec<_>>()
                 .join(" ")
         ),

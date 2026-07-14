@@ -109,11 +109,15 @@ fn syntax_conversion_preserves_a_ui_module() {
     let nodes = parse_source(source, "lisp").unwrap();
     let json = format_source(&nodes, "json").unwrap();
     let yaml = format_source(&nodes, "yaml").unwrap();
+    let lisp = format_source(&parse_source(&json, "json").unwrap(), "lisp").unwrap();
 
     let mut json_session = PlaygroundSession::new();
     let mut yaml_session = PlaygroundSession::new();
+    let mut lisp_session = PlaygroundSession::new();
     assert!(json_session.load_source_syntax(&json, "json").is_ok());
     assert!(yaml_session.load_source_syntax(&yaml, "yaml").is_ok());
+    assert!(lisp.contains("\n  ("));
+    assert!(lisp_session.load_source_syntax(&lisp, "lisp").is_ok());
 }
 
 #[test]
