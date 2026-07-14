@@ -83,6 +83,7 @@ let ready = false;
 let renderTimer;
 let latestTree = null;
 let session = null;
+let hostMetrics = null;
 const language = new Compartment();
 const clojureLanguage = StreamLanguage.define(clojure);
 const jsonLanguage = json();
@@ -190,7 +191,7 @@ function setRuntimeStatus(label) {
       ? `${reused} JUIR value${reused === 1 ? "" : "s"} reused`
       : null;
   setStatus("bg-emerald-100 text-emerald-700", detail ? `${label} · ${detail}` : label);
-  status.title = JSON.stringify(metrics, null, 2);
+  status.title = JSON.stringify({ runtime: metrics, host: hostMetrics }, null, 2);
 }
 
 function previewDocument() {
@@ -199,6 +200,18 @@ const allowedTags = new Set(["a", "article", "aside", "button", "div", "footer",
 const allowedEvents = new Set(["blur", "change", "click", "focus", "input", "keydown", "keyup", "submit"]);
 const root = document.getElementById("root");
 let eventSequence = 0;
+const hostMetrics = {
+  mounts: 0,
+  replacements: 0,
+  textWrites: 0,
+  elementPatches: 0,
+  childReconciliations: 0,
+  events: 0,
+};
+
+function reportHostMetrics() {
+  parent.postMessage({ type: "jisp-host-metrics", metrics: { ...hostMetrics } }, "*");
+}
 
 function safeAttribute(element, name, value) {
   if (name.startsWith("on") || value === null || value === false) return false;
@@ -235,6 +248,7 @@ function matchesTree(existing, tree) {
 }
 
 function createNode(tree, path) {
+  hostMetrics.mounts += 1;
   if (tree.kind === "text") return document.createTextNode(String(tree.value ?? ""));
   if (tree.kind !== "element" || !allowedTags.has(tree.tag)) return document.createComment("invalid Jisp UI node");
   const element = document.createElement(tree.tag);
@@ -245,13 +259,19 @@ function createNode(tree, path) {
 function patchNode(parent, existing, tree, path) {
   if (!matchesTree(existing, tree)) {
     const created = createNode(tree, path);
-    if (existing?.parentNode === parent) parent.replaceChild(created, existing);
+    if (existing?.parentNode === parent) {
+      hostMetrics.replacements += 1;
+      parent.replaceChild(created, existing);
+    }
     else parent.append(created);
     return created;
   }
   if (tree.kind === "text") {
     const value = String(tree.value ?? "");
-    if (existing.data !== value) existing.data = value;
+    if (existing.data !== value) {
+      hostMetrics.textWrites += 1;
+      existing.data = value;
+    }
   } else {
     patchElement(existing, tree, path);
   }
@@ -259,6 +279,7 @@ function patchNode(parent, existing, tree, path) {
 }
 
 function patchElement(element, tree, path) {
+  hostMetrics.elementPatches += 1;
   element.dataset.jispPath = path;
   syncAttributes(element, tree.attrs || {});
   syncProperties(element, tree.props || {});
@@ -334,6 +355,7 @@ function syncEvents(element, events) {
         handler: next.handler,
         policy: next.policy,
         listener(event) {
+          hostMetrics.events += 1;
           if (record.policy.preventDefault) event.preventDefault();
           if (record.policy.stopPropagation) event.stopPropagation();
           const sequence = ++eventSequence;
@@ -366,6 +388,7 @@ function eventDescriptor(value) {
 }
 
 function reconcileChildren(parent, trees, path) {
+  hostMetrics.childReconciliations += 1;
   const existing = [...parent.childNodes];
   const keyed = new Map();
   const unkeyed = [];
@@ -432,11 +455,13 @@ function applyPatches(patches, sequence) {
     const node = nodeAt(patch.path);
     if (patch.op === "text") {
       if (node?.nodeType !== Node.TEXT_NODE) return false;
+      hostMetrics.textWrites += 1;
       node.data = String(patch.value ?? "");
       continue;
     }
     if (patch.op === "element") {
       if (node?.nodeType !== Node.ELEMENT_NODE) return false;
+      hostMetrics.elementPatches += 1;
       if (Object.hasOwn(patch, "attrs")) syncAttributes(node, patch.attrs || {});
       if (Object.hasOwn(patch, "props")) syncProperties(node, patch.props || {}, sequence);
       if (Object.hasOwn(patch, "classes")) syncClasses(node, patch.classes || []);
@@ -459,6 +484,7 @@ function applyPatches(patches, sequence) {
     return false;
   }
   restoreFocus(focus);
+  reportHostMetrics();
   return true;
 }
 
@@ -472,6 +498,7 @@ addEventListener("message", (message) => {
       if (child !== next) child.remove();
     }
     restoreFocus(focus);
+    reportHostMetrics();
     return;
   }
   if (message.data?.type === "jisp-patches" && !applyPatches(message.data.patches || [], message.data.sequence)) {
@@ -551,7 +578,12 @@ preview.addEventListener("load", () => {
 preview.srcdoc = previewDocument();
 
 window.addEventListener("message", (message) => {
-  if (message.source !== preview.contentWindow || !session) return;
+  if (message.source !== preview.contentWindow) return;
+  if (message.data?.type === "jisp-host-metrics") {
+    hostMetrics = message.data.metrics;
+    return;
+  }
+  if (!session) return;
   if (message.data?.type === "jisp-recover") {
     postTree(JSON.parse(session.snapshot()));
     return;

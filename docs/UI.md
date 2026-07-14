@@ -158,9 +158,11 @@ function of its supplied state and props.
 
 For development diagnostics, `PlaygroundSession.metrics()` reports render
 counts plus the latest JUIR slot, block, and component reuse counts. The
-playground exposes the latest decision in its status pill and the complete JSON
-payload as that pill's tooltip. These counters are observability data, never a
-part of a component's public result.
+browser host separately records DOM mounts, replacements, text writes,
+element/child patches, and forwarded events. The playground exposes the latest
+decision in its status pill and both JSON payloads as that pill's tooltip.
+These counters are observability data, never a part of a component's public
+result.
 
 `PlaygroundSession.dispatch_patches(handler, event)` exposes the same update
 batch for another browser or native host. `snapshot()` returns the complete
