@@ -1,8 +1,9 @@
 # UI commands, subscriptions, and ownership
 
 > Design contract. `jisp-ui::effects::FakeHost` implements deterministic
-> command and subscription reconciliation for host tests. `ui.result` now
-> carries reducer-declared resources as data; runtime command execution remains
+> command and subscription reconciliation for host tests. `ui.result` carries
+> reducer-declared resources as data. Fixture-only `ui.test` can deterministically
+> deliver their completion actions; browser/native command execution remains
 > intentionally unimplemented.
 
 Jisp UI keeps Model–View–Update: `view` is pure and `(update state action)`
@@ -123,7 +124,7 @@ required capability is a diagnostic, never silent browser-only behavior.
 Failures are JSON-shaped `result` data with stable codes; raw exceptions and
 host objects cannot enter Jisp.
 
-Every host supplies a deterministic fake trace:
+Every test host supplies a deterministic fake trace:
 
 ```text
 start(owner, id, generation, request)
@@ -145,8 +146,12 @@ provider.
 
 Tests cover success/failure, duplicate id, replacement, late completion,
 owner disposal, subscription removal, cross-kind atomic validation, and
-unsupported capability. Timeout and real host cancellation remain capability
-provider behavior to add when source-level commands exist.
+unsupported capability. Portable `ui.test` scenarios configure a fixture host
+with `(supports "name" version)`, then use `(deliver command|subscription id
+result)` or `(deliver-error command|subscription id code message)` to feed a
+completion action through the ordinary reducer. Timeout and real host
+cancellation remain capability-provider behavior to add to browser/native
+hosts.
 
 ## WIT boundary prototype
 
@@ -165,14 +170,18 @@ is not a generated WIT binding.
 
 ## Deferred decisions
 
-- Public Jisp constructors and exact `UpdateResult` types.
-- The first capability set and action-builder serialization for SSR/resume.
 - Local-state source syntax.
+- Concrete browser/native capability schemas, permissions, timeout policies,
+  and providers for the declared resource protocol.
+- Capability serialization choices for SSR/resume beyond the current
+  JSON-shaped descriptors and completion templates.
 - Generated WIT bindings and a component-toolchain validation gate. WIT
   describes this coarse capability boundary, never DOM patch operations.
 
 The browser Wasm session exposes the most recent declarations through
-`desired_resources`; it does not execute them. A real command host must still
-validate capability schemas, reconcile against `FakeHost`-equivalent lifecycle
-rules, and dispatch completions back through `update`. UI components remain
-effect-free. See also [UI.md](UI.md) and [FFI_FUTURE.md](FFI_FUTURE.md).
+`desired_resources`; it does not execute them. Its fixture-only `run_tests`
+entry point does execute the deterministic `ui.test` simulation. A real command
+host must still validate capability schemas, reconcile against
+`FakeHost`-equivalent lifecycle rules, and dispatch completions back through
+`update`. UI components remain effect-free. See also [UI.md](UI.md) and
+[FFI_FUTURE.md](FFI_FUTURE.md).

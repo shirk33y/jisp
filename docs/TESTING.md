@@ -61,7 +61,24 @@ can observe `(ui.test.state)`, the escaped static `(ui.test.html)`, the raw
 renderer-neutral `(ui.test.tree)`, reducer-declared `(ui.test.commands)`, or
 reducer-declared `(ui.test.subscriptions)`. The resource accessors report the
 declarations from the most recent `dispatch`; they never invoke a host
-capability. Each assertion also compares the reference
+capability. To test a reducer completion, declare the deterministic fixture
+host's capabilities before other steps, then deliver a portable result or
+stable host error:
+
+```lisp
+(ui.test "save completes"
+  (supports "storage.write" 1)
+  (dispatch Save)
+  (deliver command "save:1" 42)
+  (assert (= 42 (ui.test.state))))
+```
+
+`deliver` chooses the currently active generation, materializes the resource's
+`on-ok` action template, and calls the normal reducer. `deliver-error` takes a
+resource kind/id plus one of `unsupported-capability`, `permission-denied`,
+`invalid-request`, `cancelled`, or `host-failure`, and an error message; it
+does the same with `on-error`. This is deterministic host simulation, not I/O.
+Each assertion also compares the reference
 component value with the compiled JUIR execution, so a passing test covers both
 the reducer and renderer contract without a browser. Keep pure helper tests in
 ordinary `(test ...)` fixtures; UI scenarios should only exercise the

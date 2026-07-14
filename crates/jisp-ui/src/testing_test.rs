@@ -66,6 +66,61 @@ fn ui_tests_observe_reducer_declared_resources_without_running_them() {
 }
 
 #[test]
+fn ui_tests_deliver_portable_command_and_subscription_completions() {
+    let outcomes = run_ui_tests(suite(
+        r#"
+(type Action (Save) (Saved int) (SaveFailed obj) (StartClock) (Tick int))
+(def init 0)
+(defn update (state action)
+  (case action
+    ((Save)
+      (ui.result state
+        (list
+          (ui.command "save:1" "storage.write" 1 (obj "key" "draft") true
+            (ui.action-result "Saved" (list))
+            (ui.action-error "SaveFailed" (list))))
+        (list)))
+    ((Saved revision) (ui.result revision (list) (list)))
+    ((SaveFailed _) (ui.result -1 (list) (list)))
+    ((StartClock)
+      (ui.result state (list)
+        (list
+          (ui.subscription "clock" "timer.tick" 1 (obj "every-ms" 1000) false
+            (ui.action-result "Tick" (list))
+            (ui.action-error "SaveFailed" (list))))))
+    ((Tick tick) (ui.result tick (list) (list)))))
+(component app (state) (button (text (str.from state))))
+(ui.app init update app)
+
+(ui.test "command completion dispatches its success action"
+  (supports "storage.write" 1)
+  (dispatch Save)
+  (deliver command "save:1" 42)
+  (assert (= 42 (ui.test.state)))
+  (assert (= (list) (ui.test.commands))))
+
+(ui.test "command failure dispatches its error action"
+  (supports "storage.write" 1)
+  (dispatch Save)
+  (deliver-error command "save:1" "permission-denied" "readonly")
+  (assert (= -1 (ui.test.state))))
+
+(ui.test "subscription completion dispatches its action"
+  (supports "timer.tick" 1)
+  (dispatch StartClock)
+  (deliver subscription "clock" 7)
+  (assert (= 7 (ui.test.state))))
+"#,
+    ))
+    .unwrap();
+
+    assert_eq!(outcomes.len(), 3);
+    for outcome in outcomes {
+        assert!(outcome.passed(), "{:?}", outcome.failure);
+    }
+}
+
+#[test]
 fn ui_tests_report_failing_expectations_without_hiding_other_scenarios() {
     let outcomes = run_ui_tests(suite(
         r#"

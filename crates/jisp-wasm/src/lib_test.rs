@@ -56,6 +56,21 @@ fn playground_ui_tests_run_in_wasm_and_are_removed_before_rendering() {
     session.load_source(&stripped).unwrap();
 }
 
+#[test]
+fn playground_ui_tests_simulate_declared_effect_completions() {
+    let report: Value = serde_json::from_str(
+        &run_ui_tests_source(include_str!("../../../tests/ui/effects.lisp"), "lisp").unwrap(),
+    )
+    .unwrap();
+    assert_eq!(report["protocol"], "jisp-ui-test/1");
+    assert_eq!(report["tests"].as_array().unwrap().len(), 3);
+    assert!(report["tests"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .all(|test| test["passed"] == true));
+}
+
 #[cfg(feature = "juir")]
 #[test]
 fn ssr_payload_matches_the_initial_ui_app_tree() {

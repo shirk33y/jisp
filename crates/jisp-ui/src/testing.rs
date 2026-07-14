@@ -22,8 +22,17 @@ use jisp_core::{Node, Span};
 use jisp_eval::{normalize_update_result, Evaluator, Value};
 use jisp_ir::{Definition, Lowerer, Module};
 use jisp_types::Inferencer;
+use serde_json::{Map as JsonMap, Number, Value as JsonValue};
 
+use crate::effects::{
+    Capability, Delivery, FakeHost, HostError, HostErrorCode, Owner, ResourceKind,
+};
 use crate::{compile, execute};
+
+#[path = "testing_parse.rs"]
+mod testing_parse;
+
+use testing_parse::{actual_accessor, parse_supports};
 
 #[derive(Clone, Debug)]
 pub struct UiTestSuite {
@@ -34,6 +43,7 @@ pub struct UiTestSuite {
 #[derive(Clone, Debug)]
 pub struct UiTest {
     pub name: String,
+    capabilities: Vec<Capability>,
     steps: Vec<UiTestStep>,
 }
 
@@ -46,6 +56,21 @@ enum UiTestStep {
     Assert {
         expected: Node,
         actual: UiTestActual,
+        span: Span,
+    },
+    Supports {
+        capability: Capability,
+    },
+    Deliver {
+        kind: ResourceKind,
+        id: String,
+        result: Node,
+        span: Span,
+    },
+    DeliverError {
+        kind: ResourceKind,
+        id: String,
+        error: HostError,
         span: Span,
     },
 }
@@ -175,11 +200,28 @@ fn parse_test(node: Node) -> Result<UiTest, UiTestError> {
         .as_string()
         .ok_or_else(|| UiTestError("ui.test name must be a string".to_owned()))?
         .to_owned();
-    let steps = items[2..]
-        .iter()
-        .map(|step| parse_step(&name, step))
-        .collect::<Result<Vec<_>, _>>()?;
-    Ok(UiTest { name, steps })
+    let mut capabilities = vec![];
+    let mut steps = vec![];
+    let mut test_started = false;
+    for step in &items[2..] {
+        match parse_step(&name, step)? {
+            UiTestStep::Supports { capability } if !test_started => capabilities.push(capability),
+            UiTestStep::Supports { .. } => {
+                return Err(UiTestError(format!(
+                    "{name}: supports must appear before dispatch, deliver, or assert"
+                )))
+            }
+            step => {
+                test_started = true;
+                steps.push(step);
+            }
+        }
+    }
+    Ok(UiTest {
+        name,
+        capabilities,
+        steps,
+    })
 }
 
 fn parse_step(name: &str, node: &Node) -> Result<UiTestStep, UiTestError> {
@@ -196,12 +238,86 @@ fn parse_step(name: &str, node: &Node) -> Result<UiTestStep, UiTestError> {
                 span: node.span,
             })
         }
+        Some("supports") => parse_supports(name, items),
+        Some("deliver") => parse_delivery(name, node, items),
+        Some("deliver-error") => parse_error_delivery(name, node, items),
         Some("assert") => parse_assert(name, node, items),
         Some(other) => Err(UiTestError(format!(
-            "{name}: unsupported ui.test step `{other}`; use dispatch or assert"
+            "{name}: unsupported ui.test step `{other}`; use supports, dispatch, deliver, deliver-error, or assert"
         ))),
         None => Err(UiTestError(format!(
             "{name}: ui.test step must start with a symbol"
+        ))),
+    }
+}
+
+fn parse_delivery(name: &str, node: &Node, items: &[Node]) -> Result<UiTestStep, UiTestError> {
+    if items.len() != 4 {
+        return Err(UiTestError(format!(
+            "{name}: deliver expects a resource kind, id, and portable result"
+        )));
+    }
+    Ok(UiTestStep::Deliver {
+        kind: resource_kind(name, &items[1])?,
+        id: resource_id(name, &items[2])?,
+        result: items[3].clone(),
+        span: node.span,
+    })
+}
+
+fn parse_error_delivery(
+    name: &str,
+    node: &Node,
+    items: &[Node],
+) -> Result<UiTestStep, UiTestError> {
+    if items.len() != 5 {
+        return Err(UiTestError(format!(
+            "{name}: deliver-error expects a resource kind, id, error code, and message"
+        )));
+    }
+    let code = items[3]
+        .as_string()
+        .ok_or_else(|| UiTestError(format!("{name}: deliver-error code must be a string")))?;
+    let message = items[4]
+        .as_string()
+        .ok_or_else(|| UiTestError(format!("{name}: deliver-error message must be a string")))?;
+    Ok(UiTestStep::DeliverError {
+        kind: resource_kind(name, &items[1])?,
+        id: resource_id(name, &items[2])?,
+        error: HostError {
+            code: host_error_code(name, code)?,
+            message: message.to_owned(),
+        },
+        span: node.span,
+    })
+}
+
+fn resource_kind(name: &str, node: &Node) -> Result<ResourceKind, UiTestError> {
+    match node.as_symbol() {
+        Some("command") => Ok(ResourceKind::Command),
+        Some("subscription") => Ok(ResourceKind::Subscription),
+        _ => Err(UiTestError(format!(
+            "{name}: resource kind must be command or subscription"
+        ))),
+    }
+}
+
+fn resource_id(name: &str, node: &Node) -> Result<String, UiTestError> {
+    node.as_string()
+        .filter(|value| !value.is_empty())
+        .map(str::to_owned)
+        .ok_or_else(|| UiTestError(format!("{name}: resource id must be a nonempty string")))
+}
+
+fn host_error_code(name: &str, code: &str) -> Result<HostErrorCode, UiTestError> {
+    match code {
+        "unsupported-capability" => Ok(HostErrorCode::UnsupportedCapability),
+        "permission-denied" => Ok(HostErrorCode::PermissionDenied),
+        "invalid-request" => Ok(HostErrorCode::InvalidRequest),
+        "cancelled" => Ok(HostErrorCode::Cancelled),
+        "host-failure" => Ok(HostErrorCode::HostFailure),
+        _ => Err(UiTestError(format!(
+            "{name}: unsupported deliver-error code `{code}`"
         ))),
     }
 }
@@ -240,23 +356,9 @@ fn parse_assert(name: &str, node: &Node, items: &[Node]) -> Result<UiTestStep, U
     })
 }
 
-fn actual_accessor(node: &Node) -> Option<UiTestActual> {
-    let items = node.as_form()?;
-    if items.len() != 1 {
-        return None;
-    }
-    match items[0].as_symbol() {
-        Some("ui.test.state") => Some(UiTestActual::State),
-        Some("ui.test.html") => Some(UiTestActual::Html),
-        Some("ui.test.tree") => Some(UiTestActual::Tree),
-        Some("ui.test.commands") => Some(UiTestActual::Commands),
-        Some("ui.test.subscriptions") => Some(UiTestActual::Subscriptions),
-        _ => None,
-    }
-}
-
 struct PreparedTest {
     name: String,
+    capabilities: Vec<Capability>,
     steps: Vec<PreparedStep>,
 }
 
@@ -270,6 +372,18 @@ enum PreparedStep {
         actual: UiTestActual,
         span: Span,
     },
+    Deliver {
+        kind: ResourceKind,
+        id: String,
+        result: String,
+        span: Span,
+    },
+    DeliverError {
+        kind: ResourceKind,
+        id: String,
+        error: HostError,
+        span: Span,
+    },
 }
 
 fn prepare_steps(module: &mut Module, tests: &[UiTest]) -> Result<Vec<PreparedTest>, UiTestError> {
@@ -279,47 +393,82 @@ fn prepare_steps(module: &mut Module, tests: &[UiTest]) -> Result<Vec<PreparedTe
         let mut steps = vec![];
         for (step_index, step) in test.steps.iter().enumerate() {
             let name = format!("__jisp_ui_test_{test_index}_{step_index}");
-            let (value, prepared_step) = match step {
-                UiTestStep::Dispatch { action, span } => (
-                    lowerer.lower_expr(action).map_err(lower_error)?,
-                    PreparedStep::Dispatch {
-                        action: name.clone(),
+            let prepared_step = match step {
+                UiTestStep::Dispatch { action, span } => {
+                    let value = lowerer.lower_expr(action).map_err(lower_error)?;
+                    module.definitions.push(Definition {
+                        name: name.clone(),
+                        public: false,
+                        value,
                         span: *span,
-                    },
-                ),
+                    });
+                    PreparedStep::Dispatch {
+                        action: name,
+                        span: *span,
+                    }
+                }
                 UiTestStep::Assert {
                     expected,
                     actual,
                     span,
-                } => (
-                    lowerer.lower_expr(expected).map_err(lower_error)?,
+                } => {
+                    let value = lowerer.lower_expr(expected).map_err(lower_error)?;
+                    module.definitions.push(Definition {
+                        name: name.clone(),
+                        public: false,
+                        value,
+                        span: *span,
+                    });
                     PreparedStep::Assert {
-                        expected: name.clone(),
+                        expected: name,
                         actual: *actual,
                         span: *span,
-                    },
-                ),
+                    }
+                }
+                UiTestStep::Deliver {
+                    kind,
+                    id,
+                    result,
+                    span,
+                } => {
+                    let value = lowerer.lower_expr(result).map_err(lower_error)?;
+                    module.definitions.push(Definition {
+                        name: name.clone(),
+                        public: false,
+                        value,
+                        span: *span,
+                    });
+                    PreparedStep::Deliver {
+                        kind: *kind,
+                        id: id.clone(),
+                        result: name,
+                        span: *span,
+                    }
+                }
+                UiTestStep::DeliverError {
+                    kind,
+                    id,
+                    error,
+                    span,
+                } => PreparedStep::DeliverError {
+                    kind: *kind,
+                    id: id.clone(),
+                    error: error.clone(),
+                    span: *span,
+                },
+                UiTestStep::Supports { .. } => {
+                    unreachable!("setup steps are removed before preparation")
+                }
             };
-            module.definitions.push(Definition {
-                name,
-                public: false,
-                value,
-                span: step_span(step),
-            });
             steps.push(prepared_step);
         }
         prepared.push(PreparedTest {
             name: test.name.clone(),
+            capabilities: test.capabilities.clone(),
             steps,
         });
     }
     Ok(prepared)
-}
-
-fn step_span(step: &UiTestStep) -> Span {
-    match step {
-        UiTestStep::Dispatch { span, .. } | UiTestStep::Assert { span, .. } => *span,
-    }
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -338,25 +487,75 @@ fn run_one(
     let mut state = init.clone();
     let mut commands = vec![];
     let mut subscriptions = vec![];
+    let mut host = FakeHost::with_capabilities(test.capabilities.clone());
     let mut assertions = 0;
     for step in &test.steps {
         let result = match step {
             PreparedStep::Dispatch { action, span } => {
-                lookup(module_env, action, "dispatch action")
-                    .and_then(|action| {
-                        evaluator
-                            .apply(update.clone(), &[state.clone(), action], *span)
-                            .map_err(runtime_error)
-                    })
-                    .and_then(|result| {
-                        normalize_update_result(result, *span).map_err(runtime_error)
-                    })
-                    .map(|result| {
-                        commands = result.commands;
-                        subscriptions = result.subscriptions;
-                        state = result.state;
-                    })
+                lookup(module_env, action, "dispatch action").and_then(|action| {
+                    reduce_and_reconcile(
+                        evaluator,
+                        update,
+                        &mut state,
+                        &mut commands,
+                        &mut subscriptions,
+                        &mut host,
+                        action,
+                        *span,
+                    )
+                })
             }
+            PreparedStep::Deliver {
+                kind,
+                id,
+                result,
+                span,
+            } => lookup(module_env, result, "delivery result")
+                .and_then(|result| portable_json(result))
+                .and_then(|result| {
+                    delivery_action(&mut host, *kind, id, Delivery::Ok(result)).ok_or_else(|| {
+                        UiTestError(format!(
+                            "delivery at {} has no live {kind:?} `{id}` with a completion action",
+                            span.start
+                        ))
+                    })
+                })
+                .and_then(|action| {
+                    reduce_and_reconcile(
+                        evaluator,
+                        update,
+                        &mut state,
+                        &mut commands,
+                        &mut subscriptions,
+                        &mut host,
+                        action,
+                        *span,
+                    )
+                }),
+            PreparedStep::DeliverError {
+                kind,
+                id,
+                error,
+                span,
+            } => delivery_action(&mut host, *kind, id, Delivery::Err(error.clone()))
+                .ok_or_else(|| {
+                    UiTestError(format!(
+                        "delivery at {} has no live {kind:?} `{id}` with a completion action",
+                        span.start
+                    ))
+                })
+                .and_then(|action| {
+                    reduce_and_reconcile(
+                        evaluator,
+                        update,
+                        &mut state,
+                        &mut commands,
+                        &mut subscriptions,
+                        &mut host,
+                        action,
+                        *span,
+                    )
+                }),
             PreparedStep::Assert {
                 expected,
                 actual,
@@ -403,6 +602,85 @@ fn run_one(
         name: test.name.clone(),
         assertions,
         failure: None,
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn reduce_and_reconcile(
+    evaluator: &mut Evaluator,
+    update: &Value,
+    state: &mut Value,
+    commands: &mut Vec<Value>,
+    subscriptions: &mut Vec<Value>,
+    host: &mut FakeHost,
+    action: Value,
+    span: Span,
+) -> Result<(), UiTestError> {
+    let result = evaluator
+        .apply(update.clone(), &[state.clone(), action], span)
+        .map_err(runtime_error)
+        .and_then(|result| normalize_update_result(result, span).map_err(runtime_error))?;
+    host.reconcile_declared_resources(&result.commands, &result.subscriptions)
+        .map_err(|error| {
+            UiTestError(format!("ui.test fake host reconciliation failed: {error}"))
+        })?;
+    *state = result.state;
+    *commands = result.commands;
+    *subscriptions = result.subscriptions;
+    Ok(())
+}
+
+fn delivery_action(
+    host: &mut FakeHost,
+    kind: ResourceKind,
+    id: &str,
+    result: Delivery,
+) -> Option<Value> {
+    match kind {
+        ResourceKind::Command => host.deliver_current_command_action(Owner::App, id, result),
+        ResourceKind::Subscription => {
+            host.deliver_current_subscription_action(Owner::App, id, result)
+        }
+    }
+}
+
+fn portable_json(value: Value) -> Result<JsonValue, UiTestError> {
+    match value {
+        Value::Null => Ok(JsonValue::Null),
+        Value::Bool(value) => Ok(JsonValue::Bool(value)),
+        Value::Int(value) => Ok(JsonValue::Number(Number::from(value))),
+        Value::Float(value) => Number::from_f64(value)
+            .map(JsonValue::Number)
+            .ok_or_else(|| {
+                UiTestError("ui.test delivery result cannot contain NaN or infinity".to_owned())
+            }),
+        Value::Str(value) => Ok(JsonValue::String(value.to_string())),
+        Value::List(values) => values
+            .into_iter()
+            .map(portable_json)
+            .collect::<Result<Vec<_>, _>>()
+            .map(JsonValue::Array),
+        Value::Obj(values) => values
+            .into_iter()
+            .map(|(key, value)| portable_json(value).map(|value| (key, value)))
+            .collect::<Result<JsonMap<_, _>, _>>()
+            .map(JsonValue::Object),
+        Value::Variant { tag, fields } => Ok(serde_json::json!({
+            "tag": tag,
+            "fields": fields
+                .into_iter()
+                .map(portable_json)
+                .collect::<Result<Vec<_>, _>>()?,
+        })),
+        Value::BigInt(_) => Err(UiTestError(
+            "ui.test delivery result cannot contain bigint".to_owned(),
+        )),
+        Value::Builtin(_) | Value::Closure(_) | Value::Constructor(_) | Value::Uninitialized(_) => {
+            Err(UiTestError(format!(
+                "ui.test delivery result must be portable data, got {}",
+                value.type_name()
+            )))
+        }
     }
 }
 

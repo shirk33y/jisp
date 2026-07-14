@@ -406,6 +406,20 @@ impl FakeHost {
             .flatten()
     }
 
+    /// Deliver to the active command generation and materialize its completion
+    /// action. This is useful to deterministic hosts that intentionally do not
+    /// expose generation counters to their scenario language.
+    pub fn deliver_current_command_action(
+        &mut self,
+        owner: Owner,
+        id: impl Into<String>,
+        result: Delivery,
+    ) -> Option<jisp_eval::Value> {
+        let id = id.into();
+        let generation = self.commands.get(&(owner.clone(), id.clone()))?.generation;
+        self.deliver_command_action(owner, id, generation, result)
+    }
+
     /// Compatibility helper for an empty successful command completion.
     pub fn deliver(&mut self, owner: Owner, id: impl Into<String>, generation: u64) -> bool {
         self.deliver_command(owner, id, generation, Delivery::Ok(Value::Null))
@@ -451,6 +465,22 @@ impl FakeHost {
         self.deliver_subscription(owner, id, generation, result.clone())
             .then(|| template.map(|template| template.instantiate(&result)))
             .flatten()
+    }
+
+    /// Deliver to the active subscription generation and materialize its
+    /// completion action without exposing host-internal generations.
+    pub fn deliver_current_subscription_action(
+        &mut self,
+        owner: Owner,
+        id: impl Into<String>,
+        result: Delivery,
+    ) -> Option<jisp_eval::Value> {
+        let id = id.into();
+        let generation = self
+            .subscriptions
+            .get(&(owner.clone(), id.clone()))?
+            .generation;
+        self.deliver_subscription_action(owner, id, generation, result)
     }
 
     /// Cancels every resource owned by precisely this app/component instance.

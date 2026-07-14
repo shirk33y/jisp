@@ -56,9 +56,12 @@ keyed component instance exactly once. The source-level
 portable data; type validation ties `init`, `update`, and `app` together and
 rejects effect values from a view. Source constructors `ui.command` and
 `ui.subscription` produce exact versioned descriptors and give the two resource
-lists distinct nominal types. The browser Wasm session exposes declarations
-without executing them. Host execution, completion-action templates, and
-component-local state remain subsequent M4 work.
+lists distinct nominal types. Portable `ui.test` scenarios configure a
+deterministic fake-host capability set and deliver current command/subscription
+successes or stable errors through declared action templates and the ordinary
+reducer. The browser Wasm session exposes declarations without executing them;
+its fixture-only test entry point runs that deterministic simulation. Real host
+execution and component-local state remain subsequent M4 work.
 M6 now has a first WIT package at
 [`wit/jisp-ui-capabilities.wit`](../../wit/jisp-ui-capabilities.wit), limited to
 coarse versioned storage/timer/navigation capabilities; binding generation and
