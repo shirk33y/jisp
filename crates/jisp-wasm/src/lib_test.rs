@@ -188,6 +188,39 @@ fn update_session_rebuilds_the_view_after_an_emitted_action() {
     assert_eq!(second["children"][0]["value"], "Count: 1");
 }
 
+#[cfg(feature = "juir")]
+#[test]
+fn update_session_exposes_compiled_juir_source_map() {
+    let mut session = PlaygroundSession::new();
+    session
+        .load_source(
+            r#"
+(def init (obj "title" "Plan"))
+(defn update (state action) state)
+(component app (state)
+  (main
+    (h1 (text (. state "title")))
+    (p (text "Static"))))
+(ui.app init update app)
+"#,
+        )
+        .unwrap();
+
+    let source_map: Value = serde_json::from_str(&session.source_map_json().unwrap()).unwrap();
+    assert_eq!(source_map["protocol"], "jisp-ui-source-map/1");
+    let entries = source_map["entries"].as_array().unwrap();
+    assert!(entries.iter().any(|entry| {
+        entry["component"] == "app" && entry["path"] == "root" && entry["kind"] == "element"
+    }));
+    assert!(entries.iter().any(|entry| {
+        entry["component"] == "app"
+            && entry["path"] == "root.children.0.children.0.value"
+            && entry["kind"] == "slot"
+            && entry["start"].as_u64().is_some()
+            && entry["end"].as_u64().is_some()
+    }));
+}
+
 #[test]
 fn update_session_emits_local_tree_patches() {
     let mut session = PlaygroundSession::new();

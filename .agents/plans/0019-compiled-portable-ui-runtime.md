@@ -14,6 +14,10 @@ materializes the existing structural-tree contract before the DOM reconciler.
 Event descriptors retain explicit synchronous `prevent-default`,
 `stop-propagation`, and `capture` policy for the browser host; direct
 static-template DOM mount remains the next M2 increment.
+The compiled plan now also carries a stable `jisp-ui-source-map/1` manifest for
+template nodes, dynamic slots, event descriptors, blocks, and source
+expressions. It is exposed through Wasm for diagnostics/tooling without making
+browser DOM paths or JavaScript parsing part of UI semantics.
 M3 now conservatively reuses JUIR scalar slots, unaffected element subtrees,
 and whole `for` blocks. Proven
 parameter field paths are compared with immutable reducer changes; opaque,

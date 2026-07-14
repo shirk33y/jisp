@@ -152,10 +152,10 @@ controlled edit. This preserves focused controls and their selection through
 ordinary updates. The structural tree remains the semantic oracle and recovery
 snapshot while the compiled JUIR runtime evolves.
 
-Effects, subscriptions, async commands, persistence, and lifecycle boundaries
-are not implemented; their proposed ownership and capability contract lives in
-[UI_EFFECTS.md](UI_EFFECTS.md). A UI component remains a pure function of its
-supplied state and props.
+Executable effects, subscriptions, async commands, persistence, and lifecycle
+boundaries are not implemented; reducer resource declarations and their
+proposed ownership/capability contract live in [UI_EFFECTS.md](UI_EFFECTS.md).
+A UI component remains a pure function of its supplied state and props.
 
 For development diagnostics, `PlaygroundSession.metrics()` reports render
 counts plus the latest JUIR slot, block, keyed-item, and component reuse counts. The
@@ -169,6 +169,16 @@ result.
 batch for another browser or native host. `snapshot()` returns the complete
 current tree only for initial mount or host recovery; it is not the normal
 event-update path.
+
+`PlaygroundSession.source_map()` returns the versioned
+`jisp-ui-source-map/1` manifest for the compiled JUIR plan. Every entry carries
+the component name, a stable compiler-plan path, source id, byte start/end, and
+kind (`element`, `text`, `slot`, `event`, `if`, `each`, and related expression
+locations). Paths describe immutable JUIR templates such as
+`root.children.1.props.value`; they are intentionally not DOM paths or dynamic
+list indices. A browser, native host, or editor can attach diagnostics to the
+original source without parsing/evaluating Jisp or treating transient host nodes
+as source identity.
 
 ### Native adapter prototype
 

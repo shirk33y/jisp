@@ -20,6 +20,56 @@ pub mod testing;
 #[derive(Clone, Debug)]
 pub struct Program {
     pub components: BTreeMap<String, Component>,
+    /// Stable source locations for compiled templates, slots, events, and
+    /// block expressions. Hosts may use these for diagnostics and developer
+    /// tooling, but they never participate in execution semantics.
+    pub source_map: Vec<SourceMapEntry>,
+}
+
+/// One source location in the compiled JUIR plan.
+///
+/// `component` and `path` identify the generated plan location without
+/// leaking a browser- or toolkit-specific host identity. `path` always starts
+/// at `root`; child indices and metadata names are appended with `.`.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SourceMapEntry {
+    pub component: String,
+    pub path: String,
+    pub kind: SourceMapKind,
+    pub span: Span,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SourceMapKind {
+    Element,
+    Text,
+    If,
+    Each,
+    ComponentCall,
+    Dynamic,
+    Slot,
+    Event,
+    Condition,
+    Collection,
+    Argument,
+}
+
+impl SourceMapKind {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Element => "element",
+            Self::Text => "text",
+            Self::If => "if",
+            Self::Each => "each",
+            Self::ComponentCall => "component-call",
+            Self::Dynamic => "dynamic",
+            Self::Slot => "slot",
+            Self::Event => "event",
+            Self::Condition => "condition",
+            Self::Collection => "collection",
+            Self::Argument => "argument",
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -33,7 +83,7 @@ pub struct Component {
 
 #[derive(Clone, Debug)]
 pub enum Node {
-    Text(Slot),
+    Text(Text),
     Element(Box<Element>),
     If {
         condition: Expr,
@@ -61,6 +111,12 @@ pub enum Node {
         dependencies: Vec<Dependency>,
         span: Span,
     },
+}
+
+#[derive(Clone, Debug)]
+pub struct Text {
+    pub value: Slot,
+    pub span: Span,
 }
 
 #[derive(Clone, Debug)]
@@ -262,7 +318,14 @@ pub fn compile(module: &TypedModule) -> Result<Program, CompileError> {
             },
         );
     }
-    Ok(Program { components })
+    let source_map = components
+        .iter()
+        .flat_map(|(name, component)| source_map_entries(name, &component.root))
+        .collect();
+    Ok(Program {
+        components,
+        source_map,
+    })
 }
 
 pub fn render_static_html(program: &Program, component: &str) -> Result<String, CompileError> {
@@ -471,9 +534,10 @@ impl Compiler<'_> {
         let fields = object_fields(fields)?;
         let tag = static_string(required_field(&fields, "tag", span)?)?;
         if tag == "text" {
-            return Ok(Node::Text(
-                self.slot(required_field(&fields, "value", span)?, parameters)?,
-            ));
+            return Ok(Node::Text(Text {
+                value: self.slot(required_field(&fields, "value", span)?, parameters)?,
+                span,
+            }));
         }
         Ok(Node::Element(Box::new(Element {
             tag,
@@ -688,11 +752,11 @@ impl Executor<'_> {
         path: &str,
     ) -> Result<Value, ExecuteError> {
         match node {
-            Node::Text(slot) => Ok(Value::Obj(IndexMap::from([
+            Node::Text(text) => Ok(Value::Obj(IndexMap::from([
                 ("tag".to_owned(), Value::string("text")),
                 (
                     "value".to_owned(),
-                    self.slot(slot, env, previous.and_then(text_value))?,
+                    self.slot(&text.value, env, previous.and_then(text_value))?,
                 ),
             ]))),
             Node::Element(element) => {
@@ -1141,9 +1205,155 @@ fn node_dependencies(node: &Node) -> Vec<Dependency> {
     dependencies
 }
 
+fn source_map_entries(component: &str, root: &Node) -> Vec<SourceMapEntry> {
+    let mut entries = vec![];
+    append_source_map_entries(component, root, "root", &mut entries);
+    entries
+}
+
+fn append_source_map_entries(
+    component: &str,
+    node: &Node,
+    path: &str,
+    output: &mut Vec<SourceMapEntry>,
+) {
+    match node {
+        Node::Text(text) => {
+            source_map_entry(output, component, path, SourceMapKind::Text, text.span);
+            append_slot_source_map(output, component, &format!("{path}.value"), &text.value);
+        }
+        Node::Element(element) => {
+            source_map_entry(
+                output,
+                component,
+                path,
+                SourceMapKind::Element,
+                element.span,
+            );
+            append_slots_source_map(output, component, path, "attrs", &element.attrs);
+            append_slots_source_map(output, component, path, "props", &element.props);
+            append_slots_source_map(output, component, path, "classes", &element.classes);
+            if let Some(key) = &element.key {
+                append_slot_source_map(output, component, &format!("{path}.key"), key);
+            }
+            for (name, event) in &element.events {
+                source_map_entry(
+                    output,
+                    component,
+                    &format!("{path}.events.{name}"),
+                    SourceMapKind::Event,
+                    event.span,
+                );
+            }
+            for (index, child) in element.children.iter().enumerate() {
+                append_source_map_entries(
+                    component,
+                    child,
+                    &format!("{path}.children.{index}"),
+                    output,
+                );
+            }
+        }
+        Node::If {
+            condition,
+            then_branch,
+            else_branch,
+            span,
+            ..
+        } => {
+            source_map_entry(output, component, path, SourceMapKind::If, *span);
+            source_map_entry(
+                output,
+                component,
+                &format!("{path}.condition"),
+                SourceMapKind::Condition,
+                condition.span,
+            );
+            append_source_map_entries(component, then_branch, &format!("{path}.then"), output);
+            append_source_map_entries(component, else_branch, &format!("{path}.else"), output);
+        }
+        Node::Each {
+            collection,
+            body,
+            span,
+            ..
+        } => {
+            source_map_entry(output, component, path, SourceMapKind::Each, *span);
+            source_map_entry(
+                output,
+                component,
+                &format!("{path}.collection"),
+                SourceMapKind::Collection,
+                collection.span,
+            );
+            append_source_map_entries(component, body, &format!("{path}.body"), output);
+        }
+        Node::ComponentCall {
+            arguments, span, ..
+        } => {
+            source_map_entry(output, component, path, SourceMapKind::ComponentCall, *span);
+            for (index, argument) in arguments.iter().enumerate() {
+                source_map_entry(
+                    output,
+                    component,
+                    &format!("{path}.arguments.{index}"),
+                    SourceMapKind::Argument,
+                    argument.span,
+                );
+            }
+        }
+        Node::Dynamic { span, .. } => {
+            source_map_entry(output, component, path, SourceMapKind::Dynamic, *span);
+        }
+    }
+}
+
+fn append_slots_source_map(
+    output: &mut Vec<SourceMapEntry>,
+    component: &str,
+    path: &str,
+    category: &str,
+    slots: &IndexMap<String, Slot>,
+) {
+    for (name, slot) in slots {
+        append_slot_source_map(
+            output,
+            component,
+            &format!("{path}.{category}.{name}"),
+            slot,
+        );
+    }
+}
+
+fn append_slot_source_map(
+    output: &mut Vec<SourceMapEntry>,
+    component: &str,
+    path: &str,
+    slot: &Slot,
+) {
+    if let Slot::Dynamic { span, .. } = slot {
+        source_map_entry(output, component, path, SourceMapKind::Slot, *span);
+    }
+}
+
+fn source_map_entry(
+    output: &mut Vec<SourceMapEntry>,
+    component: &str,
+    path: &str,
+    kind: SourceMapKind,
+    span: Span,
+) {
+    output.push(SourceMapEntry {
+        component: component.to_owned(),
+        path: path.to_owned(),
+        kind,
+        span,
+    });
+}
+
 fn append_node_dependencies(node: &Node, output: &mut Vec<Dependency>) {
     match node {
-        Node::Text(slot) => append_slot_dependencies(slot, output),
+        Node::Text(text) => append_slot_dependencies(&text.value, output),
         Node::Element(element) => {
             for slot in element
                 .attrs
@@ -1447,7 +1657,7 @@ fn render_static_node(
     output: &mut String,
 ) -> Result<(), CompileError> {
     match node {
-        Node::Text(slot) => output.push_str(&escape_text(&static_slot(slot)?)),
+        Node::Text(text) => output.push_str(&escape_text(&static_slot(&text.value)?)),
         Node::Element(element) => {
             output.push('<');
             output.push_str(&element.tag);

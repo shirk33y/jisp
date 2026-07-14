@@ -71,7 +71,11 @@ fn retains_typed_dynamic_slots_and_event_descriptors() {
     );
     assert!(matches!(button.classes["pending"], Slot::Dynamic { .. }));
     assert!(button.events.contains_key("click"));
-    let [Node::Text(Slot::Dynamic { .. })] = button.children.as_slice() else {
+    let [Node::Text(crate::Text {
+        value: Slot::Dynamic { .. },
+        ..
+    })] = button.children.as_slice()
+    else {
         panic!("expected dynamic text slot");
     };
 }
@@ -188,9 +192,56 @@ fn static_scalar_text_is_retained_in_the_ir() {
     let Node::Element(paragraph) = &program.components["app"].root else {
         panic!("expected paragraph");
     };
-    let [Node::Text(Slot::Static(Scalar::Int(42)))] = paragraph.children.as_slice() else {
+    let [Node::Text(crate::Text {
+        value: Slot::Static(Scalar::Int(42)),
+        ..
+    })] = paragraph.children.as_slice()
+    else {
         panic!("expected static integer text");
     };
+}
+
+#[test]
+fn compiled_program_keeps_stable_source_map_entries_for_templates_and_slots() {
+    let source = r#"
+(component row (title)
+  (li (text title)))
+
+(component app (state)
+  (main
+    (if (. state "visible")
+      (row (. state "title"))
+      (p (text "Hidden")))
+    (input (prop value (. state "draft")))))
+"#;
+    let program = compile(&typed(source)).unwrap();
+
+    assert!(program.source_map.iter().any(|entry| {
+        entry.component == "app"
+            && entry.path == "root"
+            && entry.kind == crate::SourceMapKind::Element
+    }));
+    assert!(program.source_map.iter().any(|entry| {
+        entry.component == "app"
+            && entry.path == "root.children.0"
+            && entry.kind == crate::SourceMapKind::If
+    }));
+    let draft = program
+        .source_map
+        .iter()
+        .find(|entry| {
+            entry.component == "app"
+                && entry.path == "root.children.1.props.value"
+                && entry.kind == crate::SourceMapKind::Slot
+        })
+        .expect("dynamic property source map entry");
+    assert_eq!(draft.span.source, SourceId(0));
+    assert!(source[draft.span.start..draft.span.end].contains("draft"));
+    assert!(program.source_map.iter().any(|entry| {
+        entry.component == "app"
+            && entry.path == "root.children.0.else.children.0"
+            && entry.kind == crate::SourceMapKind::Text
+    }));
 }
 
 #[test]

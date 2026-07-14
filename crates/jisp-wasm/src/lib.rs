@@ -138,6 +138,14 @@ impl PlaygroundSession {
         self.desired_resources_json().map_err(js_error)
     }
 
+    /// Return stable source locations for the currently compiled JUIR plan.
+    ///
+    /// These locations identify compiler-plan paths, not mutable DOM nodes, so
+    /// hosts can attach diagnostics without owning Jisp source semantics.
+    pub fn source_map(&self) -> Result<String, JsValue> {
+        self.source_map_json().map_err(js_error)
+    }
+
     /// Run fixture-only portable UI scenarios embedded in the current source.
     /// They execute in Wasm but never touch the browser DOM.
     pub fn run_tests(&self, source: &str, syntax: &str) -> Result<String, JsValue> {
@@ -312,6 +320,30 @@ impl PlaygroundSession {
                 .collect::<Result<Vec<_>, _>>()?,
         }))
         .map_err(|error| error.to_string())
+    }
+
+    fn source_map_json(&self) -> Result<String, String> {
+        #[cfg(feature = "juir")]
+        {
+            let runtime = self
+                .runtime
+                .as_ref()
+                .ok_or_else(|| "load a ui.app program before reading its source map".to_owned())?;
+            serde_json::to_string(&json!({
+                "protocol": "jisp-ui-source-map/1",
+                "entries": runtime.program.source_map.iter().map(|entry| json!({
+                    "component": entry.component,
+                    "path": entry.path,
+                    "kind": entry.kind.as_str(),
+                    "source": entry.span.source.0,
+                    "start": entry.span.start,
+                    "end": entry.span.end,
+                })).collect::<Vec<_>>(),
+            }))
+            .map_err(|error| error.to_string())
+        }
+        #[cfg(not(feature = "juir"))]
+        Err("JUIR source maps require the `juir` feature".to_owned())
     }
 
     fn render(&mut self) -> Result<String, String> {
