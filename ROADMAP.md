@@ -44,11 +44,13 @@ not dates. The detailed engineering queue remains [TODO.md](TODO.md).
 3. **Dynamic structural data.** Keep `map<str, A>` as the homogeneous runtime
    dictionary. Native open rows and heterogeneous dynamic selection require a
    source-visible type/ABI proposal before implementation.
-4. **Interactive UI runtime.** The browser host now proves the core update
-   loop: `ui.app` declares init/update/app, browser events become JSON-shaped
-   values, and each update returns a fresh structural tree. Next, design keyed
-   reconciliation, effects, subscriptions, persistence, lifecycle boundaries,
-   and native widget registries together before claiming React-/React-Native-
+4. **Interactive UI runtime.** The browser host proves the core update loop:
+   `ui.app` declares init/update/app, browser events become JSON-shaped values,
+   and each update returns a fresh structural tree. The browser reconciles that
+   tree in place, including scalar keyed sibling retention/moves, while the full
+   tree remains the semantic reference. Next, implement the renderer-neutral
+   compiled UI IR, then define effects, subscriptions, persistence, lifecycle
+   boundaries, and native widget registries before claiming React-/React-Native-
    like support.
 
 ## Tooling and project workflow

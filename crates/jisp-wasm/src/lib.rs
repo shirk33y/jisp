@@ -678,6 +678,7 @@ fn ui_node(value: &Value, handlers: &mut Vec<Value>) -> Result<JsonValue, String
     let classes = classes_json(fields.get("classes"))?;
     let events = event_json(fields.get("events"), handlers)?;
     let children = children_json(fields.get("children"), handlers)?;
+    let key = key_json(fields.get("key"))?;
     Ok(json!({
         "kind": "element",
         "tag": tag,
@@ -685,6 +686,7 @@ fn ui_node(value: &Value, handlers: &mut Vec<Value>) -> Result<JsonValue, String
         "props": props,
         "classes": classes,
         "events": events,
+        "key": key,
         "children": children,
     }))
 }
@@ -737,6 +739,18 @@ fn classes_json(value: Option<&Value>) -> Result<JsonValue, String> {
     Ok(JsonValue::Array(classes))
 }
 
+fn key_json(value: Option<&Value>) -> Result<JsonValue, String> {
+    let Some(value) = value else {
+        return Ok(JsonValue::Null);
+    };
+    let value = json_value(value)?;
+    if value.is_string() || value.is_number() || value.is_boolean() {
+        Ok(value)
+    } else {
+        Err("UI key must be a string, number, or bool".to_owned())
+    }
+}
+
 fn event_json(value: Option<&Value>, handlers: &mut Vec<Value>) -> Result<JsonValue, String> {
     let Some(Value::Obj(events)) = value else {
         return object_json(value);
@@ -762,7 +776,22 @@ fn children_json(value: Option<&Value>, handlers: &mut Vec<Value>) -> Result<Jso
     };
     let mut children = vec![];
     append_children(value, handlers, &mut children)?;
+    validate_child_keys(&children)?;
     Ok(JsonValue::Array(children))
+}
+
+fn validate_child_keys(children: &[JsonValue]) -> Result<(), String> {
+    let mut keys = std::collections::BTreeSet::new();
+    for child in children {
+        let Some(key) = child.get("key").filter(|key| !key.is_null()) else {
+            continue;
+        };
+        let key = serde_json::to_string(key).expect("JSON key serializes");
+        if !keys.insert(key.clone()) {
+            return Err(format!("duplicate UI key `{key}` among sibling children"));
+        }
+    }
+    Ok(())
 }
 
 fn append_children(

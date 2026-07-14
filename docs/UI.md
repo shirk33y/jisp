@@ -56,12 +56,15 @@ turn a name into a class: `aria-label`, `data-id`, and `http-equiv` belong in
 | `(class-if name condition)` | Enables the named utility class only when the boolean condition is true. |
 | `(on event (emit action))` | Creates a delayed handler. The interactive host supplies `event`, evaluates `action`, then passes that value to the app update function. Static HTML deliberately does not serialize it. |
 | `(on event handler)` | Stores an explicit function handler for an interactive host. Use this when the handler needs more than one expression. |
-| `(key value)` | Stores an identity key for reconciliation. Static HTML deliberately ignores it. |
+| `(key value)` | Stores a scalar (`str`, number, or `bool`) identity key for reconciliation. Static HTML deliberately ignores it. |
 | `(for binding collection child)` | Maps `child` over `collection`; nested result lists are flattened as children. |
 
 Each directive belongs directly inside a host element. Names must be unique
 within their own directive category; a duplicate `attr`, `prop`, `class`, or
-`on` name is a lowering error. There can be only one `key` directive.
+`on` name is a lowering error. There can be only one `key` directive. Keys are
+unique among rendered sibling children in an interactive host; duplicate keys
+are rejected before a tree is sent to that host. Use a stable domain identifier,
+not a list index, whenever list items may be inserted, removed, or reordered.
 
 `emit` is only valid as the handler argument of `on`. It introduces an implicit
 single `event` argument, so input values can be turned into actions without
@@ -107,10 +110,17 @@ metadata that lets each host keep the same execution contract.
 
 The browser playground currently uses this contract. On each event it calls
 the selected Jisp handler with a small JSON-shaped event object, calls
-`update(state, action)`, then calls `app(next-state)` and replaces the preview
-tree. This is deliberately a simple full-render host: keyed reconciliation,
-effects, subscriptions, async commands, persistence, and native widget
-adapters are not defined yet.
+`update(state, action)`, then calls `app(next-state)`. The Jisp interpreter
+still produces a fresh structural tree as the reference output, but the browser
+host reconciles matching DOM nodes in place: it updates changed text,
+attributes, properties, classes, and handlers, and retains/moves keyed sibling
+nodes. This preserves focused controls and their selection through ordinary
+updates. The reference-tree contract is intentionally retained while the
+compiled JUIR runtime is designed.
+
+Effects, subscriptions, async commands, persistence, lifecycle boundaries, and
+native widget adapters are still undefined; a UI component must remain a pure
+function of its supplied state and props.
 
 ## Lowered contract and host status
 

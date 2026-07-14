@@ -158,6 +158,63 @@ fn update_todo_example_updates_draft_then_adds_a_task() {
     assert!(contains_text(&added, "Review docs"));
 }
 
+#[test]
+fn update_session_serializes_scalar_keys_for_reconciliation() {
+    let mut session = PlaygroundSession::new();
+    let tree: Value = serde_json::from_str(
+        &session
+            .load_source(
+                r#"
+(def init null)
+(defn update (state action) state)
+
+(component app (state)
+  (ul
+    (li (key "first") (text "First"))
+    (li (key 2) (text "Second"))))
+
+(ui.app init update app)
+"#,
+            )
+            .unwrap(),
+    )
+    .unwrap();
+
+    assert_eq!(tree["children"][0]["key"], "first");
+    assert_eq!(tree["children"][1]["key"], 2);
+}
+
+#[test]
+fn update_session_rejects_duplicate_or_structural_sibling_keys() {
+    let duplicate = r#"
+(def init null)
+(defn update (state action) state)
+(component app (state)
+  (ul
+    (li (key "same") (text "First"))
+    (li (key "same") (text "Second"))))
+(ui.app init update app)
+"#;
+    let structural = r#"
+(def init null)
+(defn update (state action) state)
+(component app (state) (div (key (list 1)) (text "Nope")))
+(ui.app init update app)
+"#;
+
+    let mut session = PlaygroundSession::new();
+    assert!(session
+        .load_source(duplicate)
+        .unwrap_err()
+        .contains("duplicate UI key"));
+
+    let mut session = PlaygroundSession::new();
+    assert!(session
+        .load_source(structural)
+        .unwrap_err()
+        .contains("UI key must be a string, number, or bool"));
+}
+
 fn handler_for(tree: &Value, event: &str) -> Option<u64> {
     tree.get("events")
         .and_then(|events| events.get(event))

@@ -7,6 +7,10 @@ change the current UI language contract. It defines the work required to move
 from the playground's correct-but-full-render host to a portable, incremental
 UI runtime.
 
+Progress: M0 and M1 are complete on `master`. The current browser host retains
+and moves scalar-keyed sibling DOM nodes, while the fresh structural tree remains
+the reference result. M2 is the next implementation milestone.
+
 ## Goal
 
 Make Jisp a practical portable language for declarative interactive UI:

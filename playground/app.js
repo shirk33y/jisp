@@ -127,10 +127,11 @@ const allowedEvents = new Set(["blur", "change", "click", "focus", "input", "key
 const root = document.getElementById("root");
 
 function safeAttribute(element, name, value) {
-  if (name.startsWith("on") || value === null || value === false) return;
-  if ((name === "href" || name === "src") && typeof value === "string" && /^javascript:/i.test(value)) return;
+  if (name.startsWith("on") || value === null || value === false) return false;
+  if ((name === "href" || name === "src") && typeof value === "string" && /^javascript:/i.test(value)) return false;
   if (value === true) element.setAttribute(name, "");
   else element.setAttribute(name, String(value));
+  return true;
 }
 
 function browserEvent(event) {
@@ -143,31 +144,161 @@ function browserEvent(event) {
   };
 }
 
-function node(tree, path) {
+function treeKey(tree) {
+  if (tree?.kind !== "element" || tree.key === null || tree.key === undefined) return null;
+  return `${typeof tree.key}:${JSON.stringify(tree.key)}`;
+}
+
+function isElementTree(tree) {
+  return tree?.kind === "element" && allowedTags.has(tree.tag);
+}
+
+function matchesTree(existing, tree) {
+  if (tree?.kind === "text") return existing?.nodeType === Node.TEXT_NODE;
+  return isElementTree(tree)
+    && existing?.nodeType === Node.ELEMENT_NODE
+    && existing.tagName.toLowerCase() === tree.tag;
+}
+
+function createNode(tree, path) {
   if (tree.kind === "text") return document.createTextNode(String(tree.value ?? ""));
   if (tree.kind !== "element" || !allowedTags.has(tree.tag)) return document.createComment("invalid Jisp UI node");
   const element = document.createElement(tree.tag);
-  element.dataset.jispPath = path;
-  for (const [name, value] of Object.entries(tree.attrs || {})) safeAttribute(element, name, value);
-  for (const [name, value] of Object.entries(tree.props || {})) {
-    if (!name.startsWith("on") && name in element) element[name] = value;
-  }
-  for (const name of tree.classes || []) element.classList.add(name);
-  for (const [name, handler] of Object.entries(tree.events || {})) {
-    if (!allowedEvents.has(name) || !Number.isInteger(handler)) continue;
-    element.addEventListener(name, (event) => {
-      if (name === "submit") event.preventDefault();
-      parent.postMessage({ type: "jisp-event", handler, event: browserEvent(event) }, "*");
-    });
-  }
-  for (const [index, child] of (tree.children || []).entries()) element.append(node(child, path + "." + index));
+  patchElement(element, tree, path);
   return element;
+}
+
+function patchNode(parent, existing, tree, path) {
+  if (!matchesTree(existing, tree)) {
+    const created = createNode(tree, path);
+    if (existing?.parentNode === parent) parent.replaceChild(created, existing);
+    else parent.append(created);
+    return created;
+  }
+  if (tree.kind === "text") {
+    const value = String(tree.value ?? "");
+    if (existing.data !== value) existing.data = value;
+  } else {
+    patchElement(existing, tree, path);
+  }
+  return existing;
+}
+
+function patchElement(element, tree, path) {
+  element.dataset.jispPath = path;
+  syncAttributes(element, tree.attrs || {});
+  syncProperties(element, tree.props || {});
+  syncClasses(element, tree.classes || []);
+  syncEvents(element, tree.events || {});
+  reconcileChildren(element, tree.children || [], path);
+  element.__jispKey = treeKey(tree);
+}
+
+function syncAttributes(element, attrs) {
+  const previous = element.__jispAttrs || new Set();
+  const next = new Set();
+  for (const [name, value] of Object.entries(attrs)) {
+    if (safeAttribute(element, name, value)) next.add(name);
+  }
+  for (const name of previous) {
+    if (!next.has(name)) element.removeAttribute(name);
+  }
+  element.__jispAttrs = next;
+}
+
+function resetProperty(element, name) {
+  if (typeof element[name] === "boolean") element[name] = false;
+  else if (typeof element[name] === "string") element[name] = "";
+  else element[name] = null;
+}
+
+function syncProperties(element, props) {
+  const previous = element.__jispProps || new Map();
+  const next = new Map();
+  for (const [name, value] of Object.entries(props)) {
+    if (name.startsWith("on") || !(name in element)) continue;
+    next.set(name, value);
+    if (!Object.is(previous.get(name), value) && !Object.is(element[name], value)) element[name] = value;
+  }
+  for (const name of previous.keys()) {
+    if (!next.has(name)) resetProperty(element, name);
+  }
+  element.__jispProps = next;
+}
+
+function syncClasses(element, classes) {
+  const previous = element.__jispClasses || new Set();
+  const next = new Set(classes.filter((name) => typeof name === "string"));
+  for (const name of previous) {
+    if (!next.has(name)) element.classList.remove(name);
+  }
+  for (const name of next) {
+    if (!previous.has(name)) element.classList.add(name);
+  }
+  element.__jispClasses = next;
+}
+
+function syncEvents(element, events) {
+  const records = element.__jispEvents || new Map();
+  for (const [name, record] of records) {
+    if (!allowedEvents.has(name) || !Number.isInteger(events[name])) {
+      element.removeEventListener(name, record.listener);
+      records.delete(name);
+    }
+  }
+  for (const [name, handler] of Object.entries(events)) {
+    if (!allowedEvents.has(name) || !Number.isInteger(handler)) continue;
+    let record = records.get(name);
+    if (!record) {
+      record = {
+        handler,
+        listener(event) {
+          if (name === "submit") event.preventDefault();
+          parent.postMessage({ type: "jisp-event", handler: record.handler, event: browserEvent(event) }, "*");
+        },
+      };
+      records.set(name, record);
+      element.addEventListener(name, record.listener);
+    }
+    record.handler = handler;
+  }
+  element.__jispEvents = records;
+}
+
+function reconcileChildren(parent, trees, path) {
+  const existing = [...parent.childNodes];
+  const keyed = new Map();
+  const unkeyed = [];
+  for (const child of existing) {
+    if (child.__jispKey !== null && child.__jispKey !== undefined) keyed.set(child.__jispKey, child);
+    else unkeyed.push(child);
+  }
+
+  const rendered = [];
+  let unkeyedIndex = 0;
+  for (const [index, tree] of trees.entries()) {
+    const key = treeKey(tree);
+    const current = key === null ? unkeyed[unkeyedIndex++] : keyed.get(key);
+    const child = patchNode(parent, current, tree, path + "." + index);
+    child.__jispKey = key;
+    rendered.push(child);
+  }
+
+  for (const [index, child] of rendered.entries()) {
+    const current = parent.childNodes[index];
+    if (current !== child) parent.insertBefore(child, current || null);
+  }
+  const retained = new Set(rendered);
+  for (const child of [...parent.childNodes]) {
+    if (!retained.has(child)) child.remove();
+  }
 }
 
 function focusedControl() {
   const element = document.activeElement;
   if (!(element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement)) return null;
   return {
+    element,
     path: element.dataset.jispPath,
     start: element.selectionStart,
     end: element.selectionEnd,
@@ -176,7 +307,9 @@ function focusedControl() {
 
 function restoreFocus(focus) {
   if (!focus?.path) return;
-  const element = root.querySelector('[data-jisp-path="' + focus.path + '"]');
+  const element = root.contains(focus.element)
+    ? focus.element
+    : root.querySelector('[data-jisp-path="' + focus.path + '"]');
   if (!(element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement)) return;
   element.focus({ preventScroll: true });
   if (Number.isInteger(focus.start) && Number.isInteger(focus.end)) element.setSelectionRange(focus.start, focus.end);
@@ -185,7 +318,11 @@ function restoreFocus(focus) {
 addEventListener("message", (message) => {
   if (message.source !== parent || message.data?.type !== "jisp-render") return;
   const focus = focusedControl();
-  root.replaceChildren(node(message.data.tree, "0"));
+  const current = root.firstChild;
+  const next = patchNode(root, current, message.data.tree, "0");
+  for (const child of [...root.childNodes]) {
+    if (child !== next) child.remove();
+  }
   restoreFocus(focus);
 });
 <\/script></body></html>`;
