@@ -5,8 +5,8 @@ use jisp_syntax_lisp::LispParser;
 use jisp_types::{Inferencer, TypedModule};
 
 use crate::{
-    changed_paths, compile, execute, render_static_html, Dependency, DependencyPath, Node, Scalar,
-    Slot,
+    changed_paths, compile, execute, execute_incremental, render_static_html, ChangeSet,
+    Dependency, DependencyPath, Node, Scalar, Slot,
 };
 
 fn typed(source: &str) -> TypedModule {
@@ -293,4 +293,62 @@ fn changed_paths_only_invalidate_intersecting_static_dependencies() {
         fields: vec!["todos".to_owned(), "done".to_owned()],
     }]));
     assert!(changes.affects(&[Dependency::Unknown]));
+}
+
+#[test]
+fn incremental_executor_reuses_unaffected_slots() {
+    let typed = typed(
+        r#"
+(component app (state)
+  (div
+    (text (. state "title"))
+    (text (str.from (. state "count")))))
+"#,
+    );
+    let program = compile(&typed).unwrap();
+    let before = Value::Obj(indexmap::IndexMap::from([
+        ("title".to_owned(), Value::string("Plan")),
+        ("count".to_owned(), Value::Int(1)),
+    ]));
+    let after = Value::Obj(indexmap::IndexMap::from([
+        ("title".to_owned(), Value::string("Plan")),
+        ("count".to_owned(), Value::Int(2)),
+    ]));
+    let mut evaluator = Evaluator::new();
+    let loaded = evaluator.load_module(&typed.module).unwrap();
+    let first = execute_incremental(
+        &program,
+        &mut evaluator,
+        &loaded.env,
+        "app",
+        std::slice::from_ref(&before),
+        None,
+        &ChangeSet {
+            unknown: true,
+            ..ChangeSet::default()
+        },
+    )
+    .unwrap();
+    let second = execute_incremental(
+        &program,
+        &mut evaluator,
+        &loaded.env,
+        "app",
+        std::slice::from_ref(&after),
+        Some(&first.value),
+        &changed_paths("state", &before, &after),
+    )
+    .unwrap();
+
+    assert_eq!(second.stats.reused_slots, 1);
+    assert_eq!(second.stats.evaluated_slots, 1);
+    let html = evaluator
+        .apply(
+            evaluator.root_env().lookup("ui.html").unwrap(),
+            &[second.value],
+            typed.module.definitions[0].span,
+        )
+        .unwrap()
+        .display_string();
+    assert_eq!(html, "<div>Plan2</div>");
 }

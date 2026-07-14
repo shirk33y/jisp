@@ -12,9 +12,13 @@ and structural executor enabled by the browser Wasm crate's default `juir`
 feature. It evaluates Jisp expressions through the canonical evaluator and
 materializes the existing structural-tree contract before the DOM reconciler;
 direct static-template DOM mount remains the next M2 increment.
-M3 has begun with conservative static dependency metadata on JUIR slots and
-blocks: proven parameter field paths are recorded, while any opaque/local
-expression is explicitly `Unknown` and therefore cannot be skipped.
+M3 now conservatively reuses JUIR scalar slots and whole `for` blocks. Proven
+parameter field paths are compared with immutable reducer changes; opaque,
+local, and module-level expressions are explicitly `Unknown` and therefore
+cannot be skipped. The browser Wasm executor retains the previous structural
+value, so this path is exercised by the playground rather than only by unit
+tests. Per-item keyed-block invalidation and direct DOM patch emission remain
+later milestones.
 
 ## Goal
 

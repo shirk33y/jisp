@@ -8,7 +8,7 @@ use jisp::jisp_eval::{Evaluator, Value};
 use jisp::jisp_types::Inferencer;
 #[cfg(feature = "juir")]
 use jisp::jisp_ui::{
-    changed_paths, compile as compile_juir, execute as execute_juir, Program as JuirProgram,
+    changed_paths, compile as compile_juir, execute_incremental, ChangeSet, Program as JuirProgram,
 };
 use jisp_syntax_json::JsonParser;
 use jisp_syntax_lisp::LispParser;
@@ -50,6 +50,10 @@ struct Runtime {
     module_env: Env,
     #[cfg(feature = "juir")]
     component: String,
+    #[cfg(feature = "juir")]
+    last_value: Option<Value>,
+    #[cfg(feature = "juir")]
+    changes: ChangeSet,
     handlers: Vec<Value>,
     last_render: Option<String>,
     renders: usize,
@@ -138,6 +142,13 @@ impl PlaygroundSession {
             module_env: loaded.env,
             #[cfg(feature = "juir")]
             component: app.app,
+            #[cfg(feature = "juir")]
+            last_value: None,
+            #[cfg(feature = "juir")]
+            changes: ChangeSet {
+                unknown: true,
+                ..ChangeSet::default()
+            },
             handlers: vec![],
             last_render: None,
             renders: 0,
@@ -174,14 +185,15 @@ impl PlaygroundSession {
             )
             .map_err(|error| error.to_string())?;
         #[cfg(feature = "juir")]
-        if changed_paths("state", &previous_state, &runtime.state)
-            .paths
-            .is_empty()
         {
-            return runtime
-                .last_render
-                .clone()
-                .ok_or_else(|| "JUIR runtime has no initial render to reuse".to_owned());
+            let changes = changed_paths("state", &previous_state, &runtime.state);
+            if changes.paths.is_empty() {
+                return runtime
+                    .last_render
+                    .clone()
+                    .ok_or_else(|| "JUIR runtime has no initial render to reuse".to_owned());
+            }
+            runtime.changes = changes;
         }
         self.render()
     }
@@ -192,14 +204,18 @@ impl PlaygroundSession {
             .as_mut()
             .ok_or_else(|| "load a ui.app program before rendering".to_owned())?;
         #[cfg(feature = "juir")]
-        let vnode = execute_juir(
+        let execution = execute_incremental(
             &runtime.program,
             &mut runtime.evaluator,
             &runtime.module_env,
             &runtime.component,
             std::slice::from_ref(&runtime.state),
+            runtime.last_value.as_ref(),
+            &runtime.changes,
         )
         .map_err(|error| error.to_string())?;
+        #[cfg(feature = "juir")]
+        let vnode = execution.value;
         #[cfg(not(feature = "juir"))]
         let vnode = runtime
             .evaluator
@@ -215,6 +231,14 @@ impl PlaygroundSession {
         let rendered = serde_json::to_string(&tree).map_err(|error| error.to_string())?;
         runtime.renders += 1;
         runtime.last_render = Some(rendered.clone());
+        #[cfg(feature = "juir")]
+        {
+            runtime.last_value = Some(vnode);
+            runtime.changes = ChangeSet {
+                unknown: true,
+                ..ChangeSet::default()
+            };
+        }
         Ok(rendered)
     }
 }

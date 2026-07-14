@@ -121,11 +121,18 @@ impl ChangeSet {
         self.unknown
             || dependencies.iter().any(|dependency| match dependency {
                 Dependency::Unknown => true,
-                Dependency::Path { root, fields } => self.paths.iter().any(|change| {
-                    change.root == *root
-                        && (is_path_prefix(&change.fields, fields)
-                            || is_path_prefix(fields, &change.fields))
-                }),
+                Dependency::Path { root, fields } => {
+                    let paths = self
+                        .paths
+                        .iter()
+                        .filter(|change| change.root == *root)
+                        .collect::<Vec<_>>();
+                    paths.is_empty()
+                        || paths.into_iter().any(|change| {
+                            is_path_prefix(&change.fields, fields)
+                                || is_path_prefix(fields, &change.fields)
+                        })
+                }
             })
     }
 }
@@ -281,12 +288,56 @@ pub fn execute(
     component: &str,
     arguments: &[Value],
 ) -> Result<Value, ExecuteError> {
-    Executor {
+    Ok(execute_incremental(
         program,
         evaluator,
         module_env,
-    }
-    .component(component, arguments)
+        component,
+        arguments,
+        None,
+        &ChangeSet {
+            unknown: true,
+            ..ChangeSet::default()
+        },
+    )?
+    .value)
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct ExecutionStats {
+    pub evaluated_slots: usize,
+    pub reused_slots: usize,
+    pub reused_blocks: usize,
+}
+
+pub struct Execution {
+    pub value: Value,
+    pub stats: ExecutionStats,
+}
+
+/// Execute JUIR while conservatively reusing unaffected scalar slots and
+/// collection blocks from a previous structural value.
+pub fn execute_incremental(
+    program: &Program,
+    evaluator: &mut Evaluator,
+    module_env: &Env,
+    component: &str,
+    arguments: &[Value],
+    previous: Option<&Value>,
+    changes: &ChangeSet,
+) -> Result<Execution, ExecuteError> {
+    let mut executor = Executor {
+        program,
+        evaluator,
+        module_env,
+        changes,
+        stats: ExecutionStats::default(),
+    };
+    let value = executor.component(component, arguments, previous)?;
+    Ok(Execution {
+        value,
+        stats: executor.stats,
+    })
 }
 
 struct Compiler<'a> {
@@ -449,10 +500,17 @@ struct Executor<'a> {
     program: &'a Program,
     evaluator: &'a mut Evaluator,
     module_env: &'a Env,
+    changes: &'a ChangeSet,
+    stats: ExecutionStats,
 }
 
 impl Executor<'_> {
-    fn component(&mut self, name: &str, arguments: &[Value]) -> Result<Value, ExecuteError> {
+    fn component(
+        &mut self,
+        name: &str,
+        arguments: &[Value],
+        previous: Option<&Value>,
+    ) -> Result<Value, ExecuteError> {
         let component = self.program.components.get(name).cloned().ok_or_else(|| {
             ExecuteError::UnknownComponent {
                 name: name.to_owned(),
@@ -478,16 +536,24 @@ impl Executor<'_> {
         if let Some(rest) = &component.rest {
             env.define(rest.clone(), Value::List(arguments[expected..].to_vec()));
         }
-        self.node(&component.root, &env)
+        self.node(&component.root, &env, previous)
     }
 
-    fn node(&mut self, node: &Node, env: &Env) -> Result<Value, ExecuteError> {
+    fn node(
+        &mut self,
+        node: &Node,
+        env: &Env,
+        previous: Option<&Value>,
+    ) -> Result<Value, ExecuteError> {
         match node {
             Node::Text(slot) => Ok(Value::Obj(IndexMap::from([
                 ("tag".to_owned(), Value::string("text")),
-                ("value".to_owned(), self.slot(slot, env)?),
+                (
+                    "value".to_owned(),
+                    self.slot(slot, env, previous.and_then(text_value))?,
+                ),
             ]))),
-            Node::Element(element) => self.element(element, env),
+            Node::Element(element) => self.element(element, env, previous),
             Node::If {
                 condition,
                 then_branch,
@@ -495,18 +561,25 @@ impl Executor<'_> {
                 ..
             } => {
                 if self.evaluator.eval_in(condition, env)?.truthy() {
-                    self.node(then_branch, env)
+                    self.node(then_branch, env, previous)
                 } else {
-                    self.node(else_branch, env)
+                    self.node(else_branch, env, previous)
                 }
             }
             Node::Each {
                 binding,
                 collection,
+                dependencies,
                 body,
                 span,
                 ..
             } => {
+                if !self.changes.affects(dependencies) {
+                    if let Some(Value::List(previous)) = previous {
+                        self.stats.reused_blocks += 1;
+                        return Ok(Value::List(previous.clone()));
+                    }
+                }
                 let values = self.evaluator.eval_in(collection, env)?;
                 let Value::List(values) = values else {
                     return Err(invalid_value(
@@ -522,7 +595,7 @@ impl Executor<'_> {
                     .map(|value| {
                         let item_env = env.child();
                         item_env.define(binding.clone(), value);
-                        self.node(body, &item_env)
+                        self.node(body, &item_env, None)
                     })
                     .collect::<Result<Vec<_>, _>>()
                     .map(Value::List)
@@ -534,20 +607,43 @@ impl Executor<'_> {
                     .iter()
                     .map(|argument| self.evaluator.eval_in(argument, env).map_err(Into::into))
                     .collect::<Result<Vec<_>, ExecuteError>>()?;
-                self.component(name, &values)
+                self.component(name, &values, previous)
             }
-            Node::Dynamic { expression, .. } => {
+            Node::Dynamic {
+                expression,
+                dependencies,
+                ..
+            } => {
+                if !self.changes.affects(dependencies) {
+                    if let Some(previous) = previous {
+                        self.stats.reused_slots += 1;
+                        return Ok(previous.clone());
+                    }
+                }
+                self.stats.evaluated_slots += 1;
                 self.evaluator.eval_in(expression, env).map_err(Into::into)
             }
         }
     }
 
-    fn element(&mut self, element: &Element, env: &Env) -> Result<Value, ExecuteError> {
+    fn element(
+        &mut self,
+        element: &Element,
+        env: &Env,
+        previous: Option<&Value>,
+    ) -> Result<Value, ExecuteError> {
+        let previous_fields = previous.and_then(object_fields_value);
         let mut fields = IndexMap::new();
         fields.insert("tag".to_owned(), Value::string(element.tag.clone()));
-        self.insert_slots(&mut fields, "attrs", &element.attrs, env)?;
-        self.insert_slots(&mut fields, "props", &element.props, env)?;
-        self.insert_slots(&mut fields, "classes", &element.classes, env)?;
+        self.insert_slots(&mut fields, "attrs", &element.attrs, env, previous_fields)?;
+        self.insert_slots(&mut fields, "props", &element.props, env, previous_fields)?;
+        self.insert_slots(
+            &mut fields,
+            "classes",
+            &element.classes,
+            env,
+            previous_fields,
+        )?;
         if !element.events.is_empty() {
             let mut events = IndexMap::new();
             for (name, event) in &element.events {
@@ -556,15 +652,32 @@ impl Executor<'_> {
             fields.insert("events".to_owned(), Value::Obj(events));
         }
         if let Some(key) = &element.key {
-            fields.insert("key".to_owned(), self.slot(key, env)?);
+            fields.insert(
+                "key".to_owned(),
+                self.slot(
+                    key,
+                    env,
+                    previous_fields.and_then(|fields| fields.get("key")),
+                )?,
+            );
         }
         if !element.children.is_empty() {
+            let previous_children = previous_fields
+                .and_then(|fields| fields.get("children"))
+                .and_then(list_value);
             fields.insert(
                 "children".to_owned(),
                 element
                     .children
                     .iter()
-                    .map(|child| self.node(child, env))
+                    .enumerate()
+                    .map(|(index, child)| {
+                        self.node(
+                            child,
+                            env,
+                            previous_children.and_then(|children| children.get(index)),
+                        )
+                    })
                     .collect::<Result<Vec<_>, _>>()
                     .map(Value::List)?,
             );
@@ -578,22 +691,42 @@ impl Executor<'_> {
         name: &str,
         slots: &IndexMap<String, Slot>,
         env: &Env,
+        previous: Option<&IndexMap<String, Value>>,
     ) -> Result<(), ExecuteError> {
         if slots.is_empty() {
             return Ok(());
         }
         let mut values = IndexMap::new();
         for (name, slot) in slots {
-            values.insert(name.clone(), self.slot(slot, env)?);
+            values.insert(
+                name.clone(),
+                self.slot(slot, env, previous.and_then(|values| values.get(name)))?,
+            );
         }
         fields.insert(name.to_owned(), Value::Obj(values));
         Ok(())
     }
 
-    fn slot(&mut self, slot: &Slot, env: &Env) -> Result<Value, ExecuteError> {
+    fn slot(
+        &mut self,
+        slot: &Slot,
+        env: &Env,
+        previous: Option<&Value>,
+    ) -> Result<Value, ExecuteError> {
         match slot {
             Slot::Static(value) => Ok(scalar_value(value)),
-            Slot::Dynamic { expression, .. } => {
+            Slot::Dynamic {
+                expression,
+                dependencies,
+                ..
+            } => {
+                if !self.changes.affects(dependencies) {
+                    if let Some(previous) = previous {
+                        self.stats.reused_slots += 1;
+                        return Ok(previous.clone());
+                    }
+                }
+                self.stats.evaluated_slots += 1;
                 self.evaluator.eval_in(expression, env).map_err(Into::into)
             }
         }
@@ -608,6 +741,24 @@ fn scalar_value(value: &Scalar) -> Value {
         Scalar::Float(value) => Value::Float(*value),
         Scalar::Str(value) => Value::string(value.clone()),
     }
+}
+
+fn object_fields_value(value: &Value) -> Option<&IndexMap<String, Value>> {
+    let Value::Obj(fields) = value else {
+        return None;
+    };
+    Some(fields)
+}
+
+fn list_value(value: &Value) -> Option<&[Value]> {
+    let Value::List(values) = value else {
+        return None;
+    };
+    Some(values)
+}
+
+fn text_value(value: &Value) -> Option<&Value> {
+    object_fields_value(value)?.get("value")
 }
 
 fn is_path_prefix(prefix: &[String], path: &[String]) -> bool {
@@ -820,6 +971,11 @@ fn collect_dependencies(
         ExprKind::Name(name) => {
             if parameters.contains(name) {
                 paths.insert((name.clone(), vec![]));
+            } else {
+                // A local binding, module definition, or prelude function can
+                // still influence the value. Until name resolution is carried
+                // into JUIR, retain correctness by making this slot dynamic.
+                *unknown = true;
             }
         }
         ExprKind::Field { .. } => match dependency_path(expr, parameters) {
