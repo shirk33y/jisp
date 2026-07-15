@@ -11,6 +11,11 @@ see [MAL and multi-host execution](research/MAL.md). That document is not an
 FFI design: it deliberately keeps broad process interoperability separate from
 the narrow, native ABI proposed here.
 
+[Interop architecture](research/INTEROP.md) compares the process, component,
+C-ABI, generated-adapter, and direct-codegen layers. It is the decision guide
+for selecting a host integration without turning a language-specific extension
+mechanism into the Jisp runtime model.
+
 Before implementation, specify:
 
 - direction A: Jisp calls external Rust/host functions;
