@@ -329,6 +329,23 @@ pub fn environment() -> BTreeMap<String, Scheme> {
     );
     add(
         &mut env,
+        "ui.local",
+        scheme(
+            vec![0],
+            fun(
+                vec![
+                    var(0),
+                    fun(
+                        vec![var(0), fun(vec![var(0)], ui_local_action())],
+                        ui_node(),
+                    ),
+                ],
+                ui_node(),
+            ),
+        ),
+    );
+    add(
+        &mut env,
         "ui.result",
         scheme(
             vec![0],
@@ -613,6 +630,13 @@ fn ui_subscription() -> Type {
 fn ui_action_template() -> Type {
     Type::Named {
         name: "ui.action-template".to_owned(),
+        arguments: vec![],
+    }
+}
+
+fn ui_local_action() -> Type {
+    Type::Named {
+        name: "ui.local-action".to_owned(),
         arguments: vec![],
     }
 }

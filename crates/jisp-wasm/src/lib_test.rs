@@ -106,8 +106,8 @@ fn ssr_rejects_hydration_marker_collisions() {
     session
         .load_source(
             r#"
-(def init null)
-(defn update (state action) state)
+(def init 0)
+(defn update (state action) (+ state 100))
 (component app (state)
   (div (attr "data-jisp-path" "spoofed") (text "Unsafe")))
 (ui.app init update app)
@@ -757,6 +757,111 @@ fn update_session_rejects_duplicate_or_structural_sibling_keys() {
         .contains("UI key must be a string, number, or bool"));
 }
 
+#[cfg(feature = "juir")]
+#[test]
+fn local_component_state_updates_without_running_the_app_reducer() {
+    let mut session = PlaygroundSession::new();
+    let initial: Value = serde_json::from_str(
+        &session
+            .load_source(
+                r#"
+(def init 0)
+(defn update (state action) (+ state 100))
+(component counter ()
+  (ui.local 0 (fn (count set-count)
+    (button (on click (emit (set-count (+ count 1))))
+      (text (str.from count))))))
+(component app (state) (div (attr "data-reducer-state" (str.from state)) (counter)))
+(ui.app init update app)
+"#,
+            )
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(initial["attrs"]["data-reducer-state"], "0");
+    assert_eq!(initial["children"][0]["children"][0]["value"], "0");
+    let handler = initial["children"][0]["events"]["click"]["handler"]
+        .as_u64()
+        .unwrap() as usize;
+
+    let updated: Value = serde_json::from_str(
+        &session
+            .dispatch_event(handler, r#"{"type":"click"}"#)
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(updated["attrs"]["data-reducer-state"], "0");
+    assert_eq!(updated["children"][0]["children"][0]["value"], "1");
+}
+
+#[cfg(feature = "juir")]
+#[test]
+fn local_component_state_is_scoped_per_instance_and_resets_after_unmount() {
+    let mut session = PlaygroundSession::new();
+    let source = r#"
+(def init true)
+(defn update (state action) action)
+(component counter (label)
+  (ui.local 0 (fn (count set-count)
+    (button (attr "data-label" label)
+      (on click (emit (set-count (+ count 1))))
+      (text (str.from count))))))
+(component app (shown)
+  (div
+    (button (attr "id" "toggle") (on click (emit (not shown))) (text "toggle"))
+    (if shown
+      (div (counter "left") (counter "right"))
+      (p (text "gone")))))
+(ui.app init update app)
+"#;
+    let initial: Value = serde_json::from_str(&session.load_source(source).unwrap()).unwrap();
+    let toggle = initial["children"][0]["events"]["click"]["handler"]
+        .as_u64()
+        .unwrap() as usize;
+    let left = initial["children"][1]["children"][0]["events"]["click"]["handler"]
+        .as_u64()
+        .unwrap() as usize;
+
+    let after_left: Value =
+        serde_json::from_str(&session.dispatch_event(left, r#"{"type":"click"}"#).unwrap())
+            .unwrap();
+    assert_eq!(
+        after_left["children"][1]["children"][0]["children"][0]["value"],
+        "1"
+    );
+    assert_eq!(
+        after_left["children"][1]["children"][1]["children"][0]["value"],
+        "0"
+    );
+
+    let hidden: Value = serde_json::from_str(
+        &session
+            .dispatch_event(toggle, r#"{"type":"click"}"#)
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(hidden["children"][1]["tag"], "p");
+    let remounted: Value = serde_json::from_str(
+        &session
+            .dispatch_event(
+                hidden["children"][0]["events"]["click"]["handler"]
+                    .as_u64()
+                    .unwrap() as usize,
+                r#"{"type":"click"}"#,
+            )
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(
+        remounted["children"][1]["children"][0]["children"][0]["value"],
+        "0"
+    );
+    assert_eq!(
+        remounted["children"][1]["children"][1]["children"][0]["value"],
+        "0"
+    );
+}
+
 fn handler_for(tree: &Value, event: &str) -> Option<u64> {
     tree.get("events")
         .and_then(|events| events.get(event))
@@ -855,4 +960,19 @@ fn static_playground_examples_are_valid_interpreter_programs() {
             "playground example `{name}` returned {html:?}"
         );
     }
+}
+
+#[cfg(feature = "juir")]
+#[test]
+fn local_state_playground_example_loads_in_the_juir_runtime() {
+    let mut session = PlaygroundSession::new();
+    let tree: Value = serde_json::from_str(
+        &session
+            .load_source(include_str!(
+                "../../../playground/examples/local-state.lisp"
+            ))
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(tree["tag"], "main");
 }

@@ -119,6 +119,38 @@ cannot own local state, commands, or subscriptions. A keyed `for` retains an
 instance on moves, disposes its resources once on removal, and replaces it when
 component type changes. This avoids hook-order semantics.
 
+### Local component state
+
+`ui.local` is an opt-in, executor-owned state cell for interaction that does
+not belong in the application model. Its deliberately explicit callback shape
+keeps the value and setter lexical, rather than assigning identity by call
+order:
+
+```lisp
+(component disclosure (title body)
+  (ui.local false (fn (open set-open)
+    (section
+      (button (on click (emit (set-open (not open))))
+        (text title))
+      (if open (p (text body)) (span (text ""))))))
+```
+
+The setter produces private, portable data. The JUIR/browser executor accepts
+it only when the invoking event handler carries the identical opaque local
+instance id; otherwise an event result remains an ordinary action for the app
+reducer. A local update rerenders without calling `(update app-state action)`.
+The cell is initialized once, retained while its component path remains
+mounted, and discarded on unmount, so remounting starts from `initial`.
+
+The first implementation deliberately supports stable static component paths.
+When an enclosing `for` collection changes, the executor clears descendants'
+local cells before recreating its rows rather than risking state moving to a
+different item by index. Key-preserving local state across reordered dynamic
+lists needs the next identity pass, where the runtime carries the evaluated
+`key` into component instance paths. Local commands/subscriptions are also
+deferred; source-declared effects remain app-owned until that key-aware
+ownership bridge exists.
+
 ## Capability negotiation and testing
 
 Applications declare required capability names and minimum versions. A missing
@@ -212,7 +244,8 @@ single checked-in ABI contract.
 
 ## Deferred decisions
 
-- Local-state source syntax.
+- Key-aware local state and local resource ownership for reordered dynamic
+  component lists.
 - Concrete browser/native capability schemas, permissions, timeout policies,
   and providers beyond the two narrow playground capabilities.
 - Capability serialization choices for SSR/resume beyond the current

@@ -75,7 +75,7 @@ struct Runtime {
     last_execution: ExecutionStats,
     #[cfg(feature = "juir")]
     last_juir_execution: Option<JuirExecution>,
-    handlers: Vec<Value>,
+    handlers: Vec<EventHandler>,
     last_render: Option<String>,
     last_tree: Option<JsonValue>,
     renders: usize,
@@ -85,6 +85,14 @@ struct Runtime {
     desired_subscriptions: Vec<Value>,
     effect_host: Option<FakeHost>,
     span: Span,
+}
+
+#[derive(Clone)]
+struct EventHandler {
+    callback: Value,
+    /// Opaque executor-owned id. It is not serialized into the browser event
+    /// protocol, and a local update is accepted only from this exact scope.
+    local_state: Option<String>,
 }
 
 #[wasm_bindgen]
@@ -289,10 +297,51 @@ impl PlaygroundSession {
                 .ok_or_else(|| format!("unknown UI event handler {handler}"))?;
             runtime
                 .evaluator
-                .apply(handler, &[event], runtime.span)
+                .apply(handler.callback, &[event], runtime.span)
                 .map_err(|error| error.to_string())?
         };
+        let local_owner = self
+            .runtime
+            .as_ref()
+            .and_then(|runtime| runtime.handlers.get(handler))
+            .and_then(|handler| handler.local_state.clone());
+        if let Some(owner) = local_owner {
+            if let Some((id, state)) = local_state_action(&action)? {
+                if id != owner {
+                    return Err(
+                        "local state action does not belong to this event handler".to_owned()
+                    );
+                }
+                return self.apply_local_state(&id, state);
+            }
+        }
         self.apply_action(action)
+    }
+
+    fn apply_local_state(&mut self, id: &str, state: Value) -> Result<String, String> {
+        let runtime = self
+            .runtime
+            .as_mut()
+            .ok_or_else(|| "load a ui.app program before dispatching local state".to_owned())?;
+        #[cfg(feature = "juir")]
+        {
+            let execution = runtime.last_juir_execution.as_mut().ok_or_else(|| {
+                "JUIR runtime has no initial execution for local state".to_owned()
+            })?;
+            if !execution.set_local_state(id, state) {
+                return Err("local state instance is no longer mounted".to_owned());
+            }
+            // Local bindings are deliberately not reducer paths. Treat their
+            // update as an opaque change so an incremental slot can never
+            // reuse the value it read before this event.
+            runtime.changes = ChangeSet {
+                unknown: true,
+                ..ChangeSet::default()
+            };
+        }
+        #[cfg(not(feature = "juir"))]
+        let _ = (id, state);
+        self.render()
     }
 
     fn configure_effect_host_json(&mut self, capabilities_json: &str) -> Result<(), String> {
@@ -1566,6 +1615,38 @@ fn value_from_json(value: JsonValue) -> Result<Value, String> {
     }
 }
 
+/// Decode the private data returned by a synthesized local-state setter. This
+/// is intentionally accepted only after `dispatch_event` proves that the
+/// originating handler has the same executor-owned local id.
+fn local_state_action(value: &Value) -> Result<Option<(String, Value)>, String> {
+    let Value::Obj(fields) = value else {
+        return Ok(None);
+    };
+    let Some(payload) = fields.get("$jisp-ui-local") else {
+        return Ok(None);
+    };
+    if fields.len() != 1 {
+        return Err("local state action must contain only its reserved payload".to_owned());
+    }
+    let Value::Obj(payload) = payload else {
+        return Err("local state action payload must be an object".to_owned());
+    };
+    let Some(Value::Str(id)) = payload.get("id") else {
+        return Err("local state action must contain a string id".to_owned());
+    };
+    if id.is_empty() {
+        return Err("local state action id must not be empty".to_owned());
+    }
+    let state = payload
+        .get("state")
+        .cloned()
+        .ok_or_else(|| "local state action must contain state".to_owned())?;
+    if payload.len() != 2 {
+        return Err("local state action must contain exactly id and state".to_owned());
+    }
+    Ok(Some((id.to_string(), state)))
+}
+
 fn json_value(value: &Value) -> Result<JsonValue, String> {
     match value {
         Value::Null => Ok(JsonValue::Null),
@@ -1595,7 +1676,7 @@ fn json_value(value: &Value) -> Result<JsonValue, String> {
     }
 }
 
-fn ui_node(value: &Value, handlers: &mut Vec<Value>) -> Result<JsonValue, String> {
+fn ui_node(value: &Value, handlers: &mut Vec<EventHandler>) -> Result<JsonValue, String> {
     let Value::Obj(fields) = value else {
         return Err(format!(
             "ui.app view must return a UI node, got {}",
@@ -1765,7 +1846,10 @@ fn key_json(value: Option<&Value>) -> Result<JsonValue, String> {
     }
 }
 
-fn event_json(value: Option<&Value>, handlers: &mut Vec<Value>) -> Result<JsonValue, String> {
+fn event_json(
+    value: Option<&Value>,
+    handlers: &mut Vec<EventHandler>,
+) -> Result<JsonValue, String> {
     let Some(Value::Obj(events)) = value else {
         return object_json(value);
     };
@@ -1779,7 +1863,10 @@ fn event_json(value: Option<&Value>, handlers: &mut Vec<Value>) -> Result<JsonVa
             return Err(format!("UI event `{name}` must be a function"));
         }
         let id = handlers.len();
-        handlers.push(handler.clone());
+        handlers.push(EventHandler {
+            callback: handler.clone(),
+            local_state: event_local_state_id(descriptor)?,
+        });
         result.insert(
             name.clone(),
             json!({
@@ -1789,6 +1876,21 @@ fn event_json(value: Option<&Value>, handlers: &mut Vec<Value>) -> Result<JsonVa
         );
     }
     Ok(JsonValue::Object(result))
+}
+
+fn event_local_state_id(value: &Value) -> Result<Option<String>, String> {
+    let Value::Obj(descriptor) = value else {
+        return Ok(None);
+    };
+    match descriptor.get("local-id") {
+        None => Ok(None),
+        Some(Value::Str(id)) if !id.is_empty() => Ok(Some(id.to_string())),
+        Some(Value::Str(_)) => Err("UI local state id must not be empty".to_owned()),
+        Some(value) => Err(format!(
+            "UI local state id must be a string, got {}",
+            value.type_name()
+        )),
+    }
 }
 
 fn event_handler_and_policy(value: &Value) -> Result<(&Value, JsonValue), String> {
@@ -1827,7 +1929,10 @@ fn event_handler_and_policy(value: &Value) -> Result<(&Value, JsonValue), String
     ))
 }
 
-fn children_json(value: Option<&Value>, handlers: &mut Vec<Value>) -> Result<JsonValue, String> {
+fn children_json(
+    value: Option<&Value>,
+    handlers: &mut Vec<EventHandler>,
+) -> Result<JsonValue, String> {
     let Some(value) = value else {
         return Ok(JsonValue::Array(vec![]));
     };
@@ -1853,7 +1958,7 @@ fn validate_child_keys(children: &[JsonValue]) -> Result<(), String> {
 
 fn append_children(
     value: &Value,
-    handlers: &mut Vec<Value>,
+    handlers: &mut Vec<EventHandler>,
     children: &mut Vec<JsonValue>,
 ) -> Result<(), String> {
     match value {

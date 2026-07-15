@@ -187,6 +187,24 @@ fn static_renderer_rejects_dynamic_slots() {
 }
 
 #[test]
+fn static_renderer_rejects_component_local_state() {
+    let program = compile(&typed(
+        r#"
+(component app ()
+  (ui.local false (fn (open set-open)
+    (button (on click (emit (set-open (not open))))
+      (text "Open")))))
+"#,
+    ))
+    .unwrap();
+
+    assert!(render_static_html(&program, "app")
+        .unwrap_err()
+        .to_string()
+        .contains("dynamic"));
+}
+
+#[test]
 fn static_scalar_text_is_retained_in_the_ir() {
     let program = compile(&typed("(component app () (p (text 42)))")).unwrap();
     let Node::Element(paragraph) = &program.components["app"].root else {

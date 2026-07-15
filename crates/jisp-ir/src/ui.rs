@@ -43,6 +43,7 @@ pub(crate) fn lower_ui_expr(lowerer: &Lowerer, node: &Node) -> Result<Expr, Lowe
         NodeKind::Form(items) => match items.first().and_then(Node::as_symbol) {
             Some("text") => lower_text(lowerer, node.span, items),
             Some("if") => lower_ui_if(lowerer, node.span, items),
+            Some("ui.local") => lower_ui_local(lowerer, node.span, items),
             Some(name) if ui_element(name).is_some() => {
                 lower_ui_element(lowerer, node.span, name, &items[1..])
             }
@@ -50,6 +51,44 @@ pub(crate) fn lower_ui_expr(lowerer: &Lowerer, node: &Node) -> Result<Expr, Lowe
         },
         _ => lowerer.lower_expr(node),
     }
+}
+
+/// Lower an opt-in component-local state boundary. The callback's body stays
+/// in UI lowering so element/directive forms retain their normal meaning.
+/// Runtime ownership is assigned by JUIR; this form never runs a host effect.
+fn lower_ui_local(lowerer: &Lowerer, span: Span, items: &[Node]) -> Result<Expr, LowerError> {
+    expect_arity(items, 3, 3, span, "ui.local")?;
+    let Some(callback) = items[2].as_form() else {
+        return Err(error(items[2].span, "ui.local callback must be an fn form"));
+    };
+    if callback.first().and_then(Node::as_symbol) != Some("fn") {
+        return Err(error(items[2].span, "ui.local callback must be an fn form"));
+    }
+    expect_arity(callback, 3, 3, items[2].span, "ui.local callback")?;
+    let (params, rest) = parse_fn_params(&callback[1])?;
+    if rest.is_some() || params.len() != 2 {
+        return Err(error(
+            callback[1].span,
+            "ui.local callback must bind exactly `(state set-state)`",
+        ));
+    }
+    Ok(Expr::new(
+        ExprKind::Call {
+            callee: Box::new(Expr::new(ExprKind::Name("ui.local".to_owned()), span)),
+            arguments: vec![
+                lowerer.lower_expr(&items[1])?,
+                Expr::new(
+                    ExprKind::Lambda {
+                        params,
+                        rest: None,
+                        body: Box::new(lower_ui_expr(lowerer, &callback[2])?),
+                    },
+                    items[2].span,
+                ),
+            ],
+        },
+        span,
+    ))
 }
 
 fn lower_ui_if(lowerer: &Lowerer, span: Span, items: &[Node]) -> Result<Expr, LowerError> {

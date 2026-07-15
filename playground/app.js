@@ -14,6 +14,7 @@ const { default: init, convert_source, PlaygroundSession } = wasmModule;
 const examples = [
   ["Todo updates", "examples/todos.lisp"],
   ["Counter tests", "examples/counter-tests.lisp"],
+  ["Local component state", "examples/local-state.lisp"],
   ["Product launch board", "examples/kanban.lisp"],
   ["Tiny rituals", "examples/habits.lisp"],
   ["Personal spend", "examples/finance.lisp"],

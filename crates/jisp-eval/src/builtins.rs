@@ -92,6 +92,7 @@ pub fn install_builtins(evaluator: &mut Evaluator) {
         ("ui.action", ui_action),
         ("ui.action-result", ui_action_result),
         ("ui.action-error", ui_action_error),
+        ("ui.local.set", ui_local_set),
         ("result.try", result_try),
         ("result.map", result_map),
         ("result.map-err", result_map_err),
@@ -900,6 +901,21 @@ fn ui_action_result(_: &mut Evaluator, args: &[Value], span: Span) -> Result<Val
 
 fn ui_action_error(_: &mut Evaluator, args: &[Value], span: Span) -> Result<Value, RuntimeError> {
     ui_action_template(args, span, Some("error"))
+}
+
+/// Internal closure target synthesized by the JUIR local-state executor. It
+/// deliberately carries data only; a host validates its owning event scope
+/// before applying it, so source code cannot update an arbitrary instance.
+fn ui_local_set(_: &mut Evaluator, args: &[Value], span: Span) -> Result<Value, RuntimeError> {
+    arity(args, 2, span)?;
+    let id = expect_str(&args[0], span)?;
+    Ok(Value::Obj(IndexMap::from([(
+        "$jisp-ui-local".to_owned(),
+        Value::Obj(IndexMap::from([
+            ("id".to_owned(), Value::string(id)),
+            ("state".to_owned(), args[1].clone()),
+        ])),
+    )])))
 }
 
 fn ui_action_template(

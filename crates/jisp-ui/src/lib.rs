@@ -9,7 +9,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use indexmap::IndexMap;
 use jisp_core::Span;
-use jisp_eval::{Env, Evaluator, RuntimeError, Value};
+use jisp_eval::{Closure, Env, Evaluator, RuntimeError, Value};
 use jisp_ir::{Definition, Expr, ExprKind, Literal, StringPart};
 use jisp_types::{Type, TypedModule};
 use serde_json::{json, Map as JsonMap, Value as JsonValue};
@@ -47,6 +47,7 @@ pub enum SourceMapKind {
     If,
     Each,
     ComponentCall,
+    Local,
     Dynamic,
     Slot,
     Event,
@@ -63,6 +64,7 @@ impl SourceMapKind {
             Self::If => "if",
             Self::Each => "each",
             Self::ComponentCall => "component-call",
+            Self::Local => "local",
             Self::Dynamic => "dynamic",
             Self::Slot => "slot",
             Self::Event => "event",
@@ -104,6 +106,15 @@ pub enum Node {
         name: String,
         arguments: Vec<Expr>,
         dependencies: Vec<Dependency>,
+        span: Span,
+    },
+    /// An opt-in state cell owned by this rendered component instance. It is
+    /// transparent in the structural tree: only its callback body renders.
+    Local {
+        initial: Expr,
+        state: String,
+        setter: String,
+        body: Box<Node>,
         span: Span,
     },
     Dynamic {
@@ -461,6 +472,20 @@ pub struct Execution {
     pub stats: ExecutionStats,
     each_cache: BTreeMap<String, Vec<CachedEachItem>>,
     component_inputs: BTreeMap<String, Vec<Value>>,
+    local_states: BTreeMap<String, Value>,
+}
+
+impl Execution {
+    /// Update an existing local state cell between renders. A host may only
+    /// call this after validating that an event handler belongs to the same
+    /// instance id; the executor never exposes cells by source-provided name.
+    pub fn set_local_state(&mut self, id: &str, state: Value) -> bool {
+        let Some(slot) = self.local_states.get_mut(id) else {
+            return false;
+        };
+        *slot = state;
+        true
+    }
 }
 
 #[derive(Clone)]
@@ -490,6 +515,7 @@ pub fn execute_incremental(
             previous,
             previous_each_cache: None,
             previous_component_inputs: None,
+            previous_local_states: None,
             changes,
         },
     )
@@ -517,6 +543,7 @@ pub fn execute_incremental_cached(
             previous: previous.map(|execution| &execution.value),
             previous_each_cache: previous.map(|execution| &execution.each_cache),
             previous_component_inputs: previous.map(|execution| &execution.component_inputs),
+            previous_local_states: previous.map(|execution| &execution.local_states),
             changes,
         },
     )
@@ -526,6 +553,7 @@ struct IncrementalInputs<'a> {
     previous: Option<&'a Value>,
     previous_each_cache: Option<&'a BTreeMap<String, Vec<CachedEachItem>>>,
     previous_component_inputs: Option<&'a BTreeMap<String, Vec<Value>>>,
+    previous_local_states: Option<&'a BTreeMap<String, Value>>,
     changes: &'a ChangeSet,
 }
 
@@ -547,13 +575,20 @@ fn execute_incremental_inner(
         each_cache: BTreeMap::new(),
         previous_component_inputs: inputs.previous_component_inputs,
         component_inputs: BTreeMap::new(),
+        local_states: inputs.previous_local_states.cloned().unwrap_or_default(),
+        visited_local_states: BTreeSet::new(),
+        active_local_state: None,
     };
     let value = executor.component(component, arguments, inputs.previous, "root")?;
+    executor
+        .local_states
+        .retain(|id, _| executor.visited_local_states.contains(id));
     Ok(Execution {
         value,
         stats: executor.stats,
         each_cache: executor.each_cache,
         component_inputs: executor.component_inputs,
+        local_states: executor.local_states,
     })
 }
 
@@ -564,6 +599,15 @@ struct Compiler<'a> {
 
 impl Compiler<'_> {
     fn node(&self, expr: &Expr, parameters: &[String]) -> Result<Node, CompileError> {
+        if let Some((initial, state, setter, body)) = local_parts(expr) {
+            return Ok(Node::Local {
+                initial: initial.clone(),
+                state: state.to_owned(),
+                setter: setter.to_owned(),
+                body: Box::new(self.node(body, parameters)?),
+                span: expr.span,
+            });
+        }
         if let ExprKind::If {
             condition,
             then_branch,
@@ -776,6 +820,9 @@ struct Executor<'a> {
     each_cache: BTreeMap<String, Vec<CachedEachItem>>,
     previous_component_inputs: Option<&'a BTreeMap<String, Vec<Value>>>,
     component_inputs: BTreeMap<String, Vec<Value>>,
+    local_states: BTreeMap<String, Value>,
+    visited_local_states: BTreeSet<String>,
+    active_local_state: Option<String>,
 }
 
 impl Executor<'_> {
@@ -845,6 +892,7 @@ impl Executor<'_> {
             Node::Element(element) => {
                 if !self.changes.affects(&node_dependencies(node)) {
                     if let Some(previous) = previous {
+                        self.retain_local_state_subtree(path);
                         self.stats.reused_subtrees += 1;
                         return Ok(previous.clone());
                     }
@@ -882,6 +930,7 @@ impl Executor<'_> {
             } => {
                 if !self.changes.affects(dependencies) {
                     if let Some(Value::List(previous)) = previous {
+                        self.retain_local_state_subtree(path);
                         self.stats.reused_blocks += 1;
                         if let Some(cache) = self
                             .previous_each_cache
@@ -893,6 +942,7 @@ impl Executor<'_> {
                         return Ok(Value::List(previous.clone()));
                     }
                 }
+                self.clear_local_state_subtree(path);
                 let values = self.evaluator.eval_in(collection, env)?;
                 let Value::List(values) = values else {
                     return Err(invalid_value(
@@ -978,6 +1028,28 @@ impl Executor<'_> {
                 self.component_inputs.insert(path.to_owned(), values);
                 Ok(rendered)
             }
+            Node::Local {
+                initial,
+                state,
+                setter,
+                body,
+                span,
+            } => {
+                let id = format!("{path}.local");
+                let value = match self.local_states.get(&id).cloned() {
+                    Some(value) => value,
+                    None => self.evaluator.eval_in(initial, env)?,
+                };
+                self.local_states.insert(id.clone(), value.clone());
+                self.visited_local_states.insert(id.clone());
+                let local_env = env.child();
+                local_env.define(state.clone(), value);
+                local_env.define(setter.clone(), local_setter(&id, env, *span));
+                let previous_active = self.active_local_state.replace(id);
+                let rendered = self.node(body, &local_env, previous, path);
+                self.active_local_state = previous_active;
+                rendered
+            }
             Node::Dynamic {
                 expression,
                 dependencies,
@@ -1015,6 +1087,7 @@ impl Executor<'_> {
     }
 
     fn reuse_component(&mut self, name: &str, path: &str, previous: &Value) -> Value {
+        self.retain_local_state_subtree(path);
         if let Some(inputs) = self
             .previous_component_inputs
             .and_then(|inputs| inputs.get(path))
@@ -1029,6 +1102,23 @@ impl Executor<'_> {
             outcome: ComponentDecisionOutcome::Reused,
         });
         previous.clone()
+    }
+
+    fn retain_local_state_subtree(&mut self, path: &str) {
+        let prefix = format!("{path}.");
+        self.visited_local_states.extend(
+            self.local_states
+                .keys()
+                .filter(|id| id.starts_with(&prefix))
+                .cloned(),
+        );
+    }
+
+    fn clear_local_state_subtree(&mut self, path: &str) {
+        let prefix = format!("{path}.");
+        self.local_states.retain(|id, _| !id.starts_with(&prefix));
+        self.visited_local_states
+            .retain(|id| !id.starts_with(&prefix));
     }
 
     fn element(
@@ -1053,16 +1143,17 @@ impl Executor<'_> {
         if !element.events.is_empty() {
             let mut events = IndexMap::new();
             for (name, event) in &element.events {
-                events.insert(
-                    name.clone(),
-                    Value::Obj(IndexMap::from([
-                        (
-                            "handler".to_owned(),
-                            self.evaluator.eval_in(&event.handler, env)?,
-                        ),
-                        ("policy".to_owned(), event_policy_value(&event.policy)),
-                    ])),
-                );
+                let mut descriptor = IndexMap::from([
+                    (
+                        "handler".to_owned(),
+                        self.evaluator.eval_in(&event.handler, env)?,
+                    ),
+                    ("policy".to_owned(), event_policy_value(&event.policy)),
+                ]);
+                if let Some(id) = &self.active_local_state {
+                    descriptor.insert("local-id".to_owned(), Value::string(id.clone()));
+                }
+                events.insert(name.clone(), Value::Obj(descriptor));
             }
             fields.insert("events".to_owned(), Value::Obj(events));
         }
@@ -1435,6 +1526,10 @@ fn node_uses_only_inputs(
             dependencies_use_only_inputs(dependencies, allowed)
                 && component_is_input_pure_inner(program, name, visiting)
         }
+        // Local state is intentionally not a function of component inputs.
+        // Reusing it through the equal-input shortcut would skip a local
+        // update, so only ordinary unchanged-subtree retention may apply.
+        Node::Local { .. } => false,
         Node::Dynamic { dependencies, .. } => dependencies_use_only_inputs(dependencies, allowed),
     }
 }
@@ -1559,6 +1654,10 @@ fn append_source_map_entries(
         Node::Dynamic { span, .. } => {
             source_map_entry(output, component, path, SourceMapKind::Dynamic, *span);
         }
+        Node::Local { body, span, .. } => {
+            source_map_entry(output, component, path, SourceMapKind::Local, *span);
+            append_source_map_entries(component, body, &format!("{path}.body"), output);
+        }
     }
 }
 
@@ -1625,6 +1724,7 @@ fn mount_plan_node(node: &Node) -> JsonValue {
         Node::If { .. } => json!({ "kind": "dynamic", "block": "if" }),
         Node::Each { .. } => json!({ "kind": "dynamic", "block": "each" }),
         Node::ComponentCall { .. } => json!({ "kind": "dynamic", "block": "component" }),
+        Node::Local { .. } => json!({ "kind": "dynamic", "block": "local" }),
         Node::Dynamic { .. } => json!({ "kind": "dynamic", "block": "value" }),
     }
 }
@@ -1705,6 +1805,7 @@ fn append_node_dependencies(node: &Node, output: &mut Vec<Dependency>) {
         Node::ComponentCall { dependencies, .. } | Node::Dynamic { dependencies, .. } => {
             output.extend(dependencies.iter().cloned());
         }
+        Node::Local { .. } => output.push(Dependency::Unknown),
     }
 }
 
@@ -1749,6 +1850,9 @@ fn component_parts(definition: &Definition) -> Option<(&[String], &Option<String
 }
 
 fn is_ui_root(expr: &Expr) -> bool {
+    if let Some((_, _, _, body)) = local_parts(expr) {
+        return is_ui_root(body);
+    }
     if ui_node_object(expr).is_some() {
         return true;
     }
@@ -1760,6 +1864,42 @@ fn is_ui_root(expr: &Expr) -> bool {
         } => is_ui_root(then_branch) && is_ui_root(else_branch),
         _ => false,
     }
+}
+
+fn local_parts(expr: &Expr) -> Option<(&Expr, &str, &str, &Expr)> {
+    let ExprKind::Call { callee, arguments } = &expr.kind else {
+        return None;
+    };
+    if !is_name(callee, "ui.local") || arguments.len() != 2 {
+        return None;
+    }
+    let ExprKind::Lambda { params, rest, body } = &arguments[1].kind else {
+        return None;
+    };
+    if rest.is_some() || params.len() != 2 {
+        return None;
+    }
+    Some((&arguments[0], &params[0], &params[1], body))
+}
+
+fn local_setter(id: &str, env: &Env, span: Span) -> Value {
+    let next = "next".to_owned();
+    let body = Expr::new(
+        ExprKind::Call {
+            callee: Box::new(Expr::new(ExprKind::Name("ui.local.set".to_owned()), span)),
+            arguments: vec![
+                Expr::new(ExprKind::Literal(Literal::String(id.to_owned())), span),
+                Expr::new(ExprKind::Name(next.clone()), span),
+            ],
+        },
+        span,
+    );
+    Value::Closure(Closure {
+        params: vec![next],
+        rest: None,
+        body,
+        env: env.clone(),
+    })
 }
 
 fn ui_node_object(expr: &Expr) -> Option<&[(Expr, Expr)]> {
@@ -2014,9 +2154,10 @@ fn render_static_node(
             }
             render_static_node(program, &component.root, output)?;
         }
-        Node::If { span, .. } | Node::Each { span, .. } | Node::Dynamic { span, .. } => {
-            return Err(dynamic_error(*span, "JUIR node is dynamic"))
-        }
+        Node::If { span, .. }
+        | Node::Each { span, .. }
+        | Node::Local { span, .. }
+        | Node::Dynamic { span, .. } => return Err(dynamic_error(*span, "JUIR node is dynamic")),
     }
     Ok(())
 }
