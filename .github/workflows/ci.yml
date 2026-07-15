@@ -45,11 +45,14 @@ jobs:
         env:
           WASMTIME_VERSION: 46.0.1
         run: |
-          export HOME="$RUNNER_TEMP/wasmtime-home"
           export WASMTIME_HOME="$RUNNER_TEMP/wasmtime"
-          mkdir -p "$HOME"
-          curl --proto '=https' --tlsv1.2 -sSf https://wasmtime.dev/install.sh | bash -s -- --version "$WASMTIME_VERSION"
-          echo "$WASMTIME_HOME/bin" >> "$GITHUB_PATH"
+          export WASMTIME_ARCHIVE="wasmtime-v${WASMTIME_VERSION}-x86_64-linux.tar.xz"
+          curl --proto '=https' --tlsv1.2 -sSfL \
+            "https://github.com/bytecodealliance/wasmtime/releases/download/v${WASMTIME_VERSION}/${WASMTIME_ARCHIVE}" \
+            -o "$RUNNER_TEMP/$WASMTIME_ARCHIVE"
+          mkdir -p "$WASMTIME_HOME"
+          tar -xJf "$RUNNER_TEMP/$WASMTIME_ARCHIVE" --strip-components=1 -C "$WASMTIME_HOME"
+          echo "$WASMTIME_HOME" >> "$GITHUB_PATH"
       - name: Execute the capability component in two Component Model hosts
         run: scripts/verify-ui-capability-component-hosts.sh
 
