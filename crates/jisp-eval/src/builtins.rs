@@ -93,6 +93,7 @@ pub fn install_builtins(evaluator: &mut Evaluator) {
         ("ui.action-result", ui_action_result),
         ("ui.action-error", ui_action_error),
         ("ui.local.set", ui_local_set),
+        ("ui.local.result", ui_local_result),
         ("result.try", result_try),
         ("result.map", result_map),
         ("result.map-err", result_map_err),
@@ -909,13 +910,45 @@ fn ui_action_error(_: &mut Evaluator, args: &[Value], span: Span) -> Result<Valu
 fn ui_local_set(_: &mut Evaluator, args: &[Value], span: Span) -> Result<Value, RuntimeError> {
     arity(args, 2, span)?;
     let id = expect_str(&args[0], span)?;
-    Ok(Value::Obj(IndexMap::from([(
-        "$jisp-ui-local".to_owned(),
-        Value::Obj(IndexMap::from([
-            ("id".to_owned(), Value::string(id)),
-            ("state".to_owned(), args[1].clone()),
-        ])),
-    )])))
+    Ok(ui::local_action_value(
+        Some(id.to_owned()),
+        args[1].clone(),
+        None,
+    ))
+}
+
+/// Replace the complete desired command/subscription snapshot for the local
+/// scope that owns the current event handler. The Wasm host attaches that
+/// opaque owner; source code never supplies component paths or generations.
+fn ui_local_result(_: &mut Evaluator, args: &[Value], span: Span) -> Result<Value, RuntimeError> {
+    arity(args, 3, span)?;
+    let Value::List(commands) = &args[1] else {
+        return Err(RuntimeError::at(
+            span,
+            "ui.local.result commands must be a list of declared command data",
+        ));
+    };
+    let Value::List(subscriptions) = &args[2] else {
+        return Err(RuntimeError::at(
+            span,
+            "ui.local.result subscriptions must be a list of declared subscription data",
+        ));
+    };
+    if !commands
+        .iter()
+        .chain(subscriptions)
+        .all(is_json_effect_data)
+    {
+        return Err(RuntimeError::at(
+            span,
+            "ui.local.result resources must contain portable data, not functions or constructors",
+        ));
+    }
+    Ok(ui::local_action_value(
+        None,
+        args[0].clone(),
+        Some((commands.clone(), subscriptions.clone())),
+    ))
 }
 
 fn ui_action_template(

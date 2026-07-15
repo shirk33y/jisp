@@ -1,6 +1,6 @@
 use jisp_core::{SourceId, Span};
 
-use crate::{normalize_update_result, Evaluator, Value};
+use crate::{normalize_local_action, normalize_update_result, Evaluator, Value};
 
 fn span() -> Span {
     Span::empty(SourceId(0), 0)
@@ -52,6 +52,48 @@ fn ui_result_rejects_nonportable_resource_data() {
         )
         .unwrap_err();
 
+    assert!(error.message.contains("must contain portable data"));
+}
+
+#[test]
+fn ui_local_result_produces_an_opaque_replacement_snapshot() {
+    let mut evaluator = Evaluator::new();
+    let result = evaluator
+        .apply(
+            evaluator.root_env().lookup("ui.local.result").unwrap(),
+            &[
+                Value::Bool(true),
+                Value::List(vec![Value::Obj(indexmap::IndexMap::from([(
+                    "kind".to_owned(),
+                    Value::string("command"),
+                )]))]),
+                Value::List(vec![]),
+            ],
+            span(),
+        )
+        .unwrap();
+    let action = normalize_local_action(result, span()).unwrap().unwrap();
+    assert!(action.id.is_none());
+    assert!(matches!(action.state, Value::Bool(true)));
+    let (commands, subscriptions) = action.resources.expect("replacement resources");
+    assert_eq!(commands.len(), 1);
+    assert!(subscriptions.is_empty());
+}
+
+#[test]
+fn ui_local_result_rejects_nonportable_resource_data() {
+    let mut evaluator = Evaluator::new();
+    let error = evaluator
+        .apply(
+            evaluator.root_env().lookup("ui.local.result").unwrap(),
+            &[
+                Value::Null,
+                Value::List(vec![evaluator.root_env().lookup("ui.node").unwrap()]),
+                Value::List(vec![]),
+            ],
+            span(),
+        )
+        .unwrap_err();
     assert!(error.message.contains("must contain portable data"));
 }
 

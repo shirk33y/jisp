@@ -81,8 +81,14 @@ The JUIR executor now carries that full opaque owner identity alongside every
 mounted `ui.local` cell and passes it through the browser event boundary; a
 keyed row reused from the render cache retains both its local state and owner,
 rather than displaying stale output and then losing the scope on its next
-event. This is the ownership foundation for local commands/subscriptions;
-their source syntax and completion routing remain subsequent M4 work.
+event. `ui.local.result` now exposes that source boundary without allowing
+resources in `view`: an event can replace its scope's desired
+command/subscription snapshot, the fake host reconciles it with the complete
+owner path, and the embedding protocol returns completions through owner-aware
+generation checks. Unmounting the scope cancels its resources and rejects late
+completion. Local completion actions intentionally use the ordinary app
+reducer; portable `ui.test` syntax for local handler/resource scenarios remains
+subsequent M4 work.
 `PlaygroundSession` now also exposes an opt-in generation-safe effect-host
 boundary: an embedding host configures immutable versioned capabilities, reads
 active resource generations from `jisp-ui-resources/1`, and returns an

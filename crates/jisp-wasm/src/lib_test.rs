@@ -1,8 +1,8 @@
 #[cfg(feature = "juir")]
 use super::render_ssr;
 use super::{
-    collect_tree_patches, format_source, parse_source, render_html_source, run_ui_tests_source,
-    source_without_ui_tests, PlaygroundSession,
+    collect_tree_patches, format_source, parse_owner, parse_source, render_html_source,
+    run_ui_tests_source, source_without_ui_tests, PlaygroundSession,
 };
 use serde_json::{json, Value};
 
@@ -792,6 +792,174 @@ fn local_component_state_updates_without_running_the_app_reducer() {
     .unwrap();
     assert_eq!(updated["attrs"]["data-reducer-state"], "0");
     assert_eq!(updated["children"][0]["children"][0]["value"], "1");
+}
+
+#[cfg(feature = "juir")]
+#[test]
+fn local_effects_are_owned_per_scope_and_complete_through_the_app_reducer() {
+    let mut session = PlaygroundSession::new();
+    let source = r#"
+(type Action (Saved int))
+(def init 0)
+(defn update (state action)
+  (case action
+    ((Saved value) value)))
+(component saver (label)
+  (ui.local false (fn (running set-running)
+    (button (attr "data-label" label)
+      (on click
+        (emit
+          (ui.local.result true
+            (list
+              (ui.command "save" "storage.write" 1 (obj "label" label) false
+                (ui.action-result "Saved" (list))
+                (ui.action-error "Saved" (list))))
+            (list))))
+      (text label)))))
+(component app (state)
+  (div
+    (attr "data-state" (str.from state))
+    (saver "left")
+    (saver "right")))
+(ui.app init update app)
+"#;
+    let initial: Value = serde_json::from_str(&session.load_source(source).unwrap()).unwrap();
+    session
+        .configure_effect_host_json(r#"[{"name":"storage.write","version":1}]"#)
+        .unwrap();
+    let left = initial["children"][0]["events"]["click"]["handler"]
+        .as_u64()
+        .unwrap() as usize;
+    let after_left: Value =
+        serde_json::from_str(&session.dispatch_event(left, r#"{"type":"click"}"#).unwrap())
+            .unwrap();
+    assert_eq!(after_left["attrs"]["data-state"], "0");
+    let right = after_left["children"][1]["events"]["click"]["handler"]
+        .as_u64()
+        .unwrap() as usize;
+    session
+        .dispatch_event(right, r#"{"type":"click"}"#)
+        .unwrap();
+
+    let resources: Value =
+        serde_json::from_str(&session.desired_resources_json().unwrap()).unwrap();
+    let commands = resources["commands"].as_array().unwrap();
+    assert_eq!(commands.len(), 2);
+    assert!(commands.iter().all(|command| command["id"] == "save"));
+    assert_ne!(commands[0]["owner"], commands[1]["owner"]);
+    assert_eq!(commands[0]["owner"]["kind"], "component");
+    let owner = serde_json::to_string(&commands[0]["owner"]).unwrap();
+    let generation = commands[0]["generation"].as_u64().unwrap();
+
+    let delivered: Value = serde_json::from_str(
+        &session
+            .deliver_owned_effect("command", &owner, "save", generation, r#"{"ok":7}"#)
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(delivered["attrs"]["data-state"], "7");
+    assert!(session
+        .deliver_effect_json("command", "save", generation, r#"{"ok":7}"#)
+        .unwrap_err()
+        .contains("not current"));
+}
+
+#[cfg(feature = "juir")]
+#[test]
+fn ui_local_result_is_rejected_outside_a_local_scope() {
+    let mut session = PlaygroundSession::new();
+    let tree: Value = serde_json::from_str(
+        &session
+            .load_source(
+                r#"
+(def init null)
+(defn update (state action) state)
+(component app (state)
+  (button
+    (on click (emit (ui.local.result null (list) (list))))
+    (text "bad")))
+(ui.app init update app)
+"#,
+            )
+            .unwrap(),
+    )
+    .unwrap();
+    let handler = tree["events"]["click"]["handler"].as_u64().unwrap() as usize;
+    assert!(session
+        .dispatch_event(handler, r#"{"type":"click"}"#)
+        .unwrap_err()
+        .contains("must originate from a ui.local event handler"));
+}
+
+#[cfg(feature = "juir")]
+#[test]
+fn unmounting_a_local_scope_cancels_its_resources() {
+    let mut session = PlaygroundSession::new();
+    let source = r#"
+(type Action (Hide) (Tick int))
+(def init true)
+(defn update (state action)
+  (case action
+    ((Hide) false)
+    ((Tick _) state)))
+(component clock ()
+  (ui.local false (fn (running set-running)
+    (button
+      (attr "id" "start")
+      (on click
+        (emit
+          (ui.local.result true
+            (list)
+            (list
+              (ui.subscription "clock" "timer.tick" 1 (obj "every-ms" 1000) false
+                (ui.action-result "Tick" (list))
+                (ui.action-error "Tick" (list)))))))
+      (text "start")))))
+(component app (shown)
+  (div
+    (button (attr "id" "hide") (on click (emit Hide)) (text "hide"))
+    (if shown (clock) (p (text "gone")))))
+(ui.app init update app)
+"#;
+    let initial: Value = serde_json::from_str(&session.load_source(source).unwrap()).unwrap();
+    session
+        .configure_effect_host_json(r#"[{"name":"timer.tick","version":1}]"#)
+        .unwrap();
+    let start = initial["children"][1]["events"]["click"]["handler"]
+        .as_u64()
+        .unwrap() as usize;
+    let started: Value = serde_json::from_str(
+        &session
+            .dispatch_event(start, r#"{"type":"click"}"#)
+            .unwrap(),
+    )
+    .unwrap();
+    let resources: Value =
+        serde_json::from_str(&session.desired_resources_json().unwrap()).unwrap();
+    let subscription = &resources["subscriptions"][0];
+    let owner = serde_json::to_string(&subscription["owner"]).unwrap();
+    let generation = subscription["generation"].as_u64().unwrap();
+
+    let hide = started["children"][0]["events"]["click"]["handler"]
+        .as_u64()
+        .unwrap() as usize;
+    let hidden: Value =
+        serde_json::from_str(&session.dispatch_event(hide, r#"{"type":"click"}"#).unwrap())
+            .unwrap();
+    assert_eq!(hidden["children"][1]["tag"], "p");
+    let resources: Value =
+        serde_json::from_str(&session.desired_resources_json().unwrap()).unwrap();
+    assert!(resources["subscriptions"].as_array().unwrap().is_empty());
+    assert!(session
+        .deliver_effect_owned_json(
+            "subscription",
+            parse_owner(&owner).unwrap(),
+            "clock",
+            generation,
+            r#"{"ok":1}"#,
+        )
+        .unwrap_err()
+        .contains("not current"));
 }
 
 #[cfg(feature = "juir")]

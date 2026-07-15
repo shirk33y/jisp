@@ -7,8 +7,9 @@
 > narrow browser capabilities; it is not a general browser command runtime.
 
 Jisp UI keeps Model–View–Update: `view` is pure and `(update state action)`
-calculates the next immutable state. Effects are data emitted by `update`; they
-are never work performed by a view, macro, event expression, or renderer.
+calculates the next immutable state. Effects are declarative data emitted by
+`update` or a scoped `ui.local.result`; they are never work performed by a
+view, macro, event expression, or renderer.
 Synchronous `prevent-default`, `stop-propagation`, and `capture` remain event
 policies, not commands.
 
@@ -106,8 +107,8 @@ not cancel underlying work.
 
 A subscription is a desired long-lived event source, not a command that runs
 forever. It uses the same identity/reconciliation rules and yields many actions
-until removed. Initially only `app` owns resources. Future local resources use a
-complete, not leaf-only, instance path:
+until removed. The app and every mounted local scope may own resources through
+a complete, not leaf-only, instance path:
 
 ```text
 OwnerPath = app | app / Component(template-id, key) / ...
@@ -149,10 +150,44 @@ cell. An unkeyed dynamic row is deliberately reset whenever the collection
 changes rather than risking state moving to a different item by index. Each
 mounted local scope also carries an opaque `OwnerPath` with complete component
 ancestry plus a synthetic local-scope segment. The JUIR-to-host event boundary
-checks that identity before accepting a setter result. This establishes the
-owner contract for local resources, but source-level local
-commands/subscriptions are still deferred; reducer declarations remain
-app-owned for now.
+checks that identity before accepting a setter result.
+
+### Local commands and subscriptions
+
+An event inside `ui.local` can atomically update its local state and replace
+that scope's complete desired resource snapshot:
+
+```lisp
+(ui.local false (fn (saving set-saving)
+  (button
+    (on click
+      (emit
+        (ui.local.result true
+          (list
+            (ui.command "save" "storage.write" 1
+              (obj "key" "draft" "value" draft) false
+              (ui.action-result "Saved" (list))
+              (ui.action-error "SaveFailed" (list))))
+          (list))))
+    (text "Save"))))
+```
+
+`ui.local.result` is accepted only from the event handler's mounted local
+scope. It receives `(next-state commands subscriptions)`, uses the handler's
+opaque complete owner path, and makes `commands`/`subscriptions` the whole next
+snapshot for that one scope. `(set-state next-state)` is the shorthand that
+changes only the local state and retains that scope's existing declarations.
+This keeps effect declarations out of `view` while allowing two sibling rows to
+use the same resource id without collision.
+
+`desired_resources` includes an opaque `owner` for every app or local resource.
+An embedding host must return local completions with
+`deliverOwnedEffect(kind, owner, id, generation, completion)`; the existing
+`deliverEffect` API remains the app-owner shorthand. A current completion
+materializes its declared action and runs the ordinary application `update`.
+If the local scope unmounts, its resources are reconciled away and a late
+completion is ignored. Local completion actions do not mutate local state
+directly; use the app reducer for durable result handling.
 
 ## Capability negotiation and testing
 
@@ -247,8 +282,8 @@ single checked-in ABI contract.
 
 ## Deferred decisions
 
-- Source syntax and completion routing for local commands/subscriptions, using
-  the already key-aware local owner path.
+- Portable `ui.test` steps for dispatching a local handler and asserting local
+  resource ownership/lifecycle without a browser.
 - Concrete browser/native capability schemas, permissions, timeout policies,
   and providers beyond the two narrow playground capabilities.
 - Capability serialization choices for SSR/resume beyond the current
@@ -260,8 +295,10 @@ The browser Wasm session exposes the most recent declarations through
 `desired_resources`; it does not execute them. An embedding host may opt in to
 the generation-safe Wasm boundary by calling
 `configure_effect_host([{name, version}])`. Once configured, each active
-resource in `jisp-ui-resources/1` includes an opaque `generation`; return it to
-`deliverEffect(kind, id, generation, completion)`, where `completion` is
+resource in `jisp-ui-resources/1` includes opaque `owner` and `generation`
+fields; return it to `deliverOwnedEffect(kind, owner, id, generation,
+completion)` (or the app-owner shorthand `deliverEffect(kind, id, generation,
+completion)`), where `completion` is
 either `{"ok": value}` or
 `{"error": {"code": "permission-denied", "message": "..."}}`. Wasm
 checks that the resource is still current, expands the source-declared action

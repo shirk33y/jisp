@@ -15,6 +15,7 @@ const examples = [
   ["Todo updates", "examples/todos.lisp"],
   ["Counter tests", "examples/counter-tests.lisp"],
   ["Local component state", "examples/local-state.lisp"],
+  ["Local effect scope", "examples/local-effects.lisp"],
   ["Product launch board", "examples/kanban.lisp"],
   ["Tiny rituals", "examples/habits.lisp"],
   ["Personal spend", "examples/finance.lisp"],
@@ -634,8 +635,8 @@ function sourceText() {
   return editor.state.doc.toString();
 }
 
-function effectKey(kind, id) {
-  return `${kind}:${id}`;
+function effectKey(kind, owner, id) {
+  return `${kind}:${JSON.stringify(owner)}:${id}`;
 }
 
 function clearEffectOperation(operation) {
@@ -660,15 +661,16 @@ function effectError(code, message) {
 }
 
 function isCurrentEffect(operation) {
-  return effectOperations.get(effectKey(operation.kind, operation.id)) === operation;
+  return effectOperations.get(effectKey(operation.kind, operation.owner, operation.id)) === operation;
 }
 
 function deliverEffect(operation, completion) {
   queueMicrotask(() => {
     if (!session || !isCurrentEffect(operation)) return;
     try {
-      const tree = JSON.parse(session.deliverEffect(
+      const tree = JSON.parse(session.deliverOwnedEffect(
         operation.kind,
+        JSON.stringify(operation.owner),
         operation.id,
         BigInt(operation.generation),
         JSON.stringify(completion),
@@ -744,15 +746,25 @@ function syncEffectHost() {
     const descriptors = resources[`${kind}s`];
     if (!Array.isArray(descriptors)) throw new Error(`Invalid ${kind} declarations`);
     for (const descriptor of descriptors) {
-      if (!descriptor || typeof descriptor.id !== "string" || !Number.isSafeInteger(descriptor.generation)) {
+      if (!descriptor
+        || typeof descriptor.id !== "string"
+        || !descriptor.owner
+        || typeof descriptor.owner !== "object"
+        || !Number.isSafeInteger(descriptor.generation)) {
         throw new Error(`Invalid active ${kind} declaration`);
       }
-      const key = effectKey(kind, descriptor.id);
+      const key = effectKey(kind, descriptor.owner, descriptor.id);
       desired.add(key);
       const existing = effectOperations.get(key);
       if (existing?.generation === descriptor.generation) continue;
       if (existing) clearEffectOperation(existing);
-      const operation = { kind, id: descriptor.id, generation: descriptor.generation, descriptor };
+      const operation = {
+        kind,
+        owner: descriptor.owner,
+        id: descriptor.id,
+        generation: descriptor.generation,
+        descriptor,
+      };
       effectOperations.set(key, operation);
       startEffect(operation);
     }

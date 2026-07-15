@@ -5,11 +5,12 @@ use std::collections::BTreeMap;
 use jisp::jisp_core::{ui_element, Node, NodeKind, SourceId, Span, SyntaxParser};
 #[cfg(feature = "juir")]
 use jisp::jisp_eval::Env;
-use jisp::jisp_eval::{normalize_update_result, Evaluator, Value};
+use jisp::jisp_eval::{normalize_local_action, normalize_update_result, Evaluator, Value};
 #[cfg(feature = "juir")]
 use jisp::jisp_types::Inferencer;
 use jisp::jisp_ui::effects::{
-    Capability, Delivery, FakeHost, HostError, HostErrorCode, Owner, ResourceKind,
+    decode_resources, decode_resources_owned, Capability, ComponentInstance, Delivery,
+    DesiredResources, FakeHost, HostError, HostErrorCode, Owner, ResourceKind,
 };
 #[cfg(feature = "juir")]
 use jisp::jisp_ui::{
@@ -85,6 +86,7 @@ struct Runtime {
     last_render_skipped: bool,
     desired_commands: Vec<Value>,
     desired_subscriptions: Vec<Value>,
+    local_resources: BTreeMap<String, LocalResources>,
     effect_host: Option<FakeHost>,
     span: Span,
 }
@@ -101,6 +103,13 @@ struct EventHandler {
 struct LocalScope {
     id: String,
     owner: Owner,
+}
+
+#[derive(Clone)]
+struct LocalResources {
+    owner: Owner,
+    commands: Vec<Value>,
+    subscriptions: Vec<Value>,
 }
 
 #[wasm_bindgen]
@@ -179,7 +188,24 @@ impl PlaygroundSession {
         generation: u64,
         completion_json: &str,
     ) -> Result<String, JsValue> {
-        self.deliver_effect_json(kind, id, generation, completion_json)
+        self.deliver_effect_owned_json(kind, Owner::App, id, generation, completion_json)
+            .map_err(js_error)
+    }
+
+    /// Deliver a completion for one explicit local/app owner returned by
+    /// `desired_resources`. This is required when two local component
+    /// instances use the same resource id.
+    #[wasm_bindgen(js_name = deliverOwnedEffect)]
+    pub fn deliver_owned_effect(
+        &mut self,
+        kind: &str,
+        owner_json: &str,
+        id: &str,
+        generation: u64,
+        completion_json: &str,
+    ) -> Result<String, JsValue> {
+        let owner = parse_owner(owner_json).map_err(js_error)?;
+        self.deliver_effect_owned_json(kind, owner, id, generation, completion_json)
             .map_err(js_error)
     }
 
@@ -283,6 +309,7 @@ impl PlaygroundSession {
             last_render_skipped: false,
             desired_commands: vec![],
             desired_subscriptions: vec![],
+            local_resources: BTreeMap::new(),
             effect_host: None,
             span: app.span,
         });
@@ -308,29 +335,73 @@ impl PlaygroundSession {
                 .apply(handler.callback, &[event], runtime.span)
                 .map_err(|error| error.to_string())?
         };
-        let local_scope = self
+        let (local_scope, span) = self
             .runtime
             .as_ref()
-            .and_then(|runtime| runtime.handlers.get(handler))
-            .and_then(|handler| handler.local_state.clone());
-        if let Some(scope) = local_scope {
-            if let Some((id, state)) = local_state_action(&action)? {
-                if id != scope.id {
+            .map(|runtime| {
+                (
+                    runtime
+                        .handlers
+                        .get(handler)
+                        .and_then(|handler| handler.local_state.clone()),
+                    runtime.span,
+                )
+            })
+            .ok_or_else(|| "load a ui.app program before dispatching events".to_owned())?;
+        if let Some(action) =
+            normalize_local_action(action.clone(), span).map_err(|error| error.to_string())?
+        {
+            let Some(scope) = local_scope else {
+                return Err(
+                    "ui.local action must originate from a ui.local event handler".to_owned(),
+                );
+            };
+            if let Some(id) = &action.id {
+                if id != &scope.id {
                     return Err(
                         "local state action does not belong to this event handler".to_owned()
                     );
                 }
-                return self.apply_local_state(&scope, state);
             }
+            return self.apply_local_action(&scope, action);
         }
         self.apply_action(action)
     }
 
-    fn apply_local_state(&mut self, scope: &LocalScope, state: Value) -> Result<String, String> {
+    fn apply_local_action(
+        &mut self,
+        scope: &LocalScope,
+        action: jisp::jisp_eval::LocalAction,
+    ) -> Result<String, String> {
         let runtime = self
             .runtime
             .as_mut()
             .ok_or_else(|| "load a ui.app program before dispatching local state".to_owned())?;
+        let jisp::jisp_eval::LocalAction {
+            state, resources, ..
+        } = action;
+        let mut local_resources = runtime.local_resources.clone();
+        if let Some((commands, subscriptions)) = resources {
+            decode_resources_owned(&commands, &subscriptions, scope.owner.clone())
+                .map_err(|error| format!("local effect declaration is invalid: {error}"))?;
+            local_resources.insert(
+                scope.id.clone(),
+                LocalResources {
+                    owner: scope.owner.clone(),
+                    commands,
+                    subscriptions,
+                },
+            );
+        }
+        let desired = desired_resources_for(
+            &runtime.desired_commands,
+            &runtime.desired_subscriptions,
+            &local_resources,
+        )?;
+        if let Some(host) = &mut runtime.effect_host {
+            host.reconcile_resources(desired)
+                .map_err(|error| format!("effect host reconciliation failed: {error}"))?;
+        }
         #[cfg(feature = "juir")]
         {
             let execution = runtime.last_juir_execution.as_mut().ok_or_else(|| {
@@ -350,6 +421,7 @@ impl PlaygroundSession {
                 ..ChangeSet::default()
             };
         }
+        runtime.local_resources = local_resources;
         #[cfg(not(feature = "juir"))]
         let _ = (scope, state);
         self.render()
@@ -365,18 +437,32 @@ impl PlaygroundSession {
             return Err("an effect host is already configured for this session".to_owned());
         }
         let mut host = FakeHost::with_capabilities(capabilities);
-        host.reconcile_declared_resources(
+        let desired = desired_resources_for(
             &runtime.desired_commands,
             &runtime.desired_subscriptions,
-        )
-        .map_err(|error| format!("effect host reconciliation failed: {error}"))?;
+            &runtime.local_resources,
+        )?;
+        host.reconcile_resources(desired)
+            .map_err(|error| format!("effect host reconciliation failed: {error}"))?;
         runtime.effect_host = Some(host);
         Ok(())
     }
 
+    #[cfg(test)]
     fn deliver_effect_json(
         &mut self,
         kind: &str,
+        id: &str,
+        generation: u64,
+        completion_json: &str,
+    ) -> Result<String, String> {
+        self.deliver_effect_owned_json(kind, Owner::App, id, generation, completion_json)
+    }
+
+    fn deliver_effect_owned_json(
+        &mut self,
+        kind: &str,
+        owner: Owner,
         id: &str,
         generation: u64,
         completion_json: &str,
@@ -398,10 +484,10 @@ impl PlaygroundSession {
             })?;
             match kind {
                 ResourceKind::Command => {
-                    host.deliver_command_action(Owner::App, id, generation, delivery)
+                    host.deliver_command_action(owner.clone(), id, generation, delivery)
                 }
                 ResourceKind::Subscription => {
-                    host.deliver_subscription_action(Owner::App, id, generation, delivery)
+                    host.deliver_subscription_action(owner.clone(), id, generation, delivery)
                 }
             }
             .ok_or_else(|| {
@@ -431,8 +517,13 @@ impl PlaygroundSession {
             .map_err(|error| error.to_string())?;
         let result =
             normalize_update_result(result, runtime.span).map_err(|error| error.to_string())?;
+        let desired = desired_resources_for(
+            &result.commands,
+            &result.subscriptions,
+            &runtime.local_resources,
+        )?;
         if let Some(host) = &mut runtime.effect_host {
-            host.reconcile_declared_resources(&result.commands, &result.subscriptions)
+            host.reconcile_resources(desired)
                 .map_err(|error| format!("effect host reconciliation failed: {error}"))?;
         }
         runtime.state = result.state;
@@ -478,15 +569,13 @@ impl PlaygroundSession {
             .ok_or_else(|| "load a ui.app program before reading resources".to_owned())?;
         serde_json::to_string(&json!({
             "protocol": "jisp-ui-resources/1",
-            "commands": runtime
-                .desired_commands
-                .iter()
-                .map(|value| resource_json(value, runtime.effect_host.as_ref(), ResourceKind::Command))
+            "commands": resource_entries(runtime, ResourceKind::Command)
+                .into_iter()
+                .map(|(value, owner)| resource_json(value, &owner, runtime.effect_host.as_ref(), ResourceKind::Command))
                 .collect::<Result<Vec<_>, _>>()?,
-            "subscriptions": runtime
-                .desired_subscriptions
-                .iter()
-                .map(|value| resource_json(value, runtime.effect_host.as_ref(), ResourceKind::Subscription))
+            "subscriptions": resource_entries(runtime, ResourceKind::Subscription)
+                .into_iter()
+                .map(|(value, owner)| resource_json(value, &owner, runtime.effect_host.as_ref(), ResourceKind::Subscription))
                 .collect::<Result<Vec<_>, _>>()?,
         }))
         .map_err(|error| error.to_string())
@@ -569,6 +658,24 @@ impl PlaygroundSession {
             .map_err(|error| error.to_string())?;
         #[cfg(not(feature = "juir"))]
         let local_owners = BTreeMap::new();
+        if runtime
+            .local_resources
+            .iter()
+            .any(|(id, resource)| local_owners.get(id) != Some(&resource.owner))
+        {
+            runtime
+                .local_resources
+                .retain(|id, resource| local_owners.get(id) == Some(&resource.owner));
+            let desired = desired_resources_for(
+                &runtime.desired_commands,
+                &runtime.desired_subscriptions,
+                &runtime.local_resources,
+            )?;
+            if let Some(host) = &mut runtime.effect_host {
+                host.reconcile_resources(desired)
+                    .map_err(|error| format!("effect host reconciliation failed: {error}"))?;
+            }
+        }
         let mut handlers = vec![];
         let tree = ui_node(&vnode, &mut handlers, &local_owners)?;
         runtime.handlers = handlers;
@@ -1572,30 +1679,143 @@ fn parse_host_error_code(code: &str) -> Result<HostErrorCode, String> {
     }
 }
 
+fn desired_resources_for(
+    commands: &[Value],
+    subscriptions: &[Value],
+    local_resources: &BTreeMap<String, LocalResources>,
+) -> Result<DesiredResources, String> {
+    let mut desired =
+        decode_resources(commands, subscriptions).map_err(|error| error.to_string())?;
+    for resource in local_resources.values() {
+        let local = decode_resources_owned(
+            &resource.commands,
+            &resource.subscriptions,
+            resource.owner.clone(),
+        )
+        .map_err(|error| error.to_string())?;
+        desired.commands.extend(local.commands);
+        desired.subscriptions.extend(local.subscriptions);
+    }
+    Ok(desired)
+}
+
+fn resource_entries(runtime: &Runtime, kind: ResourceKind) -> Vec<(&Value, Owner)> {
+    let mut entries: Vec<(&Value, Owner)> = match kind {
+        ResourceKind::Command => runtime
+            .desired_commands
+            .iter()
+            .map(|value| (value, Owner::App))
+            .collect(),
+        ResourceKind::Subscription => runtime
+            .desired_subscriptions
+            .iter()
+            .map(|value| (value, Owner::App))
+            .collect(),
+    };
+    for resource in runtime.local_resources.values() {
+        let values = match kind {
+            ResourceKind::Command => &resource.commands,
+            ResourceKind::Subscription => &resource.subscriptions,
+        };
+        entries.extend(values.iter().map(|value| (value, resource.owner.clone())));
+    }
+    entries
+}
+
+fn owner_json(owner: &Owner) -> JsonValue {
+    match owner {
+        Owner::App => json!({ "kind": "app" }),
+        Owner::Component { path } => json!({
+            "kind": "component",
+            "path": path.iter().map(|segment| json!({
+                "template": segment.template,
+                "key": segment.key,
+            })).collect::<Vec<_>>(),
+        }),
+    }
+}
+
+fn parse_owner(source: &str) -> Result<Owner, String> {
+    let JsonValue::Object(fields) = serde_json::from_str(source)
+        .map_err(|error| format!("effect owner is not JSON: {error}"))?
+    else {
+        return Err("effect owner must be a JSON object".to_owned());
+    };
+    let kind = fields
+        .get("kind")
+        .and_then(JsonValue::as_str)
+        .ok_or_else(|| "effect owner kind must be a string".to_owned())?;
+    match kind {
+        "app" if fields.len() == 1 => Ok(Owner::App),
+        "component" if fields.len() == 2 => {
+            let path = fields
+                .get("path")
+                .and_then(JsonValue::as_array)
+                .filter(|path| !path.is_empty())
+                .ok_or_else(|| "component effect owner path must be a nonempty array".to_owned())?
+                .iter()
+                .map(|value| {
+                    let fields = value.as_object().ok_or_else(|| {
+                        "component effect owner segment must be an object".to_owned()
+                    })?;
+                    if fields.len() != 2 {
+                        return Err(
+                            "component effect owner segment must contain template and key"
+                                .to_owned(),
+                        );
+                    }
+                    let template = fields
+                        .get("template")
+                        .and_then(JsonValue::as_str)
+                        .filter(|value| !value.is_empty())
+                        .ok_or_else(|| {
+                            "component effect owner template must be a nonempty string".to_owned()
+                        })?;
+                    let key = fields
+                        .get("key")
+                        .and_then(JsonValue::as_str)
+                        .filter(|value| !value.is_empty())
+                        .ok_or_else(|| {
+                            "component effect owner key must be a nonempty string".to_owned()
+                        })?;
+                    Ok(ComponentInstance {
+                        template: template.to_owned(),
+                        key: key.to_owned(),
+                    })
+                })
+                .collect::<Result<Vec<_>, String>>()?;
+            Ok(Owner::Component { path })
+        }
+        "app" => Err("app effect owner must contain only kind".to_owned()),
+        "component" => Err("component effect owner must contain exactly kind and path".to_owned()),
+        _ => Err("effect owner kind must be app or component".to_owned()),
+    }
+}
+
 fn resource_json(
     value: &Value,
+    owner: &Owner,
     host: Option<&FakeHost>,
     kind: ResourceKind,
 ) -> Result<JsonValue, String> {
     let mut value = json_value(value)?;
-    let Some(host) = host else {
-        return Ok(value);
-    };
     let fields = value
         .as_object_mut()
         .ok_or_else(|| "effect descriptor must serialize as an object".to_owned())?;
+    fields.insert("owner".to_owned(), owner_json(owner));
+    let Some(host) = host else {
+        return Ok(value);
+    };
     let id = fields
         .get("id")
         .and_then(JsonValue::as_str)
         .ok_or_else(|| "effect descriptor must include string id".to_owned())?;
-    let generation = host
-        .active_generation(kind, &Owner::App, id)
-        .ok_or_else(|| {
-            format!(
-                "effect host has no active {} `{id}`",
-                resource_kind_name(kind)
-            )
-        })?;
+    let generation = host.active_generation(kind, owner, id).ok_or_else(|| {
+        format!(
+            "effect host has no active {} `{id}`",
+            resource_kind_name(kind)
+        )
+    })?;
     fields.insert(
         "generation".to_owned(),
         JsonValue::Number(Number::from(generation)),
@@ -1628,38 +1848,6 @@ fn value_from_json(value: JsonValue) -> Result<Value, String> {
             .collect::<Result<_, _>>()
             .map(Value::Obj),
     }
-}
-
-/// Decode the private data returned by a synthesized local-state setter. This
-/// is intentionally accepted only after `dispatch_event` proves that the
-/// originating handler has the same executor-owned local id.
-fn local_state_action(value: &Value) -> Result<Option<(String, Value)>, String> {
-    let Value::Obj(fields) = value else {
-        return Ok(None);
-    };
-    let Some(payload) = fields.get("$jisp-ui-local") else {
-        return Ok(None);
-    };
-    if fields.len() != 1 {
-        return Err("local state action must contain only its reserved payload".to_owned());
-    }
-    let Value::Obj(payload) = payload else {
-        return Err("local state action payload must be an object".to_owned());
-    };
-    let Some(Value::Str(id)) = payload.get("id") else {
-        return Err("local state action must contain a string id".to_owned());
-    };
-    if id.is_empty() {
-        return Err("local state action id must not be empty".to_owned());
-    }
-    let state = payload
-        .get("state")
-        .cloned()
-        .ok_or_else(|| "local state action must contain state".to_owned())?;
-    if payload.len() != 2 {
-        return Err("local state action must contain exactly id and state".to_owned());
-    }
-    Ok(Some((id.to_string(), state)))
 }
 
 fn json_value(value: &Value) -> Result<JsonValue, String> {

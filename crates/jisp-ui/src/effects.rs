@@ -10,7 +10,7 @@ use serde_json::Value;
 
 #[path = "effects_decode.rs"]
 mod effects_decode;
-pub use effects_decode::{decode_resources, DecodeError, ReconcileError};
+pub use effects_decode::{decode_resources, decode_resources_owned, DecodeError, ReconcileError};
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Owner {

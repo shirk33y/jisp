@@ -3,6 +3,7 @@ use jisp_core::Span;
 use crate::{RuntimeError, Value};
 
 const UPDATE_RESULT_TAG: &str = "\0jisp.ui.update-result";
+const LOCAL_ACTION_TAG: &str = "\0jisp.ui.local-action";
 
 /// The data returned by a `ui.app` reducer after normalizing its convenient
 /// state-only shorthand. It contains declarations only; evaluating it never
@@ -14,6 +15,18 @@ pub struct UpdateResult {
     pub subscriptions: Vec<Value>,
 }
 
+/// An event-scoped local update emitted by either a synthesized `set-state`
+/// binding or the public `ui.local.result` constructor. Its tag is private, so
+/// source data cannot manufacture an action for an arbitrary mounted scope.
+#[derive(Clone)]
+pub struct LocalAction {
+    pub id: Option<String>,
+    pub state: Value,
+    /// `None` means "retain this scope's currently desired resources". A
+    /// `ui.local.result` supplies a complete replacement snapshot.
+    pub resources: Option<(Vec<Value>, Vec<Value>)>,
+}
+
 pub(crate) fn update_result_value(
     state: Value,
     commands: Vec<Value>,
@@ -23,6 +36,72 @@ pub(crate) fn update_result_value(
         tag: UPDATE_RESULT_TAG.to_owned(),
         fields: vec![state, Value::List(commands), Value::List(subscriptions)],
     }
+}
+
+pub(crate) fn local_action_value(
+    id: Option<String>,
+    state: Value,
+    resources: Option<(Vec<Value>, Vec<Value>)>,
+) -> Value {
+    let (commands, subscriptions) = resources
+        .map(|(commands, subscriptions)| (Value::List(commands), Value::List(subscriptions)))
+        .unwrap_or((Value::Null, Value::Null));
+    Value::Variant {
+        tag: LOCAL_ACTION_TAG.to_owned(),
+        fields: vec![
+            id.map(Value::string).unwrap_or(Value::Null),
+            state,
+            commands,
+            subscriptions,
+        ],
+    }
+}
+
+/// Decode the private event result used by `ui.local`. A non-local value is
+/// deliberately left untouched for the ordinary app reducer path.
+pub fn normalize_local_action(
+    value: Value,
+    span: Span,
+) -> Result<Option<LocalAction>, RuntimeError> {
+    let Value::Variant { tag, fields } = value else {
+        return Ok(None);
+    };
+    if tag != LOCAL_ACTION_TAG {
+        return Ok(None);
+    }
+    let [id, state, commands, subscriptions] = fields.as_slice() else {
+        return Err(RuntimeError::at(
+            span,
+            "invalid internal ui.local-action value",
+        ));
+    };
+    let id = match id {
+        Value::Null => None,
+        Value::Str(id) if !id.is_empty() => Some(id.to_string()),
+        _ => {
+            return Err(RuntimeError::at(
+                span,
+                "invalid internal ui.local-action id",
+            ))
+        }
+    };
+    let resources = match (commands, subscriptions) {
+        (Value::Null, Value::Null) => None,
+        (Value::List(commands), Value::List(subscriptions)) => {
+            Some((commands.clone(), subscriptions.clone()))
+        }
+        _ => {
+            return Err(RuntimeError::at(
+                span,
+                "invalid internal ui.local-action resources",
+            ))
+        }
+    };
+    Ok(Some(LocalAction {
+        id,
+        state: state.clone(),
+        resources,
+    }))
 }
 
 /// Treat a plain reducer return as its next state, or decode the opaque value

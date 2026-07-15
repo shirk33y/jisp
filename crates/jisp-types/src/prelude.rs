@@ -346,6 +346,17 @@ pub fn environment() -> BTreeMap<String, Scheme> {
     );
     add(
         &mut env,
+        "ui.local.result",
+        scheme(
+            vec![0],
+            fun(
+                vec![var(0), list(ui_command()), list(ui_subscription())],
+                ui_local_action(),
+            ),
+        ),
+    );
+    add(
+        &mut env,
         "ui.result",
         scheme(
             vec![0],

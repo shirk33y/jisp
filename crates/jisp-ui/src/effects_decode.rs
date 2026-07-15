@@ -61,23 +61,38 @@ pub fn decode_resources(
     commands: &[JispValue],
     subscriptions: &[JispValue],
 ) -> Result<DesiredResources, DecodeError> {
+    decode_resources_owned(commands, subscriptions, Owner::App)
+}
+
+/// Decode canonical source descriptors and attach one executor-owned scope.
+/// Source values do not carry an owner, so callers must provide the complete
+/// identity rather than reconstructing it from an id or list position.
+pub fn decode_resources_owned(
+    commands: &[JispValue],
+    subscriptions: &[JispValue],
+    owner: Owner,
+) -> Result<DesiredResources, DecodeError> {
     Ok(DesiredResources {
         commands: commands
             .iter()
-            .map(|value| decode_command(value, "command"))
+            .map(|value| decode_command(value, "command", owner.clone()))
             .collect::<Result<_, _>>()?,
         subscriptions: subscriptions
             .iter()
-            .map(|value| decode_subscription(value, "subscription"))
+            .map(|value| decode_subscription(value, "subscription", owner.clone()))
             .collect::<Result<_, _>>()?,
     })
 }
 
-fn decode_command(value: &JispValue, kind: &'static str) -> Result<Command, DecodeError> {
+fn decode_command(
+    value: &JispValue,
+    kind: &'static str,
+    owner: Owner,
+) -> Result<Command, DecodeError> {
     let descriptor = decode_descriptor(value, kind)?;
     Ok(Command {
         id: descriptor.id,
-        owner: Owner::App,
+        owner,
         capability: descriptor.capability,
         request: descriptor.request,
         replace: descriptor.replace,
@@ -86,11 +101,15 @@ fn decode_command(value: &JispValue, kind: &'static str) -> Result<Command, Deco
     })
 }
 
-fn decode_subscription(value: &JispValue, kind: &'static str) -> Result<Subscription, DecodeError> {
+fn decode_subscription(
+    value: &JispValue,
+    kind: &'static str,
+    owner: Owner,
+) -> Result<Subscription, DecodeError> {
     let descriptor = decode_descriptor(value, kind)?;
     Ok(Subscription {
         id: descriptor.id,
-        owner: Owner::App,
+        owner,
         capability: descriptor.capability,
         request: descriptor.request,
         replace: descriptor.replace,
