@@ -5,7 +5,7 @@
 //! from host execution. Browser and native executors will consume this contract;
 //! the current structural-tree renderer remains the semantic reference.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use indexmap::IndexMap;
 use jisp_core::Span;
@@ -460,6 +460,7 @@ pub struct Execution {
     pub value: Value,
     pub stats: ExecutionStats,
     each_cache: BTreeMap<String, Vec<CachedEachItem>>,
+    component_inputs: BTreeMap<String, Vec<Value>>,
 }
 
 #[derive(Clone)]
@@ -488,6 +489,7 @@ pub fn execute_incremental(
         IncrementalInputs {
             previous,
             previous_each_cache: None,
+            previous_component_inputs: None,
             changes,
         },
     )
@@ -514,6 +516,7 @@ pub fn execute_incremental_cached(
         IncrementalInputs {
             previous: previous.map(|execution| &execution.value),
             previous_each_cache: previous.map(|execution| &execution.each_cache),
+            previous_component_inputs: previous.map(|execution| &execution.component_inputs),
             changes,
         },
     )
@@ -522,6 +525,7 @@ pub fn execute_incremental_cached(
 struct IncrementalInputs<'a> {
     previous: Option<&'a Value>,
     previous_each_cache: Option<&'a BTreeMap<String, Vec<CachedEachItem>>>,
+    previous_component_inputs: Option<&'a BTreeMap<String, Vec<Value>>>,
     changes: &'a ChangeSet,
 }
 
@@ -541,12 +545,15 @@ fn execute_incremental_inner(
         stats: ExecutionStats::default(),
         previous_each_cache: inputs.previous_each_cache,
         each_cache: BTreeMap::new(),
+        previous_component_inputs: inputs.previous_component_inputs,
+        component_inputs: BTreeMap::new(),
     };
     let value = executor.component(component, arguments, inputs.previous, "root")?;
     Ok(Execution {
         value,
         stats: executor.stats,
         each_cache: executor.each_cache,
+        component_inputs: executor.component_inputs,
     })
 }
 
@@ -767,6 +774,8 @@ struct Executor<'a> {
     stats: ExecutionStats,
     previous_each_cache: Option<&'a BTreeMap<String, Vec<CachedEachItem>>>,
     each_cache: BTreeMap<String, Vec<CachedEachItem>>,
+    previous_component_inputs: Option<&'a BTreeMap<String, Vec<Value>>>,
+    component_inputs: BTreeMap<String, Vec<Value>>,
 }
 
 impl Executor<'_> {
@@ -939,13 +948,23 @@ impl Executor<'_> {
             } => {
                 if !self.changes.affects(dependencies) {
                     if let Some(previous) = previous {
-                        self.stats.reused_components += 1;
-                        self.stats.component_decisions.push(ComponentDecision {
-                            component: name.clone(),
-                            path: path.to_owned(),
-                            outcome: ComponentDecisionOutcome::Reused,
-                        });
-                        return Ok(previous.clone());
+                        return Ok(self.reuse_component(name, path, previous));
+                    }
+                }
+                let values = arguments
+                    .iter()
+                    .map(|argument| self.evaluator.eval_in(argument, env).map_err(Into::into))
+                    .collect::<Result<Vec<_>, ExecuteError>>()?;
+                if let (Some(previous), Some(previous_inputs)) = (
+                    previous,
+                    self.previous_component_inputs
+                        .and_then(|inputs| inputs.get(path)),
+                ) {
+                    if component_is_input_pure(self.program, name)
+                        && values_equal_slice(previous_inputs, &values)
+                    {
+                        self.component_inputs.insert(path.to_owned(), values);
+                        return Ok(self.reuse_component(name, path, previous));
                     }
                 }
                 self.stats.component_decisions.push(ComponentDecision {
@@ -955,11 +974,9 @@ impl Executor<'_> {
                         self.component_execution_reason(dependencies, previous),
                     ),
                 });
-                let values = arguments
-                    .iter()
-                    .map(|argument| self.evaluator.eval_in(argument, env).map_err(Into::into))
-                    .collect::<Result<Vec<_>, ExecuteError>>()?;
-                self.component(name, &values, previous, path)
+                let rendered = self.component(name, &values, previous, path)?;
+                self.component_inputs.insert(path.to_owned(), values);
+                Ok(rendered)
             }
             Node::Dynamic {
                 expression,
@@ -995,6 +1012,23 @@ impl Executor<'_> {
         } else {
             ComponentExecutionReason::InputChanged
         }
+    }
+
+    fn reuse_component(&mut self, name: &str, path: &str, previous: &Value) -> Value {
+        if let Some(inputs) = self
+            .previous_component_inputs
+            .and_then(|inputs| inputs.get(path))
+            .cloned()
+        {
+            self.component_inputs.insert(path.to_owned(), inputs);
+        }
+        self.stats.reused_components += 1;
+        self.stats.component_decisions.push(ComponentDecision {
+            component: name.to_owned(),
+            path: path.to_owned(),
+            outcome: ComponentDecisionOutcome::Reused,
+        });
+        previous.clone()
     }
 
     fn element(
@@ -1302,6 +1336,121 @@ fn values_equal(left: &Value, right: &Value) -> bool {
         (Value::Closure(_), Value::Closure(_)) => false,
         _ => false,
     }
+}
+
+fn values_equal_slice(left: &[Value], right: &[Value]) -> bool {
+    left.len() == right.len()
+        && left
+            .iter()
+            .zip(right)
+            .all(|(left, right)| values_equal(left, right))
+}
+
+/// Equal component inputs may only reuse a previous output when the complete
+/// component tree reads no value other than its own parameters (and keyed-loop
+/// bindings). This preserves the conservative fallback for module-level,
+/// opaque, or recursively dynamic components.
+fn component_is_input_pure(program: &Program, name: &str) -> bool {
+    let mut visiting = std::collections::BTreeSet::new();
+    component_is_input_pure_inner(program, name, &mut visiting)
+}
+
+fn component_is_input_pure_inner(
+    program: &Program,
+    name: &str,
+    visiting: &mut std::collections::BTreeSet<String>,
+) -> bool {
+    let Some(component) = program.components.get(name) else {
+        return false;
+    };
+    if !visiting.insert(name.to_owned()) {
+        return false;
+    }
+    let mut allowed = component.params.iter().cloned().collect::<BTreeSet<_>>();
+    if let Some(rest) = &component.rest {
+        allowed.insert(rest.clone());
+    }
+    let pure = node_uses_only_inputs(program, &component.root, &mut allowed, visiting);
+    visiting.remove(name);
+    pure
+}
+
+fn node_uses_only_inputs(
+    program: &Program,
+    node: &Node,
+    allowed: &mut BTreeSet<String>,
+    visiting: &mut std::collections::BTreeSet<String>,
+) -> bool {
+    match node {
+        Node::Text(text) => slot_uses_only_inputs(&text.value, allowed),
+        Node::Element(element) => {
+            element
+                .attrs
+                .values()
+                .chain(element.props.values())
+                .chain(element.classes.values())
+                .all(|slot| slot_uses_only_inputs(slot, allowed))
+                && element
+                    .key
+                    .as_ref()
+                    .is_none_or(|slot| slot_uses_only_inputs(slot, allowed))
+                && element
+                    .events
+                    .values()
+                    .all(|event| dependencies_use_only_inputs(&event.dependencies, allowed))
+                && element
+                    .children
+                    .iter()
+                    .all(|child| node_uses_only_inputs(program, child, allowed, visiting))
+        }
+        Node::If {
+            dependencies,
+            then_branch,
+            else_branch,
+            ..
+        } => {
+            dependencies_use_only_inputs(dependencies, allowed)
+                && node_uses_only_inputs(program, then_branch, allowed, visiting)
+                && node_uses_only_inputs(program, else_branch, allowed, visiting)
+        }
+        Node::Each {
+            binding,
+            dependencies,
+            body,
+            ..
+        } => {
+            if !dependencies_use_only_inputs(dependencies, allowed) {
+                return false;
+            }
+            let inserted = allowed.insert(binding.clone());
+            let pure = node_uses_only_inputs(program, body, allowed, visiting);
+            if inserted {
+                allowed.remove(binding);
+            }
+            pure
+        }
+        Node::ComponentCall {
+            name, dependencies, ..
+        } => {
+            dependencies_use_only_inputs(dependencies, allowed)
+                && component_is_input_pure_inner(program, name, visiting)
+        }
+        Node::Dynamic { dependencies, .. } => dependencies_use_only_inputs(dependencies, allowed),
+    }
+}
+
+fn slot_uses_only_inputs(slot: &Slot, allowed: &BTreeSet<String>) -> bool {
+    match slot {
+        Slot::Static(_) => true,
+        Slot::Dynamic { dependencies, .. } => dependencies_use_only_inputs(dependencies, allowed),
+    }
+}
+
+fn dependencies_use_only_inputs(dependencies: &[Dependency], allowed: &BTreeSet<String>) -> bool {
+    dependencies.iter().all(|dependency| match dependency {
+        Dependency::Path { root, .. } => allowed.contains(root),
+        Dependency::Unknown => false,
+    })
 }
 
 fn node_dependencies(node: &Node) -> Vec<Dependency> {

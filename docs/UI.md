@@ -173,6 +173,14 @@ exposes the latest decision in its status pill and both JSON payloads as that
 pill's tooltip. These counters are observability data, never a part of a
 component's public result.
 
+The cached executor also retains a component call's previous immutable input
+values. If a caller expression is conservatively opaque but evaluates to equal
+values, an entire component can still be reused only when every expression in
+its compiled plan depends solely on its inputs (and keyed loop bindings).
+Components with module-level or other opaque reads remain deliberately
+re-executable; reuse is an optimization and never changes the structural-tree
+result.
+
 `PlaygroundSession.dispatch_patches(handler, event)` exposes the same update
 batch for another browser or native host. `snapshot()` returns the complete
 current tree only for initial mount or host recovery; it is not the normal

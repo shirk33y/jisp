@@ -1022,6 +1022,66 @@ fn component_skip_diagnostics_name_opaque_dependencies() {
     let typed = typed(
         r#"
 (component app-header (title)
+  (header (text (str.from title))))
+
+(component app (state)
+  (main
+    (app-header (str.from (. state "title")))
+    (text (. state "count"))))
+"#,
+    );
+    let program = compile(&typed).unwrap();
+    let before = Value::Obj(indexmap::IndexMap::from([
+        ("title".to_owned(), Value::string("Plan")),
+        ("count".to_owned(), Value::Int(1)),
+    ]));
+    let after = Value::Obj(indexmap::IndexMap::from([
+        ("title".to_owned(), Value::string("Plan")),
+        ("count".to_owned(), Value::Int(2)),
+    ]));
+    let mut evaluator = Evaluator::new();
+    let loaded = evaluator.load_module(&typed.module).unwrap();
+    let first = execute_incremental_cached(
+        &program,
+        &mut evaluator,
+        &loaded.env,
+        "app",
+        std::slice::from_ref(&before),
+        None,
+        &ChangeSet {
+            unknown: true,
+            ..ChangeSet::default()
+        },
+    )
+    .unwrap();
+    let second = execute_incremental_cached(
+        &program,
+        &mut evaluator,
+        &loaded.env,
+        "app",
+        std::slice::from_ref(&after),
+        Some(&first),
+        &changed_paths("state", &before, &after),
+    )
+    .unwrap();
+
+    assert_eq!(
+        second.stats.component_decisions,
+        vec![crate::ComponentDecision {
+            component: "app-header".to_owned(),
+            path: "root.child.0".to_owned(),
+            outcome: crate::ComponentDecisionOutcome::Executed(
+                crate::ComponentExecutionReason::OpaqueDependency
+            ),
+        }]
+    );
+}
+
+#[test]
+fn cached_executor_reuses_pure_component_when_opaque_input_evaluates_equal() {
+    let typed = typed(
+        r#"
+(component app-header (title)
   (header (text title)))
 
 (component app (state)
@@ -1041,7 +1101,7 @@ fn component_skip_diagnostics_name_opaque_dependencies() {
     ]));
     let mut evaluator = Evaluator::new();
     let loaded = evaluator.load_module(&typed.module).unwrap();
-    let first = execute_incremental(
+    let first = execute_incremental_cached(
         &program,
         &mut evaluator,
         &loaded.env,
@@ -1054,27 +1114,28 @@ fn component_skip_diagnostics_name_opaque_dependencies() {
         },
     )
     .unwrap();
-    let second = execute_incremental(
+    let second = execute_incremental_cached(
         &program,
         &mut evaluator,
         &loaded.env,
         "app",
         std::slice::from_ref(&after),
-        Some(&first.value),
+        Some(&first),
         &changed_paths("state", &before, &after),
     )
     .unwrap();
+    let full = execute(&program, &mut evaluator, &loaded.env, "app", &[after]).unwrap();
 
+    assert_eq!(second.stats.reused_components, 1);
     assert_eq!(
         second.stats.component_decisions,
         vec![crate::ComponentDecision {
             component: "app-header".to_owned(),
             path: "root.child.0".to_owned(),
-            outcome: crate::ComponentDecisionOutcome::Executed(
-                crate::ComponentExecutionReason::OpaqueDependency
-            ),
+            outcome: crate::ComponentDecisionOutcome::Reused,
         }]
     );
+    assert!(second.value.structurally_equal(&full).unwrap());
 }
 
 fn app_state(title: &str, show: bool, items: &[&str]) -> Value {

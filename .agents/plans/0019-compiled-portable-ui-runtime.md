@@ -37,6 +37,10 @@ mount and recovery. Keyed `for` blocks also retain rows whose immutable item
 value is unchanged when a collection changes or reorders; a changed external
 dependency still conservatively rerenders every affected row. The cache is
 internal to the JUIR executor and does not alter the structural-tree contract.
+It also retains prior input values at component boundaries: a component whose
+complete plan reads only its own inputs can now be reused when a conservatively
+opaque caller expression evaluates to an equal immutable value. A component
+with any opaque/module-level dependency remains re-executable.
 Portable differential scenarios now cover keyed `for` rows, dynamic properties
 and classes, conditional branches, and nested component calls in all four
 source syntaxes; they compare the reference structural value to JUIR after
