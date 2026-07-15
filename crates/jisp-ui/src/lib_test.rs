@@ -9,6 +9,7 @@ use crate::native::{self, NativeError, NativeScalar, NativeWidgetKind};
 use crate::{
     changed_paths, compile, execute, execute_incremental, execute_incremental_cached, mount_plan,
     render_static_html, ChangeSet, Dependency, DependencyPath, Node, Scalar, Slot,
+    MOUNT_PLAN_PROTOCOL,
 };
 
 fn typed(source: &str) -> TypedModule {
@@ -969,6 +970,32 @@ fn native_widget_adapter_reports_unsupported_host_capabilities() {
         error,
         NativeError::UnsupportedElement {
             tag: "img".to_owned()
+        }
+    );
+}
+
+#[test]
+fn native_registry_negotiates_an_exact_juir_mount_protocol() {
+    let tree = Value::Obj(indexmap::IndexMap::from([(
+        "tag".to_owned(),
+        Value::string("div"),
+    )]));
+    let registry = native::NativeRegistry::portable_baseline();
+
+    assert_eq!(
+        registry.negotiate_mount_protocol(["jisp-ui-mount-plan/2", MOUNT_PLAN_PROTOCOL]),
+        Some(MOUNT_PLAN_PROTOCOL)
+    );
+    assert_eq!(
+        native::render_mount_plan(MOUNT_PLAN_PROTOCOL, &tree, &registry)
+            .unwrap()
+            .kind,
+        NativeWidgetKind::Container
+    );
+    assert_eq!(
+        native::render_mount_plan("jisp-ui-mount-plan/2", &tree, &registry).unwrap_err(),
+        NativeError::UnsupportedMountProtocol {
+            protocol: "jisp-ui-mount-plan/2".to_owned(),
         }
     );
 }

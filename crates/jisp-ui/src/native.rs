@@ -11,6 +11,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use indexmap::IndexMap;
 use jisp_eval::Value;
 
+use crate::MOUNT_PLAN_PROTOCOL;
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum NativeWidgetKind {
     Container,
@@ -46,8 +48,9 @@ pub enum NativeScalar {
     Str(String),
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug)]
 pub struct NativeRegistry {
+    mount_protocols: BTreeSet<String>,
     widgets: BTreeMap<String, NativeWidgetSpec>,
 }
 
@@ -67,6 +70,7 @@ pub enum NativeError {
     UnsupportedProperty { tag: String, name: String },
     UnsupportedEvent { tag: String, name: String },
     InvalidScalar { field: String },
+    UnsupportedMountProtocol { protocol: String },
 }
 
 impl std::fmt::Display for NativeError {
@@ -97,11 +101,26 @@ impl std::fmt::Display for NativeError {
             Self::InvalidScalar { field } => {
                 write!(formatter, "native UI `{field}` must be a scalar")
             }
+            Self::UnsupportedMountProtocol { protocol } => {
+                write!(
+                    formatter,
+                    "native host does not support JUIR mount protocol `{protocol}`"
+                )
+            }
         }
     }
 }
 
 impl std::error::Error for NativeError {}
+
+impl Default for NativeRegistry {
+    fn default() -> Self {
+        Self {
+            mount_protocols: BTreeSet::from([MOUNT_PLAN_PROTOCOL.to_owned()]),
+            widgets: BTreeMap::new(),
+        }
+    }
+}
 
 impl NativeRegistry {
     /// A small semantic widget set suitable for an initial desktop/mobile
@@ -159,6 +178,18 @@ impl NativeRegistry {
         );
     }
 
+    /// Chooses one exact mount-plan protocol from values advertised by a JUIR
+    /// producer. There is intentionally no best-effort downgrade across major
+    /// versions because a host must not reinterpret an unknown template shape.
+    pub fn negotiate_mount_protocol<'a>(
+        &self,
+        offered: impl IntoIterator<Item = &'a str>,
+    ) -> Option<&'a str> {
+        offered
+            .into_iter()
+            .find(|protocol| self.mount_protocols.contains(*protocol))
+    }
+
     fn widget(&self, tag: &str) -> Result<&NativeWidgetSpec, NativeError> {
         self.widgets
             .get(tag)
@@ -171,6 +202,22 @@ impl NativeRegistry {
 /// Materialize a portable JUIR structural value as semantic native widgets.
 pub fn render(value: &Value, registry: &NativeRegistry) -> Result<NativeWidget, NativeError> {
     render_node(value, registry)
+}
+
+/// Materialize a structural value only after exact JUIR mount-protocol
+/// negotiation. This is the entry point for a native host consuming serialized
+/// JUIR; [`render`] remains a convenient in-process structural-tree helper.
+pub fn render_mount_plan(
+    protocol: &str,
+    value: &Value,
+    registry: &NativeRegistry,
+) -> Result<NativeWidget, NativeError> {
+    if registry.negotiate_mount_protocol([protocol]).is_none() {
+        return Err(NativeError::UnsupportedMountProtocol {
+            protocol: protocol.to_owned(),
+        });
+    }
+    render(value, registry)
 }
 
 fn render_node(value: &Value, registry: &NativeRegistry) -> Result<NativeWidget, NativeError> {

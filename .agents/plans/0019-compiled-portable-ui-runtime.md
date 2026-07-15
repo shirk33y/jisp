@@ -127,6 +127,10 @@ Production server delivery and block-level anchors remain subsequent M5 work.
 `jisp-ui::native` now supplies an in-memory semantic-widget prototype with a
 deliberately small registry and explicit unsupported-element/metadata
 diagnostics; it is deliberately independent of DOM, CSS, and any GUI toolkit.
+JUIR mount-plan producers and browser/native hosts now negotiate an exact
+versioned protocol name (`jisp-ui-mount-plan/1`) rather than attempting a
+best-effort layout fallback; effect/WIT capability negotiation remains a
+separate `(name, version)` contract.
 M0's browser regression contract is now executable rather than manual: the
 pinned agent-browser scenario drives the real Wasm playground and proves
 controlled-input identity, focus, selection, SSR hydration, keyed reordering,

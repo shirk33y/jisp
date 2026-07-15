@@ -203,6 +203,13 @@ are included for inspection. The plan contains no expression code, closures, or
 host objects; a host combines it with the initial structural value returned by
 the canonical executor and falls back to that value for every dynamic hole.
 
+JUIR mount protocols negotiate by exact name, including their major version:
+the browser host accepts only `jisp-ui-mount-plan/1`, and
+`NativeRegistry::negotiate_mount_protocol` selects only an explicitly offered
+match. An unknown major version is a diagnostic, never a guessed layout or
+silent downgrade. Capability negotiation remains separate: its `(name,
+version)` pairs are declared through the WIT/effect-host boundary.
+
 ### Native adapter prototype
 
 `jisp-ui::native` is an in-memory reference adapter for a deliberately small

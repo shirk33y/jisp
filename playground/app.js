@@ -8,6 +8,7 @@ import { yaml } from "https://esm.sh/@codemirror/lang-yaml@6.1.2";
 import { oneDark } from "https://esm.sh/@codemirror/theme-one-dark@6.1.2";
 
 const assetVersion = new URL(import.meta.url).searchParams.get("v") || "dev";
+const mountPlanProtocol = "jisp-ui-mount-plan/1";
 const wasmModule = await import(`./pkg/jisp_wasm.js?v=${encodeURIComponent(assetVersion)}`);
 const { default: init, convert_source, PlaygroundSession } = wasmModule;
 
@@ -656,6 +657,9 @@ function postTree(tree) {
 }
 
 function postMount(tree, plan) {
+  if (plan?.protocol !== mountPlanProtocol) {
+    throw new Error(`Unsupported JUIR mount protocol: ${String(plan?.protocol)}`);
+  }
   latestTree = tree;
   latestSsrPayload = null;
   latestMountPlan = plan;

@@ -18,6 +18,11 @@ pub mod effects;
 pub mod native;
 pub mod testing;
 
+/// Exact protocol name required by hosts that consume a serialized JUIR mount
+/// plan. Protocol names include their major version so hosts never guess a
+/// compatible layout from an unfamiliar plan.
+pub const MOUNT_PLAN_PROTOCOL: &str = "jisp-ui-mount-plan/1";
+
 #[derive(Clone, Debug)]
 pub struct Program {
     pub components: BTreeMap<String, Component>,
@@ -375,7 +380,7 @@ pub fn mount_plan(program: &Program, component: &str) -> Result<JsonValue, Compi
                 name: component.to_owned(),
             })?;
     Ok(json!({
-        "protocol": "jisp-ui-mount-plan/1",
+        "protocol": MOUNT_PLAN_PROTOCOL,
         "component": component.name,
         "root": mount_plan_node(&component.root),
     }))
