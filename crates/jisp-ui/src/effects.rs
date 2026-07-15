@@ -17,8 +17,9 @@ pub enum Owner {
     App,
     /// An identified component instance path. The full ancestry is part of the
     /// identity: two independently mounted `todo-row` components may use the
-    /// same key without sharing local resources. This is a lifecycle identity
-    /// only; component-local Jisp state is not implemented yet.
+    /// same key without sharing local resources or `ui.local` state. JUIR now
+    /// uses the equivalent key-aware path for local state; source-level local
+    /// commands/subscriptions remain a later extension of this contract.
     Component {
         path: Vec<ComponentInstance>,
     },
@@ -26,9 +27,9 @@ pub enum Owner {
 
 /// One stable segment of a component instance owner path.
 ///
-/// `key` is supplied by a keyed dynamic parent. A later local-state surface
-/// may derive a static call-site identity outside dynamic lists, but it must
-/// never fall back to a list position for a repeated child.
+/// `key` is supplied by a keyed dynamic parent. `ui.local` also derives a
+/// stable static call-site identity outside dynamic lists, but a repeated
+/// dynamic child must never fall back to a list position.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct ComponentInstance {
     pub template: String,
