@@ -127,6 +127,10 @@ Production server delivery and block-level anchors remain subsequent M5 work.
 `jisp-ui::native` now supplies an in-memory semantic-widget prototype with a
 deliberately small registry and explicit unsupported-element/metadata
 diagnostics; it is deliberately independent of DOM, CSS, and any GUI toolkit.
+M0's browser regression contract is now executable rather than manual: the
+pinned agent-browser scenario drives the real Wasm playground and proves
+controlled-input identity, focus, selection, SSR hydration, and stable
+scrollbar width through the sandboxed host boundary.
 All stated M0--M6 exit criteria are now verified on `master`. Production
 server transport, block-level anchors, richer local-test ergonomics, additional
 browser providers, and lazy delivery remain intentionally deferred extensions;

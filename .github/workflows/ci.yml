@@ -52,3 +52,25 @@ jobs:
           echo "$WASMTIME_HOME/bin" >> "$GITHUB_PATH"
       - name: Execute the capability component in two Component Model hosts
         run: scripts/verify-ui-capability-component-hosts.sh
+
+  playground:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.96.1
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: jisp-rust-1.96.1
+          cache-targets: "true"
+          save-if: ${{ github.ref == 'refs/heads/master' }}
+      - uses: jetli/wasm-pack-action@v0.4.0
+      - run: wasm-pack build crates/jisp-wasm --target web --out-dir ../../playground/pkg --out-name jisp_wasm
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+      - run: npm install --global agent-browser@0.31.2
+      - run: agent-browser install --with-deps
+      - run: scripts/test-playground.sh

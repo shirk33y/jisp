@@ -86,8 +86,27 @@ ordinary `(test ...)` fixtures; UI scenarios should only exercise the
 
 The playground recognises the same forms. Its **Run tests** button executes
 them in Wasm and shows pass/fail results, while the preview compiles the source
-with fixture-only `ui.test` forms removed. A future browser E2E adapter can
-replay the same `dispatch` trace without changing application test code.
+with fixture-only `ui.test` forms removed.
+
+## Browser-host regression
+
+`scripts/test-playground.sh` drives a real locally built Wasm playground with
+agent-browser. It verifies that a controlled input retains its DOM identity,
+focus, value, and selection after an incremental reducer update and SSR
+hydration, and that the preview keeps a stable scrollbar gutter and width. The
+test communicates with the opaque sandboxed iframe only through its existing
+host message boundary and a read-only diagnostic probe; it does not evaluate
+Jisp or access preview DOM state from the outer page.
+
+Build the package first, then run the regression:
+
+```sh
+wasm-pack build crates/jisp-wasm --target web --out-dir ../../playground/pkg --out-name jisp_wasm
+scripts/test-playground.sh
+```
+
+CI installs the pinned `agent-browser` release and runs this command on every
+push and pull request.
 
 ## Native conformance
 

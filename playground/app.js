@@ -220,6 +220,8 @@ const allowedTags = new Set(["a", "article", "aside", "button", "div", "footer",
 const allowedEvents = new Set(["blur", "change", "click", "focus", "input", "keydown", "keyup", "submit"]);
 const root = document.getElementById("root");
 let eventSequence = 0;
+const probeIds = new WeakMap();
+let nextProbeId = 1;
 const hostMetrics = {
   mounts: 0,
   replacements: 0,
@@ -232,6 +234,40 @@ const hostMetrics = {
 
 function reportHostMetrics() {
   parent.postMessage({ type: "jisp-host-metrics", metrics: { ...hostMetrics } }, "*");
+}
+
+function probeElement(element) {
+  if (!element) return null;
+  let identity = probeIds.get(element);
+  if (!identity) {
+    identity = nextProbeId++;
+    probeIds.set(element, identity);
+  }
+  const control = element instanceof HTMLInputElement
+    || element instanceof HTMLTextAreaElement
+    || element instanceof HTMLSelectElement;
+  return {
+    identity,
+    path: element.dataset?.jispPath || null,
+    tag: element.tagName,
+    value: control && "value" in element ? element.value : null,
+    selectionStart: control && "selectionStart" in element ? element.selectionStart : null,
+    selectionEnd: control && "selectionEnd" in element ? element.selectionEnd : null,
+  };
+}
+
+function reportHostProbe() {
+  const style = getComputedStyle(document.documentElement);
+  parent.postMessage({
+    type: "jisp-host-probe",
+    active: probeElement(document.activeElement),
+    firstControl: probeElement(root.querySelector("input, textarea, select")),
+    viewport: {
+      clientWidth: document.documentElement.clientWidth,
+      overflowY: style.overflowY,
+      scrollbarGutter: style.scrollbarGutter,
+    },
+  }, "*");
 }
 
 function safeAttribute(element, name, value) {
@@ -575,6 +611,10 @@ function matchesHydrationTree(existing, tree) {
 
 addEventListener("message", (message) => {
   if (message.source !== parent) return;
+  if (message.data?.type === "jisp-host-probe") {
+    reportHostProbe();
+    return;
+  }
   if (message.data?.type === "jisp-render") {
     const focus = focusedControl();
     const current = root.firstChild;
@@ -900,6 +940,10 @@ preview.srcdoc = previewDocument();
 
 window.addEventListener("message", (message) => {
   if (message.source !== preview.contentWindow) return;
+  if (message.data?.type === "jisp-host-probe") {
+    preview.dataset.jispHostProbe = JSON.stringify(message.data);
+    return;
+  }
   if (message.data?.type === "jisp-host-metrics") {
     hostMetrics = message.data.metrics;
     return;
