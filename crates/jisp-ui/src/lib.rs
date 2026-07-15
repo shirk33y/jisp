@@ -491,6 +491,7 @@ impl Execution {
 #[derive(Clone)]
 struct CachedEachItem {
     value: Value,
+    key: Option<String>,
     rendered: Value,
 }
 
@@ -942,7 +943,6 @@ impl Executor<'_> {
                         return Ok(Value::List(previous.clone()));
                     }
                 }
-                self.clear_local_state_subtree(path);
                 let values = self.evaluator.eval_in(collection, env)?;
                 let Value::List(values) = values else {
                     return Err(invalid_value(
@@ -953,6 +953,22 @@ impl Executor<'_> {
                         ),
                     ));
                 };
+                let item_keys = values
+                    .iter()
+                    .map(|value| {
+                        let item_env = env.child();
+                        item_env.define(binding.clone(), value.clone());
+                        self.each_item_key(body, &item_env)
+                    })
+                    .collect::<Result<Vec<_>, ExecuteError>>()?;
+                let keyed_instances = item_keys.iter().all(Option::is_some);
+                if !keyed_instances {
+                    // An index is not component identity. Until every row has
+                    // an evaluated UI key, reset any prior local cells rather
+                    // than letting state drift to a different item after a
+                    // list edit or reorder.
+                    self.clear_local_state_subtree(path);
+                }
                 let mut reusable = if self.each_body_uses_only_stable_inputs(body, binding) {
                     self.previous_each_cache
                         .and_then(|cache| cache.get(path))
@@ -963,26 +979,30 @@ impl Executor<'_> {
                 };
                 let mut cached = Vec::with_capacity(values.len());
                 let mut rendered = Vec::with_capacity(values.len());
-                for (index, value) in values.into_iter().enumerate() {
-                    if let Some(previous_index) = reusable
-                        .iter()
-                        .position(|previous| values_equal(&previous.value, &value))
-                    {
+                for (index, (value, key)) in values.into_iter().zip(item_keys).enumerate() {
+                    let item_path = key.as_ref().map_or_else(
+                        || format!("{path}.item.{index}"),
+                        |key| format!("{path}.key.{key}"),
+                    );
+                    if let Some(previous_index) = reusable.iter().position(|previous| {
+                        previous.key == key && values_equal(&previous.value, &value)
+                    }) {
                         let previous = reusable.remove(previous_index);
                         self.stats.reused_items += 1;
                         rendered.push(previous.rendered.clone());
                         cached.push(CachedEachItem {
                             value,
+                            key,
                             rendered: previous.rendered,
                         });
                         continue;
                     }
                     let item_env = env.child();
                     item_env.define(binding.clone(), value.clone());
-                    let rendered_item =
-                        self.node(body, &item_env, None, &format!("{path}.item.{index}"))?;
+                    let rendered_item = self.node(body, &item_env, None, &item_path)?;
                     cached.push(CachedEachItem {
                         value,
+                        key,
                         rendered: rendered_item.clone(),
                     });
                     rendered.push(rendered_item);
@@ -1102,6 +1122,56 @@ impl Executor<'_> {
             outcome: ComponentDecisionOutcome::Reused,
         });
         previous.clone()
+    }
+
+    fn each_item_key(&mut self, node: &Node, env: &Env) -> Result<Option<String>, ExecuteError> {
+        match node {
+            Node::Element(element) => element
+                .key
+                .as_ref()
+                .map(|key| self.slot(key, env, None).map(|value| local_key(&value)))
+                .transpose(),
+            Node::ComponentCall {
+                name, arguments, ..
+            } => {
+                let component = self.program.components.get(name).ok_or_else(|| {
+                    ExecuteError::UnknownComponent {
+                        name: name.to_owned(),
+                    }
+                })?;
+                if arguments.len() < component.params.len()
+                    || (component.rest.is_none() && arguments.len() != component.params.len())
+                {
+                    return Ok(None);
+                }
+                let component_env = self.module_env.child();
+                for (parameter, argument) in component.params.iter().zip(arguments) {
+                    component_env.define(parameter.clone(), self.evaluator.eval_in(argument, env)?);
+                }
+                if let Some(rest) = &component.rest {
+                    let values = arguments[component.params.len()..]
+                        .iter()
+                        .map(|argument| self.evaluator.eval_in(argument, env))
+                        .collect::<Result<Vec<_>, _>>()?;
+                    component_env.define(rest.clone(), Value::List(values));
+                }
+                self.each_item_key(&component.root, &component_env)
+            }
+            Node::Local { body, .. } => self.each_item_key(body, env),
+            Node::If {
+                condition,
+                then_branch,
+                else_branch,
+                ..
+            } => {
+                if self.evaluator.eval_in(condition, env)?.truthy() {
+                    self.each_item_key(then_branch, env)
+                } else {
+                    self.each_item_key(else_branch, env)
+                }
+            }
+            Node::Text(_) | Node::Each { .. } | Node::Dynamic { .. } => Ok(None),
+        }
     }
 
     fn retain_local_state_subtree(&mut self, path: &str) {
@@ -1426,6 +1496,20 @@ fn values_equal(left: &Value, right: &Value) -> bool {
         // Treat them as changed, which is safe for an incremental scheduler.
         (Value::Closure(_), Value::Closure(_)) => false,
         _ => false,
+    }
+}
+
+fn local_key(value: &Value) -> String {
+    match value {
+        Value::Str(value) => format!("string:{value}"),
+        Value::Int(value) => format!("int:{value}"),
+        Value::BigInt(value) => format!("bigint:{value}"),
+        Value::Float(value) => format!("float:{value}"),
+        Value::Bool(value) => format!("bool:{value}"),
+        // Invalid UI keys are still diagnosed by the structural host. Use a
+        // distinct nonempty internal identity in the meantime so we never
+        // collide an invalid value with a valid scalar key.
+        value => format!("invalid:{}", value.display_string()),
     }
 }
 

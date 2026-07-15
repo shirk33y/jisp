@@ -862,6 +862,67 @@ fn local_component_state_is_scoped_per_instance_and_resets_after_unmount() {
     );
 }
 
+#[cfg(feature = "juir")]
+#[test]
+fn keyed_for_rows_retain_their_local_state_when_reordered() {
+    let mut session = PlaygroundSession::new();
+    let source = r#"
+(def init false)
+(defn update (state action) (not state))
+(component row (item)
+  (ui.local 0 (fn (count set-count)
+    (li (key (. item "id"))
+      (button
+        (attr "data-id" (str.from (. item "id")))
+        (on click (emit (set-count (+ count 1))))
+        (text (str.from count)))))))
+(component app (reversed)
+  (div
+    (button (attr "id" "reorder") (on click (emit true)) (text "reorder"))
+    (ul
+      (for item
+        (if reversed
+          (list (obj "id" 2) (obj "id" 1))
+          (list (obj "id" 1) (obj "id" 2)))
+        (row item)))))
+(ui.app init update app)
+"#;
+    let initial: Value = serde_json::from_str(&session.load_source(source).unwrap()).unwrap();
+    let row_one = initial["children"][1]["children"][0]["children"][0]["events"]["click"]["handler"]
+        .as_u64()
+        .unwrap() as usize;
+    let after_increment: Value = serde_json::from_str(
+        &session
+            .dispatch_event(row_one, r#"{"type":"click"}"#)
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(
+        after_increment["children"][1]["children"][0]["children"][0]["children"][0]["value"],
+        "1"
+    );
+
+    let reorder = after_increment["children"][0]["events"]["click"]["handler"]
+        .as_u64()
+        .unwrap() as usize;
+    let reordered: Value = serde_json::from_str(
+        &session
+            .dispatch_event(reorder, r#"{"type":"click"}"#)
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(reordered["children"][1]["children"][0]["key"], 2);
+    assert_eq!(
+        reordered["children"][1]["children"][0]["children"][0]["children"][0]["value"],
+        "0"
+    );
+    assert_eq!(reordered["children"][1]["children"][1]["key"], 1);
+    assert_eq!(
+        reordered["children"][1]["children"][1]["children"][0]["children"][0]["value"],
+        "1"
+    );
+}
+
 fn handler_for(tree: &Value, event: &str) -> Option<u64> {
     tree.get("events")
         .and_then(|events| events.get(event))

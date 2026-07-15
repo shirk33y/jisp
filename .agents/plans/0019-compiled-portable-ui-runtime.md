@@ -65,15 +65,15 @@ deterministic fake-host capability set and deliver current command/subscription
 successes or stable errors through declared action templates and the ordinary
 reducer. The browser Wasm session exposes declarations without executing them;
 its fixture-only test entry point runs that deterministic simulation. Real host
-execution beyond the narrow providers and key-aware dynamic local ownership
-remain subsequent M4 work.
+execution beyond the narrow providers and local commands/subscriptions remain
+subsequent M4 work.
 `ui.local` now provides the first opt-in component state boundary for stable
 static component paths: it binds `(state set-state)` lexically, routes an
 event-scoped setter directly through the JUIR executor rather than the app
 reducer, scopes sibling instances independently, and drops the cell on
-unmount. A changed `for` collection intentionally resets its descendant local
-cells until evaluated keys are incorporated into instance paths; this is a
-conservative no-state-bleed rule, not a claim of keyed local-state retention.
+unmount. An enclosing keyed `for` now derives the component instance path from
+its evaluated root key, so a reordered row retains its cell; an unkeyed dynamic
+row resets on a collection change rather than bleeding state by index.
 The fake host's component owner identity is now a complete ordered ancestry,
 not merely the terminal `(template, key)`, so equal keyed descendants beneath
 different parents cannot collide before local ownership is exposed in source.
@@ -87,7 +87,7 @@ narrow browser provider for `storage.write@1` commands and `timer.tick@1`
 subscriptions. It validates their exact portable schemas, cancels
 removed/replaced timers, and returns generation-safe completions through this
 embedding protocol. Browser I/O beyond those two demonstrator capabilities and
-key-aware dynamic component-local ownership remain subsequent M4 work.
+local commands/subscriptions remain subsequent M4 work.
 M6 now has a first WIT package at
 [`wit/jisp-ui-capabilities.wit`](../../wit/jisp-ui-capabilities.wit), limited to
 coarse versioned storage/timer/navigation capabilities. The workspace's
@@ -632,8 +632,9 @@ problems before deeper compiler work.
 - Component removal cleans up owned resources exactly once.
 
 The first `ui.local` implementation satisfies this for stable static component
-paths and validates its reset-on-unmount behavior. Key-aware local ownership in
-reordered dynamic lists remains required before this milestone is complete.
+paths and keyed dynamic rows; it validates independent sibling instances,
+reset-on-unmount, and keyed-list retention across reorder. Local
+commands/subscriptions remain required before this milestone is complete.
 
 ### M5 — SSR, hydration, and host adapters
 

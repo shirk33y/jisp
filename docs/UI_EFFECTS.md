@@ -142,14 +142,13 @@ reducer. A local update rerenders without calling `(update app-state action)`.
 The cell is initialized once, retained while its component path remains
 mounted, and discarded on unmount, so remounting starts from `initial`.
 
-The first implementation deliberately supports stable static component paths.
-When an enclosing `for` collection changes, the executor clears descendants'
-local cells before recreating its rows rather than risking state moving to a
-different item by index. Key-preserving local state across reordered dynamic
-lists needs the next identity pass, where the runtime carries the evaluated
-`key` into component instance paths. Local commands/subscriptions are also
-deferred; source-declared effects remain app-owned until that key-aware
-ownership bridge exists.
+The executor also derives an instance path from a keyed `for` row's evaluated
+root `key`, including through a component call and `ui.local` wrapper. Moving a
+valid keyed row therefore retains its local cell; removing it discards the
+cell. An unkeyed dynamic row is deliberately reset whenever the collection
+changes rather than risking state moving to a different item by index. Local
+commands/subscriptions are still deferred; source-declared effects remain
+app-owned until the same key-aware ownership bridge is extended to resources.
 
 ## Capability negotiation and testing
 
