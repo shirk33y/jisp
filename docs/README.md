@@ -39,6 +39,9 @@ Repository-root files remain deliberately small and operational:
 - [MAL and multi-host execution](research/MAL.md): analysis of MAL/miniMAL,
   JSON as canonical source, native extensions, process runners, and portable
   host support.
+- [IO, storage, and host capabilities](research/IO_STORAGE.md): proposed
+  `memfs` baseline, optional `redb` image backend, capability-boundary rules,
+  and cross-host storage/code-generation trade-offs.
 
 ## Document ownership
 
