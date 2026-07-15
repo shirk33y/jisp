@@ -127,6 +127,10 @@ Production server delivery and block-level anchors remain subsequent M5 work.
 `jisp-ui::native` now supplies an in-memory semantic-widget prototype with a
 deliberately small registry and explicit unsupported-element/metadata
 diagnostics; it is deliberately independent of DOM, CSS, and any GUI toolkit.
+All stated M0--M6 exit criteria are now verified on `master`. Production
+server transport, block-level anchors, richer local-test ergonomics, additional
+browser providers, and lazy delivery remain intentionally deferred extensions;
+they are not unimplemented fallbacks in the portable runtime contract.
 
 ## Goal
 
