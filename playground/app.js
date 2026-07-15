@@ -222,6 +222,8 @@ const allowedTags = new Set(["a", "article", "aside", "button", "div", "footer",
 const allowedEvents = new Set(["blur", "change", "click", "focus", "input", "keydown", "keyup", "submit"]);
 const root = document.getElementById("root");
 let eventSequence = 0;
+const delegatedEventCounts = new Map();
+const delegatedEventListeners = new Map();
 const probeIds = new WeakMap();
 let nextProbeId = 1;
 const hostMetrics = {
@@ -268,6 +270,7 @@ function reportHostProbe() {
     active: probeElement(document.activeElement),
     firstControl: probeElement(root.querySelector("input, textarea, select")),
     keyed,
+    delegated: [...delegatedEventCounts.keys()],
     viewport: {
       clientWidth: document.documentElement.clientWidth,
       overflowY: style.overflowY,
@@ -293,6 +296,58 @@ function browserEvent(event) {
     checked: target && "checked" in target ? target.checked : null,
     key: event.key || null,
   };
+}
+
+function canDelegateEvent(name, policy) {
+  return !policy.capture && !policy.stopPropagation && name !== "blur" && name !== "focus";
+}
+
+function dispatchEventRecord(record, event) {
+  hostMetrics.events += 1;
+  if (record.policy.preventDefault) event.preventDefault();
+  if (record.policy.stopPropagation) event.stopPropagation();
+  const sequence = ++eventSequence;
+  if (event.target && "value" in event.target) event.target.__jispInputSequence = sequence;
+  parent.postMessage({ type: "jisp-event", handler: record.handler, event: browserEvent(event), sequence }, "*");
+}
+
+function delegatedEventListener(name, event) {
+  for (let element = event.target instanceof Element ? event.target : null; element; element = element.parentElement) {
+    const record = element.__jispEvents?.get(name);
+    if (record?.mode === "delegated") dispatchEventRecord(record, event);
+    if (element === root) break;
+  }
+}
+
+function retainDelegatedEvent(name) {
+  const count = delegatedEventCounts.get(name) || 0;
+  if (count === 0) {
+    const listener = (event) => delegatedEventListener(name, event);
+    delegatedEventListeners.set(name, listener);
+    root.addEventListener(name, listener);
+  }
+  delegatedEventCounts.set(name, count + 1);
+}
+
+function releaseDelegatedEvent(name) {
+  const count = delegatedEventCounts.get(name) || 0;
+  if (count <= 1) {
+    const listener = delegatedEventListeners.get(name);
+    if (listener) root.removeEventListener(name, listener);
+    delegatedEventListeners.delete(name);
+    delegatedEventCounts.delete(name);
+    return;
+  }
+  delegatedEventCounts.set(name, count - 1);
+}
+
+function disposeNodeEvents(node) {
+  if (node.nodeType !== Node.ELEMENT_NODE) return;
+  for (const [name, record] of node.__jispEvents || []) {
+    if (record.mode === "delegated") releaseDelegatedEvent(name);
+    else node.removeEventListener(name, record.listener, record.policy.capture);
+  }
+  for (const child of node.children) disposeNodeEvents(child);
 }
 
 function treeKey(tree) {
@@ -349,6 +404,7 @@ function patchNode(parent, existing, tree, path, options = {}) {
     const created = createNode(tree, path);
     if (existing?.parentNode === parent) {
       hostMetrics.replacements += 1;
+      disposeNodeEvents(existing);
       parent.replaceChild(created, existing);
     }
     else parent.append(created);
@@ -443,30 +499,31 @@ function syncEvents(element, events) {
   const records = element.__jispEvents || new Map();
   for (const [name, record] of records) {
     const next = eventDescriptor(events[name]);
-    if (!allowedEvents.has(name) || !next || next.policy.capture !== record.policy.capture) {
-      element.removeEventListener(name, record.listener, record.policy.capture);
+    const mode = next && canDelegateEvent(name, next.policy) ? "delegated" : "direct";
+    if (!allowedEvents.has(name)
+      || !next
+      || record.mode !== mode
+      || (mode === "direct" && next.policy.capture !== record.policy.capture)) {
+      if (record.mode === "delegated") releaseDelegatedEvent(name);
+      else element.removeEventListener(name, record.listener, record.policy.capture);
       records.delete(name);
     }
   }
   for (const [name, encoded] of Object.entries(events)) {
     const next = eventDescriptor(encoded);
     if (!allowedEvents.has(name) || !next) continue;
+    const mode = canDelegateEvent(name, next.policy) ? "delegated" : "direct";
     let record = records.get(name);
     if (!record) {
       record = {
         handler: next.handler,
         policy: next.policy,
-        listener(event) {
-          hostMetrics.events += 1;
-          if (record.policy.preventDefault) event.preventDefault();
-          if (record.policy.stopPropagation) event.stopPropagation();
-          const sequence = ++eventSequence;
-          if (event.target && "value" in event.target) event.target.__jispInputSequence = sequence;
-          parent.postMessage({ type: "jisp-event", handler: record.handler, event: browserEvent(event), sequence }, "*");
-        },
+        mode,
       };
+      if (mode === "delegated") retainDelegatedEvent(name);
+      else record.listener = (event) => dispatchEventRecord(record, event);
       records.set(name, record);
-      element.addEventListener(name, record.listener, record.policy.capture);
+      if (mode === "direct") element.addEventListener(name, record.listener, record.policy.capture);
     }
     record.handler = next.handler;
     record.policy = next.policy;
@@ -516,7 +573,10 @@ function reconcileChildren(parent, trees, path, options = {}) {
   }
   const retained = new Set(rendered);
   for (const child of [...parent.childNodes]) {
-    if (!retained.has(child)) child.remove();
+    if (!retained.has(child)) {
+      disposeNodeEvents(child);
+      child.remove();
+    }
   }
   return true;
 }
@@ -603,6 +663,7 @@ function hydrateTree(payload, preserveBrowserState) {
 }
 
 function mountPlan(tree, plan) {
+  for (const child of [...root.childNodes]) disposeNodeEvents(child);
   root.replaceChildren(createPlannedNode(plan?.root, tree, "0"));
   reportHostMetrics();
 }
@@ -626,7 +687,10 @@ addEventListener("message", (message) => {
     const current = root.firstChild;
     const next = patchNode(root, current, message.data.tree, "0");
     for (const child of [...root.childNodes]) {
-      if (child !== next) child.remove();
+      if (child !== next) {
+        disposeNodeEvents(child);
+        child.remove();
+      }
     }
     restoreFocus(focus);
     reportHostMetrics();
@@ -828,6 +892,7 @@ function syncEffectHost() {
 }
 
 function renderPreview() {
+  clearTimeout(renderTimer);
   if (!ready) return;
   try {
     clearEffectOperations();

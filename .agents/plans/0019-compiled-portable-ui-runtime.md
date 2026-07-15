@@ -135,6 +135,10 @@ M0's browser regression contract is now executable rather than manual: the
 pinned agent-browser scenario drives the real Wasm playground and proves
 controlled-input identity, focus, selection, SSR hydration, keyed reordering,
 and stable scrollbar width through the sandboxed host boundary.
+The DOM host now delegates ordinary bubbling events from its root, preserving
+direct listeners only when capture, synchronous propagation control, or a
+non-bubbling event requires one; delegated records are released with their
+subtree on disposal.
 All stated M0--M6 exit criteria are now verified on `master`. Production
 server transport, block-level anchors, richer local-test ergonomics, additional
 browser providers, and lazy delivery remain intentionally deferred extensions;

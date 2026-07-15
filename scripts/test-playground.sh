@@ -77,6 +77,9 @@ const probe = JSON.parse(preview.dataset.jispHostProbe);
 if (probe.active?.tag !== "INPUT" || probe.active.identity !== probe.firstControl?.identity) {
   throw new Error("The controlled Todo input did not receive browser focus");
 }
+if (!probe.delegated.includes("input")) {
+  throw new Error(`The ordinary input event was not delegated from the host root: ${JSON.stringify(probe)}`);
+}
 if (probe.viewport.overflowY !== "scroll" || probe.viewport.scrollbarGutter !== "stable") {
   throw new Error(`The preview must reserve its scrollbar gutter, got ${JSON.stringify(probe.viewport)}`);
 }
@@ -161,7 +164,11 @@ const preview = document.querySelector("#preview");
 const probe = JSON.parse(preview.dataset.jispHostProbe);
 const order = probe.keyed.map((entry) => entry.key).join(",");
 const plan = probe.keyed.find((entry) => entry.key === "number:1");
-if (order !== "number:1,number:2,number:3" || !plan || probe.active?.tag !== "INPUT") {
+if (order !== "number:1,number:2,number:3"
+  || !plan
+  || probe.active?.tag !== "INPUT"
+  || !probe.delegated.includes("keydown")
+  || probe.delegated.includes("input")) {
   throw new Error(`Unexpected initial keyed fixture: ${JSON.stringify(probe)}`);
 }
 preview.dataset.jispKeyedPlanIdentity = String(plan.identity);

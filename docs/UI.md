@@ -153,6 +153,12 @@ controlled edit. This preserves focused controls and their selection through
 ordinary updates. The structural tree remains the semantic oracle and recovery
 snapshot while the compiled JUIR runtime evolves.
 
+The host delegates ordinary bubbling events from its root. It keeps a direct
+listener only for `focus`/`blur` and handlers that require capture or synchronous
+`stop-propagation`; `prevent-default` remains safe at the delegated root before
+the browser default action. Removing or replacing a subtree releases its
+delegated records, so no handler survives an unmount.
+
 The playground executes two deliberately narrow browser capabilities through
 the generation-safe Wasm host boundary: `storage.write@1` and
 `timer.tick@1`. They demonstrate command persistence and a cancellable
