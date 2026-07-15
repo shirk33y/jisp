@@ -1,8 +1,10 @@
 #[cfg(feature = "juir")]
+use super::parse_owner;
+#[cfg(feature = "juir")]
 use super::render_ssr;
 use super::{
-    collect_tree_patches, format_source, parse_owner, parse_source, render_html_source,
-    run_ui_tests_source, source_without_ui_tests, PlaygroundSession,
+    collect_tree_patches, format_source, parse_source, render_html_source, run_ui_tests_source,
+    source_without_ui_tests, PlaygroundSession,
 };
 use serde_json::{json, Value};
 

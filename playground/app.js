@@ -59,6 +59,7 @@ app.innerHTML = `
             </fieldset>
           </div>
           <div class="flex items-center gap-1">
+            <button id="hydrate-ssr" class="rounded-md px-2 py-1 text-xs font-semibold text-violet-300 hover:bg-slate-800">Hydrate SSR</button>
             <button id="run-tests" class="rounded-md bg-cyan-400 px-2 py-1 text-xs font-bold text-slate-950 hover:bg-cyan-300">Run tests</button>
             <button id="reset" class="rounded-md px-2 py-1 text-xs font-semibold text-cyan-300 hover:bg-slate-800">Reset</button>
           </div>
@@ -80,6 +81,7 @@ app.innerHTML = `
 
 const select = document.getElementById("example");
 const reset = document.getElementById("reset");
+const hydrateSsr = document.getElementById("hydrate-ssr");
 const runTests = document.getElementById("run-tests");
 const testResults = document.getElementById("test-results");
 const preview = document.getElementById("preview");
@@ -842,6 +844,23 @@ function runPortableTests() {
   }
 }
 
+function hydrateSsrPreview() {
+  if (!session) return;
+  try {
+    const payload = JSON.parse(session.ssr());
+    if (payload.protocol !== "jisp-ui-ssr/1") throw new Error("Unsupported SSR payload");
+    previewHydrated = false;
+    postHydrate(payload);
+    error.classList.add("hidden");
+    setRuntimeStatus("SSR hydrated");
+  } catch (reason) {
+    status.removeAttribute("title");
+    error.textContent = String(reason);
+    error.classList.remove("hidden");
+    setStatus("bg-rose-100 text-rose-700", "SSR error");
+  }
+}
+
 function setEditorLanguage() {
   const nextLanguage = {
     lisp: clojureLanguage,
@@ -954,6 +973,7 @@ reset.addEventListener("click", () => {
     setStatus("bg-rose-100 text-rose-700", "Reset error");
   }
 });
+hydrateSsr.addEventListener("click", hydrateSsrPreview);
 runTests.addEventListener("click", runPortableTests);
 
 try {

@@ -236,6 +236,11 @@ matching SSR payload before invoking the same hydration path. A mismatching
 server tree is rejected and recovered through the ordinary full-tree mount
 rather than silently claiming hydration succeeded.
 
+The playground's **Hydrate SSR** control runs this same path against a fresh
+`jisp-ui-ssr/1` payload. It is a local server-first verification aid: it lets a
+developer type into an input, hydrate the matching tree, and confirm that the
+browser value remains intact until a reducer change intentionally writes it.
+
 This proves the hydration contract locally; a production server-delivery
 adapter, block-level SSR anchors, and resumability remain future work.
 
