@@ -64,9 +64,9 @@ lists distinct nominal types. Portable `ui.test` scenarios configure a
 deterministic fake-host capability set and deliver current command/subscription
 successes or stable errors through declared action templates and the ordinary
 reducer. The browser Wasm session exposes declarations without executing them;
-its fixture-only test entry point runs that deterministic simulation. Real host
-execution beyond the narrow providers and local commands/subscriptions remain
-subsequent M4 work.
+its fixture-only test entry point runs that deterministic simulation. The
+playground provides narrow demonstrator providers, while broader host I/O is a
+deliberate post-M4 capability expansion rather than an implicit fallback.
 `ui.local` now provides the first opt-in component state boundary for stable
 static component paths: it binds `(state set-state)` lexically, routes an
 event-scoped setter directly through the JUIR executor rather than the app
@@ -87,8 +87,9 @@ command/subscription snapshot, the fake host reconciles it with the complete
 owner path, and the embedding protocol returns completions through owner-aware
 generation checks. Unmounting the scope cancels its resources and rejects late
 completion. Local completion actions intentionally use the ordinary app
-reducer; portable `ui.test` syntax for local handler/resource scenarios remains
-subsequent M4 work.
+reducer. Portable `ui.test` syntax for local handler/resource scenarios is a
+future ergonomics improvement; it is not required for the deterministic
+ownership, cancellation, and disposal contract delivered by M4.
 `PlaygroundSession` now also exposes an opt-in generation-safe effect-host
 boundary: an embedding host configures immutable versioned capabilities, reads
 active resource generations from `jisp-ui-resources/1`, and returns an
@@ -98,8 +99,9 @@ reconciles the next desired set. The playground now attaches a deliberately
 narrow browser provider for `storage.write@1` commands and `timer.tick@1`
 subscriptions. It validates their exact portable schemas, cancels
 removed/replaced timers, and returns generation-safe completions through this
-embedding protocol. Browser I/O beyond those two demonstrator capabilities and
-local commands/subscriptions remain subsequent M4 work.
+embedding protocol. Browser I/O beyond those two demonstrator capabilities is
+a post-M4 provider expansion; local commands and subscriptions are covered by
+the same owner-aware protocol.
 M6 now has a first WIT package at
 [`wit/jisp-ui-capabilities.wit`](../../wit/jisp-ui-capabilities.wit), limited to
 coarse versioned storage/timer/navigation capabilities. The workspace's
@@ -645,8 +647,10 @@ problems before deeper compiler work.
 
 The first `ui.local` implementation satisfies this for stable static component
 paths and keyed dynamic rows; it validates independent sibling instances,
-reset-on-unmount, and keyed-list retention across reorder. Local
-commands/subscriptions remain required before this milestone is complete.
+reset-on-unmount, and keyed-list retention across reorder. Its local
+commands/subscriptions use the same owner-aware, generation-safe lifecycle,
+so M4's exit criteria are complete. Richer fixture syntax for local scenarios
+and additional real providers are separate ergonomics/capability work.
 
 ### M5 — SSR, hydration, and host adapters
 
