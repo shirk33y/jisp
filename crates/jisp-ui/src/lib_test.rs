@@ -4,6 +4,7 @@ use jisp_ir::Lowerer;
 use jisp_syntax_lisp::LispParser;
 use jisp_types::{Inferencer, TypedModule};
 
+use crate::effects::Owner;
 use crate::native::{self, NativeError, NativeScalar, NativeWidgetKind};
 use crate::{
     changed_paths, compile, execute, execute_incremental, execute_incremental_cached, mount_plan,
@@ -202,6 +203,73 @@ fn static_renderer_rejects_component_local_state() {
         .unwrap_err()
         .to_string()
         .contains("dynamic"));
+}
+
+#[test]
+fn keyed_local_scopes_keep_complete_owner_identity_when_rows_are_reused() {
+    let typed = typed(
+        r#"
+(component row (item)
+  (ui.local false (fn (open set-open)
+    (li (key (. item "id"))
+      (button (on click (emit (set-open (not open))))
+        (text (. item "title")))))))
+(component parent (item)
+  (div (key (str.cat "row." (str.from (. item "id")))) (row item)))
+(component app (state)
+  (ul (for item (. state "items") (parent item))))
+"#,
+    );
+    let program = compile(&typed).unwrap();
+    let before = state_with_items(&[(1, "One"), (2, "Two")]);
+    let after = state_with_items(&[(2, "Two"), (1, "One")]);
+    let mut evaluator = Evaluator::new();
+    let loaded = evaluator.load_module(&typed.module).unwrap();
+
+    let first = execute_incremental_cached(
+        &program,
+        &mut evaluator,
+        &loaded.env,
+        "app",
+        std::slice::from_ref(&before),
+        None,
+        &ChangeSet {
+            unknown: true,
+            ..ChangeSet::default()
+        },
+    )
+    .unwrap();
+    let owners = first.local_owners().clone();
+    assert_eq!(owners.len(), 2);
+    let first_owner = owners
+        .iter()
+        .find(|(id, _)| id.contains(".key.string:row.1."))
+        .map(|(_, owner)| owner)
+        .expect("row one local owner");
+    let Owner::Component { path } = first_owner else {
+        panic!("local scope must not use the app owner");
+    };
+    assert_eq!(
+        path.iter()
+            .map(|segment| segment.template.as_str())
+            .collect::<Vec<_>>(),
+        ["parent", "row", "$local"]
+    );
+    assert_eq!(path[0].key, "string:row.1");
+    assert_eq!(path[1].key, "string:row.1");
+
+    let second = execute_incremental_cached(
+        &program,
+        &mut evaluator,
+        &loaded.env,
+        "app",
+        std::slice::from_ref(&after),
+        Some(&first),
+        &changed_paths("state", &before, &after),
+    )
+    .unwrap();
+    assert_eq!(second.local_owners(), &owners);
+    assert_eq!(second.stats.reused_items, 2);
 }
 
 #[test]

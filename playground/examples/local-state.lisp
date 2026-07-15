@@ -43,7 +43,7 @@
       "text-violet-300")
     (disclosure
       "What is intentionally deferred?"
-      "A reordered dynamic list resets local cells today. Key-aware retention across such lists is the next ownership step, so state never silently moves to another row."
+      "A keyed dynamic list retains each row's local cell when rows move. An unkeyed list resets its cells whenever the collection changes, so state never silently moves to another row."
       "text-emerald-300")))
 
 (ui.app init update app)

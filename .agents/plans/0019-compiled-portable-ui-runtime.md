@@ -77,6 +77,12 @@ row resets on a collection change rather than bleeding state by index.
 The fake host's component owner identity is now a complete ordered ancestry,
 not merely the terminal `(template, key)`, so equal keyed descendants beneath
 different parents cannot collide before local ownership is exposed in source.
+The JUIR executor now carries that full opaque owner identity alongside every
+mounted `ui.local` cell and passes it through the browser event boundary; a
+keyed row reused from the render cache retains both its local state and owner,
+rather than displaying stale output and then losing the scope on its next
+event. This is the ownership foundation for local commands/subscriptions;
+their source syntax and completion routing remain subsequent M4 work.
 `PlaygroundSession` now also exposes an opt-in generation-safe effect-host
 boundary: an embedding host configures immutable versioned capabilities, reads
 active resource generations from `jisp-ui-resources/1`, and returns an

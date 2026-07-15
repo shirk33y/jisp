@@ -146,9 +146,13 @@ The executor also derives an instance path from a keyed `for` row's evaluated
 root `key`, including through a component call and `ui.local` wrapper. Moving a
 valid keyed row therefore retains its local cell; removing it discards the
 cell. An unkeyed dynamic row is deliberately reset whenever the collection
-changes rather than risking state moving to a different item by index. Local
-commands/subscriptions are still deferred; source-declared effects remain
-app-owned until the same key-aware ownership bridge is extended to resources.
+changes rather than risking state moving to a different item by index. Each
+mounted local scope also carries an opaque `OwnerPath` with complete component
+ancestry plus a synthetic local-scope segment. The JUIR-to-host event boundary
+checks that identity before accepting a setter result. This establishes the
+owner contract for local resources, but source-level local
+commands/subscriptions are still deferred; reducer declarations remain
+app-owned for now.
 
 ## Capability negotiation and testing
 
@@ -243,8 +247,8 @@ single checked-in ABI contract.
 
 ## Deferred decisions
 
-- Key-aware local state and local resource ownership for reordered dynamic
-  component lists.
+- Source syntax and completion routing for local commands/subscriptions, using
+  the already key-aware local owner path.
 - Concrete browser/native capability schemas, permissions, timeout policies,
   and providers beyond the two narrow playground capabilities.
 - Capability serialization choices for SSR/resume beyond the current

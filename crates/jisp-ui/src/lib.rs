@@ -473,6 +473,7 @@ pub struct Execution {
     each_cache: BTreeMap<String, Vec<CachedEachItem>>,
     component_inputs: BTreeMap<String, Vec<Value>>,
     local_states: BTreeMap<String, Value>,
+    local_owners: BTreeMap<String, effects::Owner>,
 }
 
 impl Execution {
@@ -485,6 +486,19 @@ impl Execution {
         };
         *slot = state;
         true
+    }
+
+    /// Return the opaque, full owner identity of a mounted local scope.
+    /// Hosts use it for resources declared by a future local-effect action;
+    /// source code never provides or observes this identity.
+    pub fn local_owner(&self, id: &str) -> Option<&effects::Owner> {
+        self.local_owners.get(id)
+    }
+
+    /// All mounted local scopes keyed by their executor-private ids. This is
+    /// for host plumbing only; neither ids nor owners are source-level values.
+    pub fn local_owners(&self) -> &BTreeMap<String, effects::Owner> {
+        &self.local_owners
     }
 }
 
@@ -517,6 +531,7 @@ pub fn execute_incremental(
             previous_each_cache: None,
             previous_component_inputs: None,
             previous_local_states: None,
+            previous_local_owners: None,
             changes,
         },
     )
@@ -545,6 +560,7 @@ pub fn execute_incremental_cached(
             previous_each_cache: previous.map(|execution| &execution.each_cache),
             previous_component_inputs: previous.map(|execution| &execution.component_inputs),
             previous_local_states: previous.map(|execution| &execution.local_states),
+            previous_local_owners: previous.map(|execution| &execution.local_owners),
             changes,
         },
     )
@@ -555,6 +571,7 @@ struct IncrementalInputs<'a> {
     previous_each_cache: Option<&'a BTreeMap<String, Vec<CachedEachItem>>>,
     previous_component_inputs: Option<&'a BTreeMap<String, Vec<Value>>>,
     previous_local_states: Option<&'a BTreeMap<String, Value>>,
+    previous_local_owners: Option<&'a BTreeMap<String, effects::Owner>>,
     changes: &'a ChangeSet,
 }
 
@@ -577,12 +594,24 @@ fn execute_incremental_inner(
         previous_component_inputs: inputs.previous_component_inputs,
         component_inputs: BTreeMap::new(),
         local_states: inputs.previous_local_states.cloned().unwrap_or_default(),
+        local_owners: inputs.previous_local_owners.cloned().unwrap_or_default(),
         visited_local_states: BTreeSet::new(),
         active_local_state: None,
+        active_owner: effects::Owner::App,
+        active_each_key: None,
     };
-    let value = executor.component(component, arguments, inputs.previous, "root")?;
+    let value = executor.component(
+        component,
+        arguments,
+        inputs.previous,
+        "root",
+        effects::Owner::App,
+    )?;
     executor
         .local_states
+        .retain(|id, _| executor.visited_local_states.contains(id));
+    executor
+        .local_owners
         .retain(|id, _| executor.visited_local_states.contains(id));
     Ok(Execution {
         value,
@@ -590,6 +619,7 @@ fn execute_incremental_inner(
         each_cache: executor.each_cache,
         component_inputs: executor.component_inputs,
         local_states: executor.local_states,
+        local_owners: executor.local_owners,
     })
 }
 
@@ -822,8 +852,14 @@ struct Executor<'a> {
     previous_component_inputs: Option<&'a BTreeMap<String, Vec<Value>>>,
     component_inputs: BTreeMap<String, Vec<Value>>,
     local_states: BTreeMap<String, Value>,
+    local_owners: BTreeMap<String, effects::Owner>,
     visited_local_states: BTreeSet<String>,
     active_local_state: Option<String>,
+    active_owner: effects::Owner,
+    /// The closest keyed dynamic row currently being executed. It is kept
+    /// separately from the dotted cache path because a legal UI key may itself
+    /// contain `.` (for example a string or float), which must never be split.
+    active_each_key: Option<String>,
 }
 
 impl Executor<'_> {
@@ -846,6 +882,7 @@ impl Executor<'_> {
         arguments: &[Value],
         previous: Option<&Value>,
         path: &str,
+        owner: effects::Owner,
     ) -> Result<Value, ExecuteError> {
         let component = self.program.components.get(name).cloned().ok_or_else(|| {
             ExecuteError::UnknownComponent {
@@ -872,7 +909,10 @@ impl Executor<'_> {
         if let Some(rest) = &component.rest {
             env.define(rest.clone(), Value::List(arguments[expected..].to_vec()));
         }
-        self.node(&component.root, &env, previous, path)
+        let previous_owner = std::mem::replace(&mut self.active_owner, owner);
+        let result = self.node(&component.root, &env, previous, path);
+        self.active_owner = previous_owner;
+        result
     }
 
     fn node(
@@ -988,6 +1028,11 @@ impl Executor<'_> {
                         previous.key == key && values_equal(&previous.value, &value)
                     }) {
                         let previous = reusable.remove(previous_index);
+                        // The rendered row is reused as a whole, so its
+                        // mounted local scopes remain live too. Otherwise a
+                        // keyed reorder would show old output once, then lose
+                        // the cell/owner before the next local event.
+                        self.retain_local_state_subtree(&item_path);
                         self.stats.reused_items += 1;
                         rendered.push(previous.rendered.clone());
                         cached.push(CachedEachItem {
@@ -999,7 +1044,11 @@ impl Executor<'_> {
                     }
                     let item_env = env.child();
                     item_env.define(binding.clone(), value.clone());
-                    let rendered_item = self.node(body, &item_env, None, &item_path)?;
+                    let previous_each_key =
+                        std::mem::replace(&mut self.active_each_key, key.clone());
+                    let rendered_item = self.node(body, &item_env, None, &item_path);
+                    self.active_each_key = previous_each_key;
+                    let rendered_item = rendered_item?;
                     cached.push(CachedEachItem {
                         value,
                         key,
@@ -1044,7 +1093,10 @@ impl Executor<'_> {
                         self.component_execution_reason(dependencies, previous),
                     ),
                 });
-                let rendered = self.component(name, &values, previous, path)?;
+                let owner = self
+                    .active_owner
+                    .child(name.clone(), self.component_instance_key(path));
+                let rendered = self.component(name, &values, previous, path, owner)?;
                 self.component_inputs.insert(path.to_owned(), values);
                 Ok(rendered)
             }
@@ -1061,6 +1113,10 @@ impl Executor<'_> {
                     None => self.evaluator.eval_in(initial, env)?,
                 };
                 self.local_states.insert(id.clone(), value.clone());
+                self.local_owners.insert(
+                    id.clone(),
+                    self.active_owner.child("$local", local_scope_key(path)),
+                );
                 self.visited_local_states.insert(id.clone());
                 let local_env = env.child();
                 local_env.define(state.clone(), value);
@@ -1104,6 +1160,12 @@ impl Executor<'_> {
         } else {
             ComponentExecutionReason::InputChanged
         }
+    }
+
+    fn component_instance_key(&self, path: &str) -> String {
+        self.active_each_key
+            .clone()
+            .unwrap_or_else(|| format!("static:{path}"))
     }
 
     fn reuse_component(&mut self, name: &str, path: &str, previous: &Value) -> Value {
@@ -1187,6 +1249,7 @@ impl Executor<'_> {
     fn clear_local_state_subtree(&mut self, path: &str) {
         let prefix = format!("{path}.");
         self.local_states.retain(|id, _| !id.starts_with(&prefix));
+        self.local_owners.retain(|id, _| !id.starts_with(&prefix));
         self.visited_local_states
             .retain(|id| !id.starts_with(&prefix));
     }
@@ -1511,6 +1574,13 @@ fn local_key(value: &Value) -> String {
         // collide an invalid value with a valid scalar key.
         value => format!("invalid:{}", value.display_string()),
     }
+}
+
+/// A local scope is a distinct resource owner even when it appears directly
+/// inside the app component. The full compiler path is internal and includes
+/// a keyed ancestor where one exists.
+fn local_scope_key(path: &str) -> String {
+    format!("scope:{path}.local")
 }
 
 fn values_equal_slice(left: &[Value], right: &[Value]) -> bool {

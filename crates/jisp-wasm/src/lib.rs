@@ -1,5 +1,7 @@
 //! Browser-facing WebAssembly entry points for the interpreter-backed playground.
 
+use std::collections::BTreeMap;
+
 use jisp::jisp_core::{ui_element, Node, NodeKind, SourceId, Span, SyntaxParser};
 #[cfg(feature = "juir")]
 use jisp::jisp_eval::Env;
@@ -92,7 +94,13 @@ struct EventHandler {
     callback: Value,
     /// Opaque executor-owned id. It is not serialized into the browser event
     /// protocol, and a local update is accepted only from this exact scope.
-    local_state: Option<String>,
+    local_state: Option<LocalScope>,
+}
+
+#[derive(Clone)]
+struct LocalScope {
+    id: String,
+    owner: Owner,
 }
 
 #[wasm_bindgen]
@@ -300,25 +308,25 @@ impl PlaygroundSession {
                 .apply(handler.callback, &[event], runtime.span)
                 .map_err(|error| error.to_string())?
         };
-        let local_owner = self
+        let local_scope = self
             .runtime
             .as_ref()
             .and_then(|runtime| runtime.handlers.get(handler))
             .and_then(|handler| handler.local_state.clone());
-        if let Some(owner) = local_owner {
+        if let Some(scope) = local_scope {
             if let Some((id, state)) = local_state_action(&action)? {
-                if id != owner {
+                if id != scope.id {
                     return Err(
                         "local state action does not belong to this event handler".to_owned()
                     );
                 }
-                return self.apply_local_state(&id, state);
+                return self.apply_local_state(&scope, state);
             }
         }
         self.apply_action(action)
     }
 
-    fn apply_local_state(&mut self, id: &str, state: Value) -> Result<String, String> {
+    fn apply_local_state(&mut self, scope: &LocalScope, state: Value) -> Result<String, String> {
         let runtime = self
             .runtime
             .as_mut()
@@ -328,7 +336,10 @@ impl PlaygroundSession {
             let execution = runtime.last_juir_execution.as_mut().ok_or_else(|| {
                 "JUIR runtime has no initial execution for local state".to_owned()
             })?;
-            if !execution.set_local_state(id, state) {
+            if execution.local_owner(&scope.id) != Some(&scope.owner) {
+                return Err("local state owner is no longer mounted".to_owned());
+            }
+            if !execution.set_local_state(&scope.id, state) {
                 return Err("local state instance is no longer mounted".to_owned());
             }
             // Local bindings are deliberately not reducer paths. Treat their
@@ -340,7 +351,7 @@ impl PlaygroundSession {
             };
         }
         #[cfg(not(feature = "juir"))]
-        let _ = (id, state);
+        let _ = (scope, state);
         self.render()
     }
 
@@ -541,6 +552,8 @@ impl PlaygroundSession {
         #[cfg(feature = "juir")]
         let vnode = execution.value.clone();
         #[cfg(feature = "juir")]
+        let local_owners = execution.local_owners().clone();
+        #[cfg(feature = "juir")]
         {
             runtime.last_execution = execution.stats.clone();
             runtime.last_juir_execution = Some(execution);
@@ -554,8 +567,10 @@ impl PlaygroundSession {
                 runtime.span,
             )
             .map_err(|error| error.to_string())?;
+        #[cfg(not(feature = "juir"))]
+        let local_owners = BTreeMap::new();
         let mut handlers = vec![];
-        let tree = ui_node(&vnode, &mut handlers)?;
+        let tree = ui_node(&vnode, &mut handlers, &local_owners)?;
         runtime.handlers = handlers;
         let rendered = serde_json::to_string(&tree).map_err(|error| error.to_string())?;
         runtime.renders += 1;
@@ -1676,7 +1691,11 @@ fn json_value(value: &Value) -> Result<JsonValue, String> {
     }
 }
 
-fn ui_node(value: &Value, handlers: &mut Vec<EventHandler>) -> Result<JsonValue, String> {
+fn ui_node(
+    value: &Value,
+    handlers: &mut Vec<EventHandler>,
+    local_owners: &BTreeMap<String, Owner>,
+) -> Result<JsonValue, String> {
     let Value::Obj(fields) = value else {
         return Err(format!(
             "ui.app view must return a UI node, got {}",
@@ -1690,8 +1709,8 @@ fn ui_node(value: &Value, handlers: &mut Vec<EventHandler>) -> Result<JsonValue,
     let attrs = object_json(fields.get("attrs"))?;
     let props = object_json(fields.get("props"))?;
     let classes = classes_json(fields.get("classes"))?;
-    let events = event_json(fields.get("events"), handlers)?;
-    let children = children_json(fields.get("children"), handlers)?;
+    let events = event_json(fields.get("events"), handlers, local_owners)?;
+    let children = children_json(fields.get("children"), handlers, local_owners)?;
     let key = key_json(fields.get("key"))?;
     Ok(json!({
         "kind": "element",
@@ -1849,6 +1868,7 @@ fn key_json(value: Option<&Value>) -> Result<JsonValue, String> {
 fn event_json(
     value: Option<&Value>,
     handlers: &mut Vec<EventHandler>,
+    local_owners: &BTreeMap<String, Owner>,
 ) -> Result<JsonValue, String> {
     let Some(Value::Obj(events)) = value else {
         return object_json(value);
@@ -1865,7 +1885,7 @@ fn event_json(
         let id = handlers.len();
         handlers.push(EventHandler {
             callback: handler.clone(),
-            local_state: event_local_state_id(descriptor)?,
+            local_state: event_local_scope(descriptor, local_owners)?,
         });
         result.insert(
             name.clone(),
@@ -1878,13 +1898,23 @@ fn event_json(
     Ok(JsonValue::Object(result))
 }
 
-fn event_local_state_id(value: &Value) -> Result<Option<String>, String> {
+fn event_local_scope(
+    value: &Value,
+    local_owners: &BTreeMap<String, Owner>,
+) -> Result<Option<LocalScope>, String> {
     let Value::Obj(descriptor) = value else {
         return Ok(None);
     };
     match descriptor.get("local-id") {
         None => Ok(None),
-        Some(Value::Str(id)) if !id.is_empty() => Ok(Some(id.to_string())),
+        Some(Value::Str(id)) if !id.is_empty() => {
+            let id = id.to_string();
+            let owner = local_owners
+                .get(&id)
+                .cloned()
+                .ok_or_else(|| "UI local state owner is not mounted".to_owned())?;
+            Ok(Some(LocalScope { id, owner }))
+        }
         Some(Value::Str(_)) => Err("UI local state id must not be empty".to_owned()),
         Some(value) => Err(format!(
             "UI local state id must be a string, got {}",
@@ -1932,12 +1962,13 @@ fn event_handler_and_policy(value: &Value) -> Result<(&Value, JsonValue), String
 fn children_json(
     value: Option<&Value>,
     handlers: &mut Vec<EventHandler>,
+    local_owners: &BTreeMap<String, Owner>,
 ) -> Result<JsonValue, String> {
     let Some(value) = value else {
         return Ok(JsonValue::Array(vec![]));
     };
     let mut children = vec![];
-    append_children(value, handlers, &mut children)?;
+    append_children(value, handlers, local_owners, &mut children)?;
     validate_child_keys(&children)?;
     Ok(JsonValue::Array(children))
 }
@@ -1959,18 +1990,19 @@ fn validate_child_keys(children: &[JsonValue]) -> Result<(), String> {
 fn append_children(
     value: &Value,
     handlers: &mut Vec<EventHandler>,
+    local_owners: &BTreeMap<String, Owner>,
     children: &mut Vec<JsonValue>,
 ) -> Result<(), String> {
     match value {
         Value::Null => Ok(()),
         Value::List(values) => {
             for value in values {
-                append_children(value, handlers, children)?;
+                append_children(value, handlers, local_owners, children)?;
             }
             Ok(())
         }
         value => {
-            children.push(ui_node(value, handlers)?);
+            children.push(ui_node(value, handlers, local_owners)?);
             Ok(())
         }
     }
