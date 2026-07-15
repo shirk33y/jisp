@@ -90,10 +90,11 @@ CI syntax-checks the generated C source as well. The generated sources live
 only in `OUT_DIR`, so there is no hand-maintained parallel ABI.
 `jisp-ui-capability-component` additionally compiles a
 deterministic implementation of that host world to a real `wasm32-wasip2`
-Component; CI installs the target and builds it as an ABI/package gate. The
-fixture validates `storage.write@1` and `timer.sleep@1` requests and explicitly
-rejects navigation without claiming browser/native I/O. Execution through two
-real host runtimes remains deliberately unclaimed.
+Component. CI installs the target, builds the artifact, then invokes it through
+both a pinned Wasmtime CLI and JCO-transpiled JavaScript on Node. The shared
+smoke test validates `storage.write@1` and `timer.sleep@1` requests, their
+stable invalid-request diagnostics, and an explicitly unsupported navigation
+request without claiming browser/native I/O.
 M5 has a versioned SSR payload (`jisp-ui-ssr/1`) containing escaped HTML,
 serializable state, and the structural tree. Its generated `data-jisp-path` and
 `data-jisp-key` markers provide stable element anchors without allowing source
@@ -656,6 +657,8 @@ problems before deeper compiler work.
 
 - Host language bindings are generated from one versioned contract rather than
   duplicated hand-written JSON conventions.
+- The deterministic fixture component executes through Wasmtime and JCO/Node
+  with matching capability and error behavior.
 - The browser DOM bridge, native executor, and test executor retain identical
   UI semantics.
 - UI patches remain local to each host; the cross-language ABI is not placed in

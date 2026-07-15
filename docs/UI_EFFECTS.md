@@ -198,14 +198,17 @@ generated sources are deliberately ephemeral: WIT, not a checked-in binding,
 is the source of truth. `FakeHost` exercises the same capability/version
 discipline at runtime, but is not itself a generated WIT binding.
 
-This is a generator-compatibility gate, not yet a packaged Wasm Component or a
-cross-language execution test. The separate
-`jisp-ui-capability-component` crate now compiles a deterministic
+The separate `jisp-ui-capability-component` crate compiles a deterministic
 `wasm32-wasip2` implementation of that exported host world. It supports only
 request validation for `storage.write@1` and `timer.sleep@1`; navigation
 returns `unsupported-capability`, and it intentionally does no I/O. CI builds
-this component as a packaging/ABI gate. Invoking the contract from two real
-host runtimes remains M6 work.
+the component and invokes that exact artifact through two independent Component
+Model hosts: the pinned Wasmtime CLI and JCO-transpiled JavaScript on Node.
+[`scripts/verify-ui-capability-component-hosts.sh`](../scripts/verify-ui-capability-component-hosts.sh)
+checks the advertised capability list, successful storage/timer calls, invalid
+requests, and the stable unsupported-navigation error in both hosts. The script
+uses temporary generated JavaScript and npm dependencies only; WIT remains the
+single checked-in ABI contract.
 
 ## Deferred decisions
 
@@ -214,8 +217,8 @@ host runtimes remains M6 work.
   and providers beyond the two narrow playground capabilities.
 - Capability serialization choices for SSR/resume beyond the current
   JSON-shaped descriptors and completion templates.
-- Execution tests in two real host runtimes. WIT describes this coarse
-  capability boundary, never DOM patch operations.
+- Optional AOT lowering of stable JUIR templates into host-language UI code.
+  WIT describes this coarse capability boundary, never DOM patch operations.
 
 The browser Wasm session exposes the most recent declarations through
 `desired_resources`; it does not execute them. An embedding host may opt in to

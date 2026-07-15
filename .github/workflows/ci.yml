@@ -38,3 +38,17 @@ jobs:
       - run: cargo test -p jisp-macros --quiet
       - run: rustup target add wasm32-wasip2
       - run: cargo build -p jisp-ui-capability-component --target wasm32-wasip2 --release
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+      - name: Install pinned Wasmtime CLI outside the runner profile
+        env:
+          WASMTIME_VERSION: 46.0.1
+        run: |
+          export HOME="$RUNNER_TEMP/wasmtime-home"
+          export WASMTIME_HOME="$RUNNER_TEMP/wasmtime"
+          mkdir -p "$HOME"
+          curl --proto '=https' --tlsv1.2 -sSf https://wasmtime.dev/install.sh | bash -s -- --version "$WASMTIME_VERSION"
+          echo "$WASMTIME_HOME/bin" >> "$GITHUB_PATH"
+      - name: Execute the capability component in two Component Model hosts
+        run: scripts/verify-ui-capability-component-hosts.sh
