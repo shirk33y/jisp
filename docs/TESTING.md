@@ -93,10 +93,11 @@ with fixture-only `ui.test` forms removed.
 `scripts/test-playground.sh` drives a real locally built Wasm playground with
 agent-browser. It verifies that a controlled input retains its DOM identity,
 focus, value, and selection after an incremental reducer update and SSR
-hydration, and that the preview keeps a stable scrollbar gutter and width. The
-test communicates with the opaque sandboxed iframe only through its existing
-host message boundary and a read-only diagnostic probe; it does not evaluate
-Jisp or access preview DOM state from the outer page.
+hydration; that a focused keyed row survives an in-place reorder; and that the
+preview keeps a stable scrollbar gutter and width. The test communicates with
+the opaque sandboxed iframe only through its existing host message boundary and
+a read-only diagnostic probe; it does not evaluate Jisp or access preview DOM
+state from the outer page.
 
 Build the package first, then run the regression:
 

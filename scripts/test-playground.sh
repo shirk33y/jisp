@@ -144,6 +144,49 @@ if (probe.viewport.clientWidth !== Number(preview.dataset.jispExpectedClientWidt
 })();
 JS
 
+agent-browser --session "$session" select "#example" "examples/keyed-reorder.lisp"
+agent-browser --session "$session" wait --fn 'document.querySelector("#status")?.textContent.includes("Update ready")'
+snapshot=$(agent-browser --session "$session" snapshot -i -c)
+input_ref=$(printf '%s\n' "$snapshot" | sed -n 's/.*textbox "Plan the release" \[ref=\([^]]*\)\].*/@\1/p' | head -1)
+if [[ -z "$input_ref" ]]; then
+  echo "The keyed-reorder fixture did not render its focused input." >&2
+  printf '%s\n' "$snapshot" >&2
+  exit 1
+fi
+agent-browser --session "$session" focus "$input_ref"
+request_probe
+agent-browser --session "$session" eval --stdin <<'JS'
+(() => {
+const preview = document.querySelector("#preview");
+const probe = JSON.parse(preview.dataset.jispHostProbe);
+const order = probe.keyed.map((entry) => entry.key).join(",");
+const plan = probe.keyed.find((entry) => entry.key === "number:1");
+if (order !== "number:1,number:2,number:3" || !plan || probe.active?.tag !== "INPUT") {
+  throw new Error(`Unexpected initial keyed fixture: ${JSON.stringify(probe)}`);
+}
+preview.dataset.jispKeyedPlanIdentity = String(plan.identity);
+preview.dataset.jispKeyedActiveIdentity = String(probe.active.identity);
+})();
+JS
+
+agent-browser --session "$session" press ArrowRight
+agent-browser --session "$session" wait --fn 'document.querySelector("#status")?.textContent.includes("State updated")'
+request_probe
+agent-browser --session "$session" eval --stdin <<'JS'
+(() => {
+const preview = document.querySelector("#preview");
+const probe = JSON.parse(preview.dataset.jispHostProbe);
+const order = probe.keyed.map((entry) => entry.key).join(",");
+const plan = probe.keyed.find((entry) => entry.key === "number:1");
+if (order !== "number:3,number:2,number:1"
+  || String(plan?.identity) !== preview.dataset.jispKeyedPlanIdentity
+  || String(probe.active?.identity) !== preview.dataset.jispKeyedActiveIdentity
+  || probe.active.value !== "Plan the release") {
+  throw new Error(`Keyed reorder recreated the focused row: ${JSON.stringify(probe)}`);
+}
+})();
+JS
+
 errors=$(agent-browser --session "$session" errors)
 if [[ -n "$errors" ]]; then
   echo "The playground emitted browser errors:" >&2
@@ -151,4 +194,4 @@ if [[ -n "$errors" ]]; then
   exit 1
 fi
 
-echo "verified playground focus, selection, hydration, and scrollbar stability"
+echo "verified playground focus, selection, keyed reorder, hydration, and scrollbar stability"

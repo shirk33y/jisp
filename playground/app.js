@@ -16,6 +16,7 @@ const examples = [
   ["Counter tests", "examples/counter-tests.lisp"],
   ["Local component state", "examples/local-state.lisp"],
   ["Local effect scope", "examples/local-effects.lisp"],
+  ["Keyed reorder", "examples/keyed-reorder.lisp"],
   ["Product launch board", "examples/kanban.lisp"],
   ["Tiny rituals", "examples/habits.lisp"],
   ["Personal spend", "examples/finance.lisp"],
@@ -258,10 +259,14 @@ function probeElement(element) {
 
 function reportHostProbe() {
   const style = getComputedStyle(document.documentElement);
+  const keyed = [...root.querySelectorAll("*")]
+    .filter((element) => element.__jispKey !== null && element.__jispKey !== undefined)
+    .map((element) => ({ key: String(element.__jispKey), ...probeElement(element) }));
   parent.postMessage({
     type: "jisp-host-probe",
     active: probeElement(document.activeElement),
     firstControl: probeElement(root.querySelector("input, textarea, select")),
+    keyed,
     viewport: {
       clientWidth: document.documentElement.clientWidth,
       overflowY: style.overflowY,
