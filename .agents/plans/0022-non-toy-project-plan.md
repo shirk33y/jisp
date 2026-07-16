@@ -38,8 +38,9 @@ needs the most documentation, examples, and ecosystem work.
    cycles, macro origins, and native-source diagnostics.
 2. Add user docs: getting started, language tour, macros, packages, errors,
    cookbook, Rust embedding, and UI guide when UI is a product thesis.
-3. Add one flagship example for the chosen thesis. It must include tests,
-   dependencies or embedding where relevant, and a real workflow.
+3. Add an executable example suite for the chosen thesis: at least five
+   examples, three nontrivial, with one serving as the flagship. Include tests,
+   dependencies or embedding where relevant, and real workflows.
 
 ## Phase 3: make it adoptable
 
@@ -62,7 +63,8 @@ needs the most documentation, examples, and ecosystem work.
 
 ## Exit criteria
 
-- One thesis and one flagship example.
+- One thesis and an executable example suite: at least five examples, three
+  nontrivial, and one flagship.
 - Native support and stability docs.
 - Differential and compile-fail coverage for the native subset.
 - Diagnostic snapshots and source-syntax equivalence tests.
