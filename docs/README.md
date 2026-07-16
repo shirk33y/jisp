@@ -62,6 +62,8 @@ rationale; they do not enable a language feature by themselves.
   rationale for the implemented `ws` reader.
 - [Non-toy project plan](../.agents/plans/0022-non-toy-project-plan.md):
   conformance, support-boundary, release, and adoption work that follows P2.
+- [Native conformance and flagship](../.agents/plans/0024-native-conformance-and-flagship.md):
+  concrete execution plan for the current native subset before new features.
 
 ## Document ownership
 
