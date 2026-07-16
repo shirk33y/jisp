@@ -8,6 +8,10 @@ Repository-root files remain deliberately small and operational:
 - [`TODO.md`](../TODO.md) is the authoritative implementation queue.
 - [`AGENTS.md`](../AGENTS.md) is the contributor workflow.
 
+The specification and implementation documents describe the current contract.
+Research reports and `.agents/plans/` explain proposals or historical design
+rationale; they do not enable a language feature by themselves.
+
 ## Language and implementation
 
 - [Language specification](SPEC.md): source formats, core forms, data, and
@@ -39,12 +43,25 @@ Repository-root files remain deliberately small and operational:
 - [MAL and multi-host execution](research/MAL.md): analysis of MAL/miniMAL,
   JSON as canonical source, native extensions, process runners, and portable
   host support.
+- [Interop architecture](research/INTEROP.md): the staged runner, C ABI,
+  generated-adapter, WIT, and direct-codegen decision guide.
 - [IO, storage, and host capabilities](research/IO_STORAGE.md): proposed
   `memfs` baseline, optional `redb` image backend, capability-boundary rules,
   and cross-host storage/code-generation trade-offs.
+- [Memory safety](research/MEMORY_SAFETY.md): current Rust safety boundary and
+  the conditions for expanding host-facing features.
 - [JSON/YAML data dialects](research/JSON_DATA_DIALECTS.md): research on `$`
   symbols, list/form classification, raw object literals, YAML restrictions,
   and cross-host safety.
+
+## Plans and historical rationale
+
+- [Compiled portable UI runtime](../.agents/plans/0019-compiled-portable-ui-runtime.md):
+  completed JUIR runtime milestones and remaining host boundaries.
+- [Indentation reader evaluation](../.agents/plans/0023-indentation-reader-syntax-evaluation.md):
+  rationale for the implemented `ws` reader.
+- [Non-toy project plan](../.agents/plans/0022-non-toy-project-plan.md):
+  conformance, support-boundary, release, and adoption work that follows P2.
 
 ## Document ownership
 

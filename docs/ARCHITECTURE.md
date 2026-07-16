@@ -59,7 +59,8 @@ JSON / restricted YAML / Lisp / ws
 2. Features are implemented against Core IR, not separately per syntax.
 3. Interpreter and codegen share frontend, IR, and runtime helpers.
 4. The interpreter's internal `Value` is not the compiled language ABI.
-5. Raw `{}` remains unsupported until its purpose is explicitly designed.
+5. Raw `{}` remains unsupported in canonical JSON and YAML unless a versioned
+   source-dialect contract is accepted.
 6. FFI is not implemented opportunistically; start with a written ABI design.
 
 Checked facade operations retain the normalized Core IR for every resolved

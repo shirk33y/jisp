@@ -1,5 +1,8 @@
 # Indentation reader syntax evaluation
 
+**Status:** Historical design rationale. The `ws` reader is implemented; the
+current source contract belongs in [`docs/SPEC.md`](../../docs/SPEC.md).
+
 ## Context
 
 This evaluates an indentation-oriented surface syntax sketch for Jisp, not an
