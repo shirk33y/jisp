@@ -31,6 +31,8 @@ rationale; they do not enable a language feature by themselves.
 - [Diagnostics](DIAGNOSTICS.md): source ranges, expansion origins, and
   generated-code diagnostic remapping.
 - [Testing](TESTING.md): test layers, native conformance, and executable docs.
+- [Native Rust subset](NATIVE.md): machine-checked native support inventory,
+  concrete ABI rules, diagnostics, and parity policy.
 - [Packages](PACKAGES.md): package manifest, local dependencies, offline
   registry/cache behavior, and deferred remote registry policy.
 - [FFI future](FFI_FUTURE.md): constraints that must be designed before an FFI

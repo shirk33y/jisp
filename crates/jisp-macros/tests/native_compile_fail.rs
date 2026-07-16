@@ -2,9 +2,35 @@ use std::{env, fs, path::PathBuf, process::Command};
 
 #[test]
 fn ui_html_native_values_fail_during_downstream_macro_expansion() {
-    let crate_dir = fixture_dir("ui-html");
+    assert_downstream_compile_fails(
+        "ui-html",
+        "tests/fixtures/unsupported_ui_html.lisp",
+        "calls outside native module",
+    );
+}
+
+#[test]
+fn heterogeneous_dynamic_object_access_fails_during_downstream_macro_expansion() {
+    assert_downstream_compile_fails(
+        "heterogeneous-dynamic-object",
+        "../../examples/collection-toolbox/unsupported.lisp",
+        "expected static field or homogeneous closed object",
+    );
+}
+
+#[test]
+fn polymorphic_open_row_definition_fails_during_downstream_macro_expansion() {
+    assert_downstream_compile_fails(
+        "open-row-polymorphism",
+        "../../examples/collection-toolbox/open-row.lisp",
+        "does not support polymorphic definition `score-of`",
+    );
+}
+
+fn assert_downstream_compile_fails(name: &str, source: &str, expected: &str) {
+    let crate_dir = fixture_dir(name);
     let fixture = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("tests/fixtures/unsupported_ui_html.lisp")
+        .join(source)
         .canonicalize()
         .unwrap();
     let macros_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -45,8 +71,9 @@ fn ui_html_native_values_fail_during_downstream_macro_expansion() {
         diagnostics.contains("failed to generate native Rust for Jisp source"),
         "{diagnostics}"
     );
+    assert!(diagnostics.contains(expected), "{diagnostics}");
     assert!(
-        diagnostics.contains("calls outside native module"),
+        diagnostics.contains(&fixture.display().to_string()),
         "{diagnostics}"
     );
 }

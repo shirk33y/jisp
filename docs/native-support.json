@@ -1,0 +1,211 @@
+[
+  {
+    "id": "scalars",
+    "area": "values",
+    "source_fixture": "crates/jisp-macros/tests/fixtures/differential.lisp",
+    "interpreter_result": "scalar-entry, object-field-entry, boolean-entry",
+    "native_status": "supported",
+    "native_expectation": "i64, bool, f64, str, and null use concrete Rust layouts",
+    "notes": "native_differential::native_scalars_match_the_interpreter",
+    "test_file": "crates/jisp-macros/tests/native_differential.rs",
+    "test_name": "native_scalars_match_the_interpreter"
+  },
+  {
+    "id": "strings-lists",
+    "area": "collections",
+    "source_fixture": "crates/jisp-macros/tests/fixtures/differential.lisp",
+    "interpreter_result": "string-entry and list-entry",
+    "native_status": "supported",
+    "native_expectation": "String and Vec<T>; list helpers preserve immutable source values",
+    "notes": "native_differential::native_strings_and_lists_match_the_interpreter",
+    "test_file": "crates/jisp-macros/tests/native_differential.rs",
+    "test_name": "native_strings_and_lists_match_the_interpreter"
+  },
+  {
+    "id": "list-callbacks",
+    "area": "collections",
+    "source_fixture": "crates/jisp-macros/tests/fixtures/differential.lisp",
+    "interpreter_result": "map-entry, filter-entry, fold-entry, some-entry, every-entry, higher-order-entry",
+    "native_status": "supported",
+    "native_expectation": "typed callbacks work with list.map, list.filter, list.fold, list.some, and list.every",
+    "notes": "native_differential::native_callbacks_and_list_higher_order_helpers_match_the_interpreter",
+    "test_file": "crates/jisp-macros/tests/native_differential.rs",
+    "test_name": "native_callbacks_and_list_higher_order_helpers_match_the_interpreter"
+  },
+  {
+    "id": "closed-objects",
+    "area": "collections",
+    "source_fixture": "crates/jisp-macros/tests/fixtures/differential.lisp",
+    "interpreter_result": "object field, obj.get, obj.set, obj.del, and object immutability exports",
+    "native_status": "supported",
+    "native_expectation": "closed rows become generated Rust structs; static fields have concrete types",
+    "notes": "native_differential::native_static_object_get_matches_the_interpreter",
+    "test_file": "crates/jisp-macros/tests/native_differential.rs",
+    "test_name": "native_static_object_get_matches_the_interpreter"
+  },
+  {
+    "id": "collection-snapshots",
+    "area": "collections",
+    "source_fixture": "crates/jisp-macros/tests/fixtures/differential.lisp",
+    "interpreter_result": "collection-updates-immutable-entry and reused-values-entry",
+    "native_status": "supported",
+    "native_expectation": "collection operations preserve source values and return snapshots",
+    "notes": "native_differential::native_collection_updates_preserve_their_inputs",
+    "test_file": "crates/jisp-macros/tests/native_differential.rs",
+    "test_name": "native_collection_updates_preserve_their_inputs"
+  },
+  {
+    "id": "homogeneous-dynamic-objects",
+    "area": "collections",
+    "source_fixture": "crates/jisp-macros/tests/fixtures/differential.lisp",
+    "interpreter_result": "dynamic-field-entry, dynamic-object-get-entry, dynamic-object-has-entry, dynamic-object-set-entry",
+    "native_status": "supported",
+    "native_expectation": "dynamic keys dispatch only over homogeneous closed rows",
+    "notes": "native_differential::native_dynamic_reads_on_homogeneous_closed_objects_match_the_interpreter",
+    "test_file": "crates/jisp-macros/tests/native_differential.rs",
+    "test_name": "native_dynamic_reads_on_homogeneous_closed_objects_match_the_interpreter"
+  },
+  {
+    "id": "maps",
+    "area": "collections",
+    "source_fixture": "crates/jisp-macros/tests/fixtures/differential.lisp",
+    "interpreter_result": "dict-map-entry, dict-map-missing-entry, dict-map-update-entry, dict-map-values-entry",
+    "native_status": "supported",
+    "native_expectation": "(map str A) becomes indexmap::IndexMap<String, A>",
+    "notes": "native_differential::native_homogeneous_maps_match_the_interpreter",
+    "test_file": "crates/jisp-macros/tests/native_differential.rs",
+    "test_name": "native_homogeneous_maps_match_the_interpreter"
+  },
+  {
+    "id": "functions-closures",
+    "area": "functions",
+    "source_fixture": "crates/jisp-macros/tests/fixtures/differential.lisp",
+    "interpreter_result": "local-function-entry through returned-closure-map-entry",
+    "native_status": "supported",
+    "native_expectation": "typed calls and non-variadic closures use concrete function layouts",
+    "notes": "native_differential::native_local_closures_match_the_interpreter",
+    "test_file": "crates/jisp-macros/tests/native_differential.rs",
+    "test_name": "native_local_closures_match_the_interpreter"
+  },
+  {
+    "id": "variadics",
+    "area": "functions",
+    "source_fixture": "crates/jisp-macros/tests/fixtures/differential.lisp",
+    "interpreter_result": "variadic-empty-entry through variadic-returned-entry",
+    "native_status": "supported",
+    "native_expectation": "rest arguments are concrete Vec<T> values at direct call sites",
+    "notes": "native_differential::native_variadic_functions_match_the_interpreter",
+    "test_file": "crates/jisp-macros/tests/native_differential.rs",
+    "test_name": "native_variadic_functions_match_the_interpreter"
+  },
+  {
+    "id": "imports",
+    "area": "modules",
+    "source_fixture": "crates/jisp-macros/tests/fixtures/imports/main.lisp",
+    "interpreter_result": "imported-entry",
+    "native_status": "supported",
+    "native_expectation": "resolved source imports are merged and Cargo-tracked by lisp_file!",
+    "notes": "native_import::imported_native_output_matches_the_interpreter",
+    "test_file": "crates/jisp-macros/tests/native_import.rs",
+    "test_name": "imported_native_output_matches_the_interpreter"
+  },
+  {
+    "id": "macros",
+    "area": "modules",
+    "source_fixture": "examples/macro-normalizer/main.lisp",
+    "interpreter_result": "main returns 42 after hygienic expansion",
+    "native_status": "supported",
+    "native_expectation": "macros expand before the shared typed IR reaches codegen",
+    "notes": "native_examples::macro_normalizer_matches_the_interpreter",
+    "test_file": "crates/jisp-macros/tests/native_examples.rs",
+    "test_name": "macro_normalizer_matches_the_interpreter"
+  },
+  {
+    "id": "result-helpers",
+    "area": "control-flow",
+    "source_fixture": "crates/jisp-macros/tests/fixtures/differential.lisp",
+    "interpreter_result": "result-map-entry, result-map-err-entry, result-try-entry, result-recover-entry",
+    "native_status": "supported",
+    "native_expectation": "declared and prelude sums use generated Rust enums and Result-like concrete layouts",
+    "notes": "native_differential::native_result_helpers_match_the_interpreter",
+    "test_file": "crates/jisp-macros/tests/native_differential.rs",
+    "test_name": "native_result_helpers_match_the_interpreter"
+  },
+  {
+    "id": "option-case",
+    "area": "control-flow",
+    "source_fixture": "crates/jisp-macros/tests/fixtures/differential.lisp",
+    "interpreter_result": "option-case-entry",
+    "native_status": "supported",
+    "native_expectation": "option cases use concrete prelude enum layouts",
+    "notes": "native_differential::native_option_cases_match_the_interpreter",
+    "test_file": "crates/jisp-macros/tests/native_differential.rs",
+    "test_name": "native_option_cases_match_the_interpreter"
+  },
+  {
+    "id": "enum-case",
+    "area": "control-flow",
+    "source_fixture": "crates/jisp-macros/tests/fixtures/differential.lisp",
+    "interpreter_result": "enum-case-entry",
+    "native_status": "supported",
+    "native_expectation": "declared enums use generated Rust enum layouts",
+    "notes": "native_differential::native_enum_cases_match_the_interpreter",
+    "test_file": "crates/jisp-macros/tests/native_differential.rs",
+    "test_name": "native_enum_cases_match_the_interpreter"
+  },
+  {
+    "id": "patterns",
+    "area": "control-flow",
+    "source_fixture": "crates/jisp-macros/tests/fixtures/differential.lisp",
+    "interpreter_result": "nested-alternative-list-entry, nested-alternative-object-entry",
+    "native_status": "supported",
+    "native_expectation": "tested finite list/object alternatives emit structural Rust matches",
+    "notes": "native_differential::native_nested_alternative_patterns_match_the_interpreter",
+    "test_file": "crates/jisp-macros/tests/native_differential.rs",
+    "test_name": "native_nested_alternative_patterns_match_the_interpreter"
+  },
+  {
+    "id": "bigint",
+    "area": "values",
+    "source_fixture": "crates/jisp-macros/tests/fixtures/differential.lisp",
+    "interpreter_result": "bigint-sum-entry through bigint-closure-entry",
+    "native_status": "supported",
+    "native_expectation": "num_bigint::BigInt is a concrete downstream dependency",
+    "notes": "native_differential::native_bigints_match_the_interpreter",
+    "test_file": "crates/jisp-macros/tests/native_differential.rs",
+    "test_name": "native_bigints_match_the_interpreter"
+  },
+  {
+    "id": "ui-values",
+    "area": "native-boundary",
+    "source_fixture": "crates/jisp-macros/tests/fixtures/unsupported_ui_html.lisp",
+    "interpreter_result": "requires a UI host; not evaluated by the core interpreter fixture",
+    "native_status": "rejected",
+    "native_expectation": "downstream macro expansion fails with a Jisp codegen diagnostic",
+    "notes": "UI calls are outside the native module; no host-value fallback exists",
+    "test_file": "crates/jisp-macros/tests/native_compile_fail.rs",
+    "test_name": "ui_html_native_values_fail_during_downstream_macro_expansion"
+  },
+  {
+    "id": "heterogeneous-dynamic-objects",
+    "area": "native-boundary",
+    "source_fixture": "examples/collection-toolbox/unsupported.lisp",
+    "interpreter_result": "the type checker rejects dynamic access to a heterogeneous closed object",
+    "native_status": "rejected",
+    "native_expectation": "downstream macro expansion reports the source diagnostic, never generated Rust",
+    "notes": "there is no dynamic Value ABI escape hatch",
+    "test_file": "crates/jisp-macros/tests/native_compile_fail.rs",
+    "test_name": "heterogeneous_dynamic_object_access_fails_during_downstream_macro_expansion"
+  },
+  {
+    "id": "open-row-polymorphism",
+    "area": "native-boundary",
+    "source_fixture": "examples/collection-toolbox/open-row.lisp",
+    "interpreter_result": "the generic score-of definition type checks and runs",
+    "native_status": "rejected",
+    "native_expectation": "downstream macro expansion rejects the polymorphic definition with a Jisp layout diagnostic",
+    "notes": "native codegen has concrete layouts only; it does not monomorphize polymorphic definitions",
+    "test_file": "crates/jisp-macros/tests/native_compile_fail.rs",
+    "test_name": "polymorphic_open_row_definition_fails_during_downstream_macro_expansion"
+  }
+]

@@ -111,6 +111,10 @@ push and pull request.
 
 ## Native conformance
 
+`docs/native-support.json` is the machine-checked native support inventory.
+`crates/jisp-macros/tests/native_contract.rs` checks that every row names an
+existing fixture, an owning test, and a row in `docs/NATIVE.md`.
+
 `crates/jisp-macros/tests/native_differential.rs` compiles one representative
 Jisp module through `jisp_macros::lisp_file!` and compares its native exports
 with the interpreter. The fixture covers scalars, strings, lists,
@@ -132,7 +136,10 @@ that invokes the proc macro and assert its Jisp diagnostic, so unsupported
 shapes never degrade into opaque generated-Rust failures.
 The macro suite also builds and runs a downstream bigint fixture with an
 explicit `num-bigint` dependency, proving the concrete generated ABI instead of
-only inspecting tokens.
+only inspecting tokens. `native_examples.rs` runs the five maintained examples
+under `examples/` through both paths; three use multiple modules, named domain
+types, and explicit error paths. See `docs/NATIVE.md` for the current boundary
+and ABI promise.
 
 ## Documentation examples
 
