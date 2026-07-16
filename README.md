@@ -242,6 +242,7 @@ compilation of generated Rust in downstream fixtures.
 - [Architecture and invariants](docs/ARCHITECTURE.md)
 - [Research: Gleam mapping](docs/research/GLEAM.md)
 - [Research: MAL and multi-host execution](docs/research/MAL.md)
+- [Research: JSON/YAML data dialects](docs/research/JSON_DATA_DIALECTS.md)
 
 ## Reference
 

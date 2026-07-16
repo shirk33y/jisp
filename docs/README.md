@@ -42,6 +42,9 @@ Repository-root files remain deliberately small and operational:
 - [IO, storage, and host capabilities](research/IO_STORAGE.md): proposed
   `memfs` baseline, optional `redb` image backend, capability-boundary rules,
   and cross-host storage/code-generation trade-offs.
+- [JSON/YAML data dialects](research/JSON_DATA_DIALECTS.md): research on `$`
+  symbols, list/form classification, raw object literals, YAML restrictions,
+  and cross-host safety.
 
 ## Document ownership
 
