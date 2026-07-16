@@ -41,6 +41,25 @@ Rust codegen, especially parser/lowering edge cases, macro expansion, pattern
 matching, stdlib behaviour, immutable value semantics, and portable frontend
 rejections such as redundant or non-exhaustive `case` patterns.
 
+### Backend conformance contract
+
+Portable fixtures are the canonical semantic corpus, but they do not all have
+the same backend obligations. The support inventory will select one of three
+outcomes for each stable fixture/test identity in scope of native conformance:
+
+- `supported`: evaluate through the interpreter, compile the canonical source
+  through the native facade, and compare observable output structurally;
+- `intentionally-rejected`: pass through the interpreter when meaningful and
+  assert the documented Jisp diagnostic through native compilation;
+- `interpreter-only`: run only the portable frontend/interpreter contract.
+
+The current harness registers individual portable tests with Cargo and checks
+cross-syntax equivalence. Native differential coverage is still maintained in
+separate fixtures while this linkage is implemented. The planned migration is
+documented in `.agents/plans/0024-native-conformance-and-examples.md`; target
+selection must remain explicit in the inventory, never guessed from source
+forms.
+
 ## Portable UI scenarios
 
 `tests/ui/*.lisp` are the canonical UI scenarios and generate matching JSON,
@@ -114,6 +133,12 @@ push and pull request.
 `docs/native-support.json` is the machine-checked native support inventory.
 `crates/jisp-macros/tests/native_contract.rs` checks that every row names an
 existing fixture, an owning test, and a row in `docs/NATIVE.md`.
+
+The inventory is also the planned bridge from portable language fixtures to
+native conformance. Semantic rows will name a stable portable fixture/test ID;
+the test harness will then derive interpreter/native parity or native rejection
+coverage from the row. Native-only fixtures remain appropriate for proc-macro,
+ABI, and generated-diagnostic integration checks.
 
 `crates/jisp-macros/tests/native_differential.rs` compiles one representative
 Jisp module through `jisp_macros::lisp_file!` and compares its native exports

@@ -57,3 +57,10 @@ interpreter, invoke its native export, and compare structural output. Every
 rejected source row has a downstream proc-macro compile-fail test. New native
 claims require an inventory row, a fixture, and one of those tests before this
 table changes.
+
+Portable language fixtures are the long-term semantic source of those rows.
+The inventory will link each portable fixture/test identity to exactly one
+native obligation: supported parity, intentional rejection, or
+interpreter-only. It must not infer native eligibility from source syntax.
+Native-only fixtures remain valid for generated-Rust ABI, proc-macro, and
+diagnostic-remapping integration coverage.

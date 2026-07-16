@@ -112,5 +112,10 @@ cargo test -p jisp-eval --test portable_language result_case
 ## Open follow-ups
 
 - Decide whether the same generated test registry should later feed `jisp test`.
-- Add backend selection later, for example eval first, then Rust codegen, then
-  WASM or other targets.
+- Implement the target-selection contract from
+  `0024-native-conformance-and-examples.md`: give each portable test a stable
+  fixture/test ID, then let `docs/native-support.json` declare whether that ID
+  requires interpreter/native parity, an intentional native rejection, or
+  interpreter-only execution. Do not infer target eligibility from the source.
+- Add other backends only behind the same explicit target contract, for example
+  Wasm or a future independent host runtime.

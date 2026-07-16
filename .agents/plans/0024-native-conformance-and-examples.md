@@ -12,6 +12,8 @@ through one machine-checked support matrix and one realistic Rust embedding.
 - Native codegen supports an explicit subset; rejection is a valid result.
 - A supported feature needs a differential test. An unsupported shape needs a
   stable Jisp diagnostic test.
+- Portable language fixtures are the semantic corpus. Native support is a
+  declared target of an individual fixture, never inferred from its syntax.
 - Documentation is generated or checked against the same support inventory.
 - Do not add a helper or syntax merely to make the example prettier.
 
@@ -31,8 +33,10 @@ Create one table-like source of truth. Each row has:
 id
 area                 # value, control flow, helper, import, macro, diagnostic
 source fixture
+portable test id     # stable fixture/test identity when the behaviour is portable
 interpreter result   # value or diagnostic class
-native status        # supported | intentionally-rejected
+backend obligation   # interpreter-only | native-supported | native-rejected
+native status        # supported | intentionally-rejected, when native applies
 native expectation   # value or diagnostic substring/code
 notes                # ABI constraint or source-range requirement
 ```
@@ -48,6 +52,24 @@ Start with current native areas:
 
 Keep one row per behavioural boundary, not one row per implementation function.
 
+### Portable corpus and target selection
+
+The canonical portable corpus currently lives in `tests/language/*.lisp` and
+has generated JSON, YAML-like, and `ws` equivalents. File extension is an
+implementation detail: its named `test` or `test-error` form is the stable
+semantic identity.
+
+Give each portable test a deterministic ID derived from its fixture and test
+name. The inventory must reference that ID for a behaviour that can run through
+both interpreter and native paths. A row may still reference a native-only
+fixture when it proves proc-macro integration, generated Rust ABI, or compiler
+diagnostic remapping rather than language semantics.
+
+Do not make every portable test native. UI values, host effects, open rows, and
+other intentional native rejections remain portable interpreter tests plus a
+separate native diagnostic expectation. The inventory is the only authority for
+which backend obligations a test has.
+
 ## 2. Test layers
 
 ### Differential tests
@@ -60,8 +82,10 @@ For every `supported` row:
 3. execute the native export; and
 4. compare observable values structurally.
 
-Keep fixtures small and named by inventory id. Include imports, closures, and
-callbacks as separate rows because their ABI paths differ from simple values.
+Reuse the portable fixture for every semantic row once it has a stable ID.
+Keep native-only fixtures small and named by inventory id. Include imports,
+closures, and callbacks as separate rows because their ABI paths differ from
+simple values.
 
 ### Compile-fail tests
 
@@ -76,7 +100,8 @@ For every `intentionally-rejected` row:
 
 For portable fixtures, keep Lisp, JSON, YAML, and `ws` normalization checks.
 Add a row only after the canonical fixture and generated forms agree on AST/IR
-and interpreter result. Native tests may use the canonical Lisp fixture.
+and interpreter result. The native runner executes the canonical source for a
+row marked `supported`; it does not need to compile every syntax spelling.
 
 ## 3. Documentation contract
 
@@ -117,19 +142,24 @@ Those are separate product decisions.
 
 ## 5. Delivery order
 
-1. Inventory the existing tests. Mark gaps; do not add features.
-2. Add differential and compile-fail rows until every current boundary is
+1. Assign stable IDs to existing portable `test` and `test-error` forms.
+2. Inventory the existing tests, linking semantic rows to those IDs. Mark
+   gaps; do not add features.
+3. Add differential and compile-fail rows until every current boundary is
    represented.
-3. Add `docs/NATIVE.md`; make its matrix checked or generated from the
+4. Add `docs/NATIVE.md`; make its matrix checked or generated from the
    inventory.
-4. Build the compact examples, then the three nontrivial examples, using only
+5. Build the compact examples, then the three nontrivial examples, using only
    inventory-supported rows.
-5. Add every example to CI and runnable documentation where useful.
-6. Review gaps exposed by the example. Propose the next feature separately.
+6. Add every example to CI and runnable documentation where useful.
+7. Review gaps exposed by the example. Propose the next feature separately.
 
 ## Acceptance criteria
 
 - Every native support claim maps to a named inventory row and passing test.
+- Every portable test in scope of a native boundary declares its backend
+  obligation through the inventory: supported parity, intentional rejection,
+  or interpreter-only.
 - Every deliberate rejection maps to a downstream compile-fail fixture with a
   Jisp diagnostic.
 - At least five examples exist; three meet the nontrivial definition above.
