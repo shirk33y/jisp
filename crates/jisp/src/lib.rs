@@ -105,6 +105,8 @@ pub struct ParsedModule {
     pub sources: SourceMap,
     pub nodes: Vec<Node>,
     pub module: Module,
+    /// Imported macro source grouped by the alias used at the call site.
+    pub macro_modules: BTreeMap<String, Vec<Node>>,
     pub expansion_map: ExpansionMap,
     pub types: Option<BTreeMap<String, Scheme>>,
     pub dependencies: Vec<PathBuf>,
@@ -276,6 +278,7 @@ fn parsed_from_lowered(
         mut sources,
         nodes,
         module,
+        macro_modules,
         expansion_map,
         macro_dependencies,
     } = lowered;
@@ -305,6 +308,7 @@ fn parsed_from_lowered(
         sources,
         nodes,
         module,
+        macro_modules,
         expansion_map,
         types,
         dependencies,
@@ -353,6 +357,7 @@ fn generated_rust_from_lowered(
         mut sources,
         nodes: _,
         module,
+        macro_modules: _,
         expansion_map,
         macro_dependencies,
     } = lowered;
@@ -381,6 +386,7 @@ struct LoweredModule {
     sources: SourceMap,
     nodes: Vec<Node>,
     module: Module,
+    macro_modules: BTreeMap<String, Vec<Node>>,
     expansion_map: ExpansionMap,
     macro_dependencies: Vec<PathBuf>,
 }
@@ -432,6 +438,7 @@ fn lower_as_detailed(
         sources,
         nodes,
         module,
+        macro_modules: BTreeMap::new(),
         expansion_map: expanded.expansion_map,
         macro_dependencies: vec![],
     })
@@ -478,6 +485,7 @@ fn lower_path_detailed(
         sources,
         nodes,
         module,
+        macro_modules: macro_load.macros.iter().cloned().collect(),
         expansion_map: expanded.expansion_map,
         macro_dependencies: macro_load.dependencies,
     })

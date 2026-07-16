@@ -141,6 +141,11 @@ under `examples/` through both paths; three use multiple modules, named domain
 types, and explicit error paths. See `docs/NATIVE.md` for the current boundary
 and ABI promise.
 
+`native_embedding.rs` builds the checked, documented downstream crate in
+`tests/fixtures/downstream-embedding` offline. Its paired failure fixture
+asserts the Jisp type diagnostic, source file, and source range presented by a
+proc-macro expansion.
+
 ## Documentation examples
 
 Runnable examples in `README.md`, `docs/SPEC.md`, and `docs/STDLIB.md` use a

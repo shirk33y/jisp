@@ -1,0 +1,11 @@
+[workspace]
+
+[package]
+name = "jisp-downstream-embedding"
+version = "0.0.0"
+edition = "2021"
+
+[dependencies]
+jisp-macros = { path = "../../.." }
+indexmap = "2"
+num-bigint = "0.4"

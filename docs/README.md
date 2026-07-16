@@ -33,6 +33,10 @@ rationale; they do not enable a language feature by themselves.
 - [Testing](TESTING.md): test layers, native conformance, and executable docs.
 - [Native Rust subset](NATIVE.md): machine-checked native support inventory,
   concrete ABI rules, diagnostics, and parity policy.
+- [Stability and compatibility](STABILITY.md): lifecycle, source/macro
+  compatibility, generated dependencies, and release-note policy.
+- [Rust embedding](RUST_EMBEDDING.md): supported proc-macro paths, dependency
+  requirements, Cargo tracking, and downstream diagnostics.
 - [Packages](PACKAGES.md): package manifest, local dependencies, offline
   registry/cache behavior, and deferred remote registry policy.
 - [FFI future](FFI_FUTURE.md): constraints that must be designed before an FFI

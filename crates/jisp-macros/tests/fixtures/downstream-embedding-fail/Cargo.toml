@@ -1,0 +1,9 @@
+[workspace]
+
+[package]
+name = "jisp-downstream-embedding-fail"
+version = "0.0.0"
+edition = "2021"
+
+[dependencies]
+jisp-macros = { path = "../../.." }

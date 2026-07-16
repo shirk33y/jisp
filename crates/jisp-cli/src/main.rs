@@ -699,6 +699,7 @@ fn lsp() -> Result<()> {
                 let position = &message["params"]["position"];
                 let result = documents.get(uri).and_then(|text| {
                     lsp_hover(
+                        uri,
                         text,
                         position["line"].as_u64()? as usize,
                         position["character"].as_u64()? as usize,
@@ -738,17 +739,27 @@ fn lsp() -> Result<()> {
     Ok(())
 }
 
-fn lsp_hover(text: &str, line: usize, character: usize) -> Option<serde_json::Value> {
+fn lsp_hover(uri: &str, text: &str, line: usize, character: usize) -> Option<serde_json::Value> {
     let offset = lsp_byte_offset(text, line, character)?;
     let symbol = lsp_symbol_at(text, offset)?;
-    let (name, summary) = jisp_core::special_form(symbol)
+    let builtin = jisp_core::special_form(symbol)
         .map(|form| (form.name, form.summary))
         .or_else(|| jisp_core::ui_element(symbol).map(|element| (element.name, element.summary)))
         .or_else(|| {
             jisp_core::ui_directive(symbol).map(|directive| (directive.name, directive.summary))
-        })?;
+        });
+    if let Some((name, summary)) = builtin {
+        return Some(serde_json::json!({
+            "contents": { "kind": "markdown", "value": format!("**{}** — {}", name, summary) }
+        }));
+    }
+
+    let path = uri.strip_prefix("file://").unwrap_or(uri);
+    let parsed = jisp::check_detailed(path, text).ok()?;
+    let types = parsed.types?;
+    let scheme = types.get(symbol)?;
     Some(serde_json::json!({
-        "contents": { "kind": "markdown", "value": format!("**{}** — {}", name, summary) }
+        "contents": { "kind": "markdown", "value": format!("**{}** — `{}`", symbol, scheme.body) }
     }))
 }
 
@@ -990,6 +1001,17 @@ fn span_contains(span: Span, offset: usize) -> bool {
 
 fn lsp_imported_definition_span(parsed: &jisp::ParsedModule, symbol: &str) -> Option<Span> {
     let (alias, name) = symbol.split_once('.')?;
+    if let Some(nodes) = parsed.macro_modules.get(alias) {
+        if let Some(span) = nodes.iter().find_map(|node| {
+            let [head, macro_name, ..] = node.as_form()? else {
+                return None;
+            };
+            (head.as_symbol() == Some("def") && macro_name.as_symbol() == Some(name))
+                .then_some(macro_name.span)
+        }) {
+            return Some(span);
+        }
+    }
     let import = parsed
         .module
         .imports
@@ -1709,24 +1731,25 @@ mod tests {
 
     #[test]
     fn lsp_hover_resolves_core_and_ui_forms_at_utf16_positions() {
-        let hover = lsp_hover("\u{1f642} (case value)", 0, 5).unwrap();
+        let hover = lsp_hover("file:///main.lisp", "\u{1f642} (case value)", 0, 5).unwrap();
 
         assert_eq!(hover["contents"]["kind"], "markdown");
         assert!(hover["contents"]["value"]
             .as_str()
             .unwrap()
             .contains("**case**"));
-        let ui_hover = lsp_hover("(div (class \"rounded\"))", 0, 2).unwrap();
+        let ui_hover = lsp_hover("file:///main.lisp", "(div (class \"rounded\"))", 0, 2).unwrap();
         assert!(ui_hover["contents"]["value"]
             .as_str()
             .unwrap()
             .contains("HTML generic container"));
-        let directive_hover = lsp_hover("(div (class \"rounded\"))", 0, 7).unwrap();
+        let directive_hover =
+            lsp_hover("file:///main.lisp", "(div (class \"rounded\"))", 0, 7).unwrap();
         assert!(directive_hover["contents"]["value"]
             .as_str()
             .unwrap()
             .contains("utility classes"));
-        assert!(lsp_hover("(unknown value)", 0, 2).is_none());
+        assert!(lsp_hover("file:///main.lisp", "(unknown value)", 0, 2).is_none());
     }
 
     #[test]
