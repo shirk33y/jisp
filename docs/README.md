@@ -53,6 +53,8 @@ rationale; they do not enable a language feature by themselves.
 - [JSON/YAML data dialects](research/JSON_DATA_DIALECTS.md): research on `$`
   symbols, list/form classification, raw object literals, YAML restrictions,
   and cross-host safety.
+- [Rust Lisp implementations](research/RUST_LISP_IMPLEMENTATIONS.md): targeted
+  comparison of embedding, sandboxing, modules, benchmarks, and diagnostics.
 
 ## Plans and historical rationale
 
