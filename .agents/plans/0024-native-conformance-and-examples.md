@@ -1,4 +1,4 @@
-# Plan: native conformance and flagship example
+# Plan: native conformance and examples
 
 **Status:** Proposed execution plan. No language, stdlib, ABI, or source-syntax
 extension is in scope.
@@ -21,7 +21,7 @@ through one machine-checked support matrix and one realistic Rust embedding.
 2. Differential coverage for every inventory item.
 3. Compile-fail coverage for every intentional native boundary.
 4. `docs/NATIVE.md`, derived from or checked against the inventory.
-5. One `examples/` Rust-embedded application with executable tests.
+5. At least five executable examples; at least three are nontrivial.
 
 ## 1. Define the support inventory
 
@@ -93,28 +93,27 @@ Add `docs/NATIVE.md` with five short sections:
 The document must link to the inventory/test location. Do not duplicate long
 function signatures; `docs/STDLIB.md` owns those.
 
-## 4. Flagship: Rust-embedded task pipeline
+## 4. Example suite
 
-Build one medium-sized example under `examples/` plus a Rust integration test.
-It should model a small typed task/config pipeline, not a toy arithmetic demo.
+Add at least five examples under `examples/`. Each has source, a short README,
+expected output, and an executable test. Examples must use only inventory rows
+marked `supported`.
 
-Required Jisp behavior:
+| Example | Scope | Level | Required proof |
+| --- | --- | --- | --- |
+| `task-pipeline` | imported modules, enum/result, lists, maps, closures | nontrivial | interpreter/native equal output |
+| `pricing-rules` | typed rules, callbacks, variadics, error recovery | nontrivial | interpreter/native equal output |
+| `rust-embedded-report` | public proc macro or facade in a downstream-style Rust crate | nontrivial | compiled Rust test plus mapped failure fixture |
+| `macro-normalizer` | hygienic template macro and normal data transform | compact | expansion and runtime output |
+| `collection-toolbox` | immutable list/object/map updates and helper boundary | compact | output plus unsupported-native diagnostic |
 
-- imported module and typed exported entry point;
-- an enum or `result` error path;
-- closed object plus homogeneous map/list transformation;
-- callback helper and a capturing closure or variadic function;
-- one macro only if it clarifies real repeated structure;
-- deterministic output that the Rust test asserts.
+The three nontrivial examples must be multi-file or multi-module, have named
+domain data types, include an error path, and prove both execution paths. The
+compact examples isolate one feature family and make its native boundary easy to
+find.
 
-Required Rust behavior:
-
-- consume it through the public proc-macro or facade API, not private crates;
-- compile and run in a downstream-style test crate;
-- demonstrate one source-mapped compile failure in a companion fixture.
-
-Keep UI, network, filesystem, FFI, remote registry, and dynamic JSON out of
-this example. They are separate product decisions.
+No example adds UI, network, filesystem, FFI, remote registry, or dynamic JSON.
+Those are separate product decisions.
 
 ## 5. Delivery order
 
@@ -123,8 +122,9 @@ this example. They are separate product decisions.
    represented.
 3. Add `docs/NATIVE.md`; make its matrix checked or generated from the
    inventory.
-4. Build the flagship using only inventory-supported rows.
-5. Add the example to CI and runnable documentation where useful.
+4. Build the compact examples, then the three nontrivial examples, using only
+   inventory-supported rows.
+5. Add every example to CI and runnable documentation where useful.
 6. Review gaps exposed by the example. Propose the next feature separately.
 
 ## Acceptance criteria
@@ -132,8 +132,9 @@ this example. They are separate product decisions.
 - Every native support claim maps to a named inventory row and passing test.
 - Every deliberate rejection maps to a downstream compile-fail fixture with a
   Jisp diagnostic.
-- The flagship passes through interpreter and native execution with equal
-  observable output.
+- At least five examples exist; three meet the nontrivial definition above.
+- Every example passes through interpreter and native execution with equal
+  observable output, or is an explicit native-rejection example.
 - `docs/NATIVE.md`, `docs/STDLIB.md`, and test inventory do not contradict.
 - No new language feature, stdlib item, or universal dynamic ABI is introduced.
 
