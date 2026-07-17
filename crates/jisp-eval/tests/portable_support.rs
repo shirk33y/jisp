@@ -18,8 +18,14 @@ enum PortableTest {
     },
 }
 
-pub fn run_portable_test(file: &str, source: &str, test_index: usize, test_name: &str) {
-    let generated_context = format!("{file}: {test_name}");
+pub fn run_portable_test(
+    file: &str,
+    source: &str,
+    test_index: usize,
+    test_name: &str,
+    test_id: &str,
+) {
+    let generated_context = format!("{test_id} ({file}: {test_name})");
     let nodes = parse_fixture(file, source)
         .unwrap_or_else(|error| panic!("{generated_context}: parse failed: {error}"));
     let expanded = jisp_expand::expand_module(&nodes)

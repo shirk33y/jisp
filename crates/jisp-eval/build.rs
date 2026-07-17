@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -11,6 +11,7 @@ use jisp_syntax_yaml::YamlParser;
 
 struct FixtureTest {
     index: usize,
+    id: String,
     name: String,
     function: String,
 }
@@ -73,7 +74,8 @@ fn generate_fixture_tests(
         println!("cargo:rerun-if-changed={}", path.display());
         let source = fs::read_to_string(&path)
             .map_err(|error| format!("failed to read {}: {error}", path.display()))?;
-        let tests = discover_tests(&path, &source, test_forms)?;
+        let canonical_fixture = canonical_fixture_path(&path, &canonical_dir, &generated_dir)?;
+        let tests = discover_tests(&path, &source, test_forms, &canonical_fixture)?;
         let fixture_path = fixture_path(&path)?;
         let module = unique_ident(&mut module_names, &sanitize_ident(&fixture_path));
 
@@ -90,10 +92,14 @@ fn generate_fixture_tests(
         let mut function_names = HashMap::new();
         for test in tests {
             let function = unique_ident(&mut function_names, &test.function);
+            output.push_str(&format!(
+                "    const TEST_ID_{function}: &str = \"{}\";\n\n",
+                escape_rust_string(&test.id)
+            ));
             output.push_str("    #[test]\n");
             output.push_str(&format!("    fn {function}() {{\n"));
             output.push_str(&format!(
-                "        crate::{runner}::run_portable_test(FILE, SOURCE, {}, \"{}\");\n",
+                "        crate::{runner}::run_portable_test(FILE, SOURCE, {}, \"{}\", TEST_ID_{function});\n",
                 test.index,
                 escape_rust_string(&test.name)
             ));
@@ -160,9 +166,11 @@ fn discover_tests(
     path: &Path,
     source: &str,
     test_forms: &[&str],
+    canonical_fixture: &str,
 ) -> Result<Vec<FixtureTest>, String> {
     let nodes = parse_fixture(path, source)?;
     let mut tests = vec![];
+    let mut ids = HashSet::new();
 
     for node in nodes {
         let Some(items) = node.as_form() else {
@@ -180,8 +188,16 @@ fn discover_tests(
             .and_then(Node::as_string)
             .ok_or_else(|| format!("{}: test name must be a string", path.display()))?
             .to_owned();
+        let id = format!("{canonical_fixture}::{name}");
+        if !ids.insert(id.clone()) {
+            return Err(format!(
+                "{}: duplicate portable test name `{name}`",
+                path.display()
+            ));
+        }
         tests.push(FixtureTest {
             index: tests.len(),
+            id,
             function: sanitize_ident(&name),
             name,
         });
@@ -195,6 +211,40 @@ fn discover_tests(
     }
 
     Ok(tests)
+}
+
+fn canonical_fixture_path(
+    path: &Path,
+    canonical_dir: &Path,
+    generated_dir: &Path,
+) -> Result<String, String> {
+    if path.starts_with(canonical_dir) {
+        return fixture_path(path);
+    }
+
+    let generated_relative = path.strip_prefix(generated_dir).map_err(|error| {
+        format!(
+            "{} is neither a canonical nor generated portable fixture: {error}",
+            path.display()
+        )
+    })?;
+    let mut components = generated_relative.components();
+    components.next().ok_or_else(|| {
+        format!(
+            "{}: generated portable fixture has no syntax directory",
+            path.display()
+        )
+    })?;
+    let canonical_relative = components.as_path().with_extension("lisp");
+    let canonical = canonical_dir.join(canonical_relative);
+    if !canonical.is_file() {
+        return Err(format!(
+            "{}: generated fixture has no canonical Lisp fixture {}",
+            path.display(),
+            canonical.display()
+        ));
+    }
+    fixture_path(&canonical)
 }
 
 fn parse_fixture(path: &Path, source: &str) -> Result<Vec<Node>, String> {

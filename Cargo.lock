@@ -336,6 +336,8 @@ version = "0.0.1"
 dependencies = [
  "indexmap",
  "jisp",
+ "jisp-core",
+ "jisp-syntax-lisp",
  "num-bigint",
  "proc-macro2",
  "quote",
