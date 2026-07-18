@@ -1,4 +1,67 @@
-use crate::{lsp_definition, lsp_hover};
+use std::path::Path;
+
+use crate::{lsp_definition, lsp_diagnostics, lsp_hover, remapped_cargo_errors};
+
+#[test]
+fn diagnostics_keep_jisp_codes_and_utf16_ranges() {
+    let text = "(export main (fn () \"🙂\" \"unterminated";
+    let diagnostics = lsp_diagnostics("file:///unicode.lisp", text);
+
+    assert_eq!(diagnostics.len(), 1);
+    assert_eq!(diagnostics[0]["source"], "jisp");
+    assert_eq!(diagnostics[0]["code"], "JISP-L003");
+    assert_eq!(diagnostics[0]["range"]["start"]["line"], 0);
+    assert_eq!(
+        diagnostics[0]["range"]["start"]["character"],
+        "(export main (fn () \"🙂\" ".encode_utf16().count()
+    );
+}
+
+#[test]
+fn diagnostics_keep_parser_codes_and_eof_ranges() {
+    let text = "\"unterminated";
+    let diagnostics = lsp_diagnostics("file:///unterminated.lisp", text);
+
+    assert_eq!(diagnostics.len(), 1);
+    assert_eq!(diagnostics[0]["source"], "jisp");
+    assert_eq!(diagnostics[0]["code"], "JISP-L003");
+    assert_eq!(diagnostics[0]["range"]["start"]["line"], 0);
+    assert_eq!(diagnostics[0]["range"]["start"]["character"], 0);
+    assert_eq!(
+        diagnostics[0]["range"]["end"]["character"],
+        text.encode_utf16().count()
+    );
+}
+
+#[test]
+fn diagnostics_keep_multiline_ranges_after_unicode_text() {
+    let text = "(def label \"🙂\")\n(export main\n  (fn ()\n    (+ 1 true)))\n";
+    let diagnostics = lsp_diagnostics("file:///multiline-unicode.lisp", text);
+
+    assert_eq!(diagnostics.len(), 1);
+    assert_eq!(diagnostics[0]["code"], "JISP-TYPE");
+    assert_eq!(diagnostics[0]["range"]["start"]["line"], 3);
+    assert_eq!(diagnostics[0]["range"]["start"]["character"], 4);
+}
+
+#[test]
+fn native_remapping_ignores_errors_outside_generated_rust() {
+    let generated = jisp::emit_rust_detailed("main.lisp", "(export main (fn () 1))").unwrap();
+    let cargo_json = r#"{
+        "reason":"compiler-message",
+        "message":{
+            "level":"error",
+            "message":"foreign compiler error",
+            "spans":[{
+                "is_primary":true,
+                "file_name":"dependency.rs",
+                "byte_start":0
+            }]
+        }
+    }"#;
+
+    assert!(remapped_cargo_errors(cargo_json, &generated, Path::new("src/lib.rs")).is_empty());
+}
 
 #[test]
 fn hover_reports_an_inferred_top_level_type() {
