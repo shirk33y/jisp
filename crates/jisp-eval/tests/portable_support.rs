@@ -1,4 +1,4 @@
-use jisp_core::{detect_syntax, Node, SourceId, Syntax, SyntaxParser};
+use jisp_core::{detect_syntax, Node, NodeKind, SourceId, Syntax, SyntaxParser};
 use jisp_eval::Evaluator;
 use jisp_ir::Lowerer;
 use jisp_syntax_json::JsonParser;
@@ -18,6 +18,40 @@ enum PortableTest {
     },
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum PortableTestKind {
+    Assert,
+    Error,
+}
+
+#[derive(Clone, Copy)]
+pub struct ExpectedPortableTest {
+    pub id: &'static str,
+    pub name: &'static str,
+    pub kind: PortableTestKind,
+}
+
+#[derive(Clone, Copy)]
+pub struct FixtureSource {
+    pub file: &'static str,
+    pub source: &'static str,
+}
+
+#[derive(Debug, Eq, PartialEq)]
+enum PortableOutcome {
+    AssertPassed,
+    ExpectedError {
+        stage: PortableFailureStage,
+        code: &'static str,
+    },
+}
+
+#[derive(Debug, Eq, PartialEq)]
+enum PortableFailureStage {
+    Lower,
+    Type,
+}
+
 pub fn run_portable_test(
     file: &str,
     source: &str,
@@ -26,12 +60,131 @@ pub fn run_portable_test(
     test_id: &str,
 ) {
     let generated_context = format!("{test_id} ({file}: {test_name})");
-    let nodes = parse_fixture(file, source)
-        .unwrap_or_else(|error| panic!("{generated_context}: parse failed: {error}"));
-    let expanded = jisp_expand::expand_module(&nodes)
-        .unwrap_or_else(|error| panic!("{generated_context}: expand failed: {error}"));
-    let (module_nodes, test) = collect_test(expanded.nodes, test_index)
+    run_portable_test_outcome(file, source, test_index)
         .unwrap_or_else(|error| panic!("{generated_context}: {error}"));
+}
+
+pub fn assert_fixture_parity(
+    canonical_fixture: &str,
+    fixtures: &[FixtureSource],
+    expected: &[ExpectedPortableTest],
+) {
+    assert_eq!(
+        fixtures.len(),
+        4,
+        "{canonical_fixture}: expected four syntaxes"
+    );
+    let canonical_nodes =
+        expand_fixture(fixtures[0].file, fixtures[0].source).unwrap_or_else(|error| {
+            panic!(
+                "{canonical_fixture}: {} did not expand for structural parity: {error}",
+                fixtures[0].file
+            )
+        });
+    for fixture in fixtures {
+        let nodes = expand_fixture(fixture.file, fixture.source).unwrap_or_else(|error| {
+            panic!(
+                "{canonical_fixture}: {} did not expand for structural parity: {error}",
+                fixture.file
+            )
+        });
+        if let Some(difference) = first_node_difference(&canonical_nodes, &nodes, "module") {
+            panic!(
+                "{canonical_fixture}: {} expanded differently from {} at {difference}",
+                fixture.file, fixtures[0].file
+            );
+        }
+        let actual = fixture_test_registry(fixture.file, fixture.source).unwrap_or_else(|error| {
+            panic!(
+                "{canonical_fixture}: {} has invalid test registry: {error}",
+                fixture.file
+            )
+        });
+        assert_eq!(
+            actual.len(),
+            expected.len(),
+            "{canonical_fixture}: {}",
+            fixture.file
+        );
+        for (index, (actual, expected)) in actual.iter().zip(expected).enumerate() {
+            assert_eq!(
+                actual.0, expected.name,
+                "{canonical_fixture}: {} test {index} has a different name",
+                fixture.file
+            );
+            assert_eq!(
+                actual.1, expected.kind,
+                "{canonical_fixture}: {} test {} (`{}`) has a different kind",
+                fixture.file, index, expected.name
+            );
+        }
+    }
+
+    for (index, expected) in expected.iter().enumerate() {
+        let baseline = run_portable_test_outcome(fixtures[0].file, fixtures[0].source, index)
+            .unwrap_or_else(|error| {
+                panic!(
+                    "{}: {} ({}) failed: {error}",
+                    expected.id, fixtures[0].file, expected.name
+                )
+            });
+        for fixture in &fixtures[1..] {
+            let actual = run_portable_test_outcome(fixture.file, fixture.source, index)
+                .unwrap_or_else(|error| {
+                    panic!(
+                        "{}: {} ({}) failed: {error}",
+                        expected.id, fixture.file, expected.name
+                    )
+                });
+            assert_eq!(
+                actual, baseline,
+                "{}: {} ({}) diverged from {}: {actual:?} vs {baseline:?}",
+                expected.id, fixture.file, expected.name, fixtures[0].file
+            );
+        }
+    }
+}
+
+fn first_node_difference(left: &[Node], right: &[Node], path: &str) -> Option<String> {
+    if left.len() != right.len() {
+        return Some(format!(
+            "{path}: item count {} != {}",
+            left.len(),
+            right.len()
+        ));
+    }
+    for (index, (left, right)) in left.iter().zip(right).enumerate() {
+        let item_path = format!("{path}[{index}]");
+        if let Some(difference) = first_node_kind_difference(left, right, &item_path) {
+            return Some(difference);
+        }
+    }
+    None
+}
+
+fn first_node_kind_difference(left: &Node, right: &Node, path: &str) -> Option<String> {
+    match (&left.kind, &right.kind) {
+        (NodeKind::Null, NodeKind::Null) => None,
+        (NodeKind::Bool(left), NodeKind::Bool(right)) if left == right => None,
+        (NodeKind::Int(left), NodeKind::Int(right)) if left == right => None,
+        (NodeKind::Float(left), NodeKind::Float(right)) if left == right => None,
+        (NodeKind::Symbol(left), NodeKind::Symbol(right)) if left == right => None,
+        (NodeKind::String(left), NodeKind::String(right)) if left == right => None,
+        (NodeKind::Form(left), NodeKind::Form(right)) => first_node_difference(left, right, path),
+        _ => Some(format!("{path}: {:?} != {:?}", left.kind, right.kind)),
+    }
+}
+
+fn run_portable_test_outcome(
+    file: &str,
+    source: &str,
+    test_index: usize,
+) -> Result<PortableOutcome, String> {
+    let nodes = parse_fixture(file, source).map_err(|error| format!("parse failed: {error}"))?;
+    let expanded =
+        jisp_expand::expand_module(&nodes).map_err(|error| format!("expand failed: {error}"))?;
+    let (module_nodes, test) = collect_test(expanded.nodes, test_index)
+        .map_err(|error| format!("test discovery failed: {error}"))?;
     let context = format!("{file}: {}", test.name());
 
     match test {
@@ -62,55 +215,136 @@ fn parse_fixture(file: &str, source: &str) -> Result<Vec<Node>, String> {
     }
 }
 
+fn expand_fixture(file: &str, source: &str) -> Result<Vec<Node>, String> {
+    let nodes = parse_fixture(file, source).map_err(|error| format!("parse failed: {error}"))?;
+    let nodes = nodes
+        .iter()
+        .map(normalize_quote_aliases)
+        .collect::<Vec<_>>();
+    jisp_expand::expand_module(&nodes)
+        .map(|expanded| expanded.nodes)
+        .map_err(|error| format!("expand failed: {error}"))
+}
+
+fn normalize_quote_aliases(node: &Node) -> Node {
+    let NodeKind::Form(items) = &node.kind else {
+        return node.clone();
+    };
+    let mut items = items
+        .iter()
+        .map(normalize_quote_aliases)
+        .collect::<Vec<_>>();
+    let canonical_head = items
+        .first()
+        .and_then(Node::as_symbol)
+        .and_then(|head| match head {
+            "quasiquote" => Some("`"),
+            "unquote" => Some(","),
+            "unquote-splicing" => Some(",@"),
+            _ => None,
+        });
+    if let Some(canonical_head) = canonical_head {
+        items[0] = Node::symbol(canonical_head, items[0].span);
+    }
+    Node::form(items, node.span)
+}
+
 impl PortableTest {
     fn name(&self) -> &str {
         match self {
             PortableTest::Assert { name, .. } | PortableTest::Error { name, .. } => name,
         }
     }
+
+    fn kind(&self) -> PortableTestKind {
+        match self {
+            PortableTest::Assert { .. } => PortableTestKind::Assert,
+            PortableTest::Error { .. } => PortableTestKind::Error,
+        }
+    }
 }
 
-fn run_assert_test(context: &str, module_nodes: &[Node], condition: &str) {
+fn run_assert_test(
+    context: &str,
+    module_nodes: &[Node],
+    condition: &str,
+) -> Result<PortableOutcome, String> {
     let module = Lowerer
         .lower_module(module_nodes)
-        .unwrap_or_else(|error| panic!("{context}: lower failed: {error}"));
+        .map_err(|error| format!("{context}: lower failed: {error}"))?;
     Inferencer::with_prelude()
         .infer_module(&module)
-        .unwrap_or_else(|error| panic!("{context}: type check failed: {error}"));
+        .map_err(|error| format!("{context}: type check failed: {error}"))?;
     let loaded = Evaluator::new()
         .load_module(&module)
-        .unwrap_or_else(|error| panic!("{context}: evaluation failed: {error}"));
+        .map_err(|error| format!("{context}: evaluation failed: {error}"))?;
     let condition = loaded
         .exports
         .get(condition)
-        .unwrap_or_else(|| panic!("{context}: missing assertion export {condition}"));
-    assert!(
-        matches!(condition, jisp_eval::Value::Bool(true)),
-        "{context}: assertion failed: expected true, got {}",
-        condition.display_string()
-    );
+        .ok_or_else(|| format!("{context}: missing assertion export {condition}"))?;
+    if !matches!(condition, jisp_eval::Value::Bool(true)) {
+        return Err(format!(
+            "{context}: assertion failed: expected true, got {}",
+            condition.display_string()
+        ));
+    }
+    Ok(PortableOutcome::AssertPassed)
 }
 
-fn run_error_test(context: &str, module_nodes: &[Node], expected_message: &str) {
+fn run_error_test(
+    context: &str,
+    module_nodes: &[Node],
+    expected_message: &str,
+) -> Result<PortableOutcome, String> {
     let module = match Lowerer.lower_module(module_nodes) {
         Ok(module) => module,
         Err(error) => {
-            assert_error_contains(context, &lower_error_messages(&error), expected_message);
-            return;
+            assert_error_contains(context, &lower_error_messages(&error), expected_message)?;
+            return Ok(PortableOutcome::ExpectedError {
+                stage: PortableFailureStage::Lower,
+                code: "JISP-LOWER",
+            });
         }
     };
 
     match Inferencer::with_prelude().infer_module(&module) {
-        Ok(_) => panic!("{context}: expected lower/type error containing `{expected_message}`"),
-        Err(error) => assert_error_contains(context, &error.to_string(), expected_message),
+        Ok(_) => Err(format!(
+            "{context}: expected lower/type error containing `{expected_message}`"
+        )),
+        Err(error) => {
+            assert_error_contains(context, &error.to_string(), expected_message)?;
+            Ok(PortableOutcome::ExpectedError {
+                stage: PortableFailureStage::Type,
+                code: "JISP-TYPE",
+            })
+        }
     }
 }
 
-fn assert_error_contains(context: &str, actual: &str, expected: &str) {
-    assert!(
-        actual.contains(expected),
-        "{context}: expected error containing `{expected}`, got `{actual}`"
-    );
+fn assert_error_contains(context: &str, actual: &str, expected: &str) -> Result<(), String> {
+    if actual.contains(expected) {
+        Ok(())
+    } else {
+        Err(format!(
+            "{context}: expected error containing `{expected}`, got `{actual}`"
+        ))
+    }
+}
+
+fn fixture_test_registry(
+    file: &str,
+    source: &str,
+) -> Result<Vec<(String, PortableTestKind)>, String> {
+    let nodes = parse_fixture(file, source)?;
+    nodes
+        .iter()
+        .filter(|node| is_test_form(node))
+        .map(|node| {
+            let mut ignored = vec![];
+            let test = lower_test_form(node, ignored.len(), &mut ignored)?;
+            Ok((test.name().to_owned(), test.kind()))
+        })
+        .collect()
 }
 
 fn lower_error_messages(error: &jisp_ir::LowerError) -> String {

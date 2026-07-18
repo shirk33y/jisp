@@ -101,6 +101,17 @@ exclusion.
 - Existing individual portable tests remain green and diagnostic spans are not
   falsely required to match across source spellings.
 
+## Execution ledger
+
+| Boundary | Proof |
+| --- | --- |
+| Fixture topology | build-time registry requires canonical Lisp plus JSON, YAML, and `ws`; orphan peers fail generation |
+| Logical registry | generated peers must have the same ordered test names and `test`/`test-error` kinds |
+| Runtime semantics | generated parity tests run every logical test through four syntax readers and compare normalized outcomes |
+| Negative semantics | expected failures compare lower/type stage and `JISP-LOWER`/`JISP-TYPE`, not spans or prose |
+| Sensitive corpus | `parity-boundaries` covers nested data, escaped Unicode, quote/unquote expansion, and a type failure |
+| UI exclusion | UI stays on its renderer-aware portable runner; it is not silently compared as a language-only outcome |
+
 ## Cut line
 
 Do not add raw JSON objects, YAML maps, a source formatter/converter, snapshot

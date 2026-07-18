@@ -1,0 +1,57 @@
+[
+  [
+    "def",
+    "nested-data",
+    [
+      "fn",
+      [],
+      [
+        "obj",
+        ["str", "record"],
+        ["obj", ["str", "count"], 40, ["str", "items"], ["list", 1, 2]],
+        ["str", "rows"],
+        ["list", ["list", 3, 4], ["list", 5, 6]]
+      ]
+    ]
+  ],
+  [
+    "def",
+    "swap-pair",
+    [
+      "~",
+      ["fn", ["left", "right"], ["`", ["list", [",", "right"], [",", "left"]]]]
+    ]
+  ],
+  [
+    "test",
+    ["str", "nested list and object data remain values"],
+    [
+      "assert",
+      [
+        "=",
+        42,
+        [
+          "let",
+          ["value", ["nested-data"]],
+          ["+", [".", [".", "value", ["str", "record"]], ["str", "count"]], ["list.len", [".", "value", ["str", "rows"]]]]
+        ]
+      ]
+    ]
+  ],
+  [
+    "test",
+    ["str", "unicode and escaped strings stay data"],
+    ["assert", ["=", ["str", "quote:\" newline:\n🙂"], ["str", ["str", "quote:\" newline:\n"], ["str", "🙂"]]]]
+  ],
+  [
+    "test",
+    ["str", "quote and unquote normalize before lowering"],
+    ["assert", ["=", ["list", 41, 1], ["swap-pair", 1, 41]]]
+  ],
+  [
+    "test-error",
+    ["str", "type failures keep a portable category"],
+    ["str", "no overload of `+`"],
+    ["+", 1, true]
+  ]
+]

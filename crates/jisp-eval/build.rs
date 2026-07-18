@@ -9,11 +9,20 @@ use jisp_syntax_lisp::LispParser;
 use jisp_syntax_ws::WsParser;
 use jisp_syntax_yaml::YamlParser;
 
+mod syntax_parity;
+
 struct FixtureTest {
     index: usize,
     id: String,
     name: String,
     function: String,
+    kind: FixtureTestKind,
+}
+
+#[derive(Clone, Copy, Eq, PartialEq)]
+enum FixtureTestKind {
+    Assert,
+    Error,
 }
 
 fn main() {
@@ -34,6 +43,7 @@ fn generate_tests() -> Result<(), String> {
         "portable_support",
         &["test", "test-error"],
     )?;
+    syntax_parity::generate(&manifest_dir)?;
     generate_fixture_tests(
         &manifest_dir,
         "ui",
@@ -201,6 +211,11 @@ fn discover_tests(
             id,
             function: sanitize_ident(&name),
             name,
+            kind: if items.first().and_then(Node::as_symbol) == Some("test") {
+                FixtureTestKind::Assert
+            } else {
+                FixtureTestKind::Error
+            },
         });
     }
 

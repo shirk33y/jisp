@@ -5,10 +5,9 @@ normalisation, type instantiation, unification, module resolution, portable
 language fixtures, and the native Rust subset. Proc-macro integration fixtures
 compile and execute generated scalar, structural, and imported Rust programs.
 
-Add broader snapshot tests for diagnostics and schema. Add property tests
-ensuring parse/normalise equivalence across syntax fixtures. Native codegen
-still needs systematic compile-fail fixtures and interpreter-vs-native
-differential tests.
+Add broader snapshot tests for diagnostics and schema. Native codegen still
+needs systematic compile-fail fixtures and interpreter-vs-native differential
+tests.
 
 CI pins the Rust toolchain, checks formatting and Clippy with warnings denied,
 runs the workspace suite, and runs `jisp-macros` separately so generated Rust
@@ -59,6 +58,22 @@ exists and is linked at most once. Native differential and compile-fail tests
 may retain dedicated integration fixtures for proc-macro, ABI, or diagnostic
 coverage; the inventory makes that relationship explicit. Target selection is
 never guessed from source forms.
+
+### Cross-syntax semantic parity
+
+The build script treats each canonical `tests/language/*.lisp` fixture and its
+JSON, YAML, and `ws` peers as one registry. A missing peer, orphaned generated
+fixture, duplicate ID, changed test name, changed `test`/`test-error` kind, or
+changed order fails the build. The generated parity suite also compares the
+source-aware AST after quote-alias normalization and macro expansion, then
+executes every logical test through all four spellings and compares a normalized outcome:
+`assert-passed`, `JISP-LOWER`, or `JISP-TYPE` at the same frontend stage. It
+deliberately does not compare source byte spans or rendered message prose.
+
+`tests/language/parity-boundaries.lisp` and its generated peers exercise nested
+data, Unicode/escaping, quote/unquote macro expansion, and a portable type
+error. UI fixtures remain on their renderer-aware runner and are outside this
+language-only parity gate.
 
 ## Portable UI scenarios
 
