@@ -71,7 +71,8 @@ rationale; they do not enable a language feature by themselves.
 - [Non-toy project plan](../.agents/plans/0022-non-toy-project-plan.md):
   conformance, support-boundary, release, and adoption work that follows P2.
 - [Native conformance and examples](../.agents/plans/0024-native-conformance-and-examples.md):
-  concrete execution plan for the current native subset before new features.
+  historical execution plan; the checked current contract is in
+  [Native Rust subset](NATIVE.md) and [Testing](TESTING.md).
 
 ## Document ownership
 

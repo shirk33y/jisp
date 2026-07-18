@@ -64,7 +64,7 @@ not dates. The detailed engineering queue remains [TODO.md](TODO.md).
 - Keep formatter, REPL, LSP, and package tooling compatible with the shared
   module and diagnostic contracts as those contracts evolve.
 - Keep runnable documentation examples in the normal test suite and preserve
-  equivalence across all three source syntaxes.
+  equivalence across all four source syntaxes.
 - Treat cross-host execution as a protocol and conformance problem before
   adding bindings; see [the MAL research report](docs/research/MAL.md).
 

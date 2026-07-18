@@ -53,12 +53,15 @@ fall back to `jisp_eval::Value`.
 
 ## Parity policy
 
-Every `supported` row has a differential test: evaluate the same source with
-the interpreter, invoke its native export, and compare structural output. Every
+Every `supported` row has a differential test: evaluate its fixture with the
+interpreter, invoke its native export, and compare structural output. Every
 `intentionally-rejected` row has a downstream proc-macro compile-fail test.
 The inventory verifies the fixture, named test, stable portable ID (when one
-exists), and one-to-one portable mapping before the suite runs. New native
-claims require an inventory row and a matching test before this table changes.
+exists), and one-to-one portable mapping before the suite runs. A portable ID
+anchors the semantic contract; a native integration fixture may remain distinct
+when it proves proc-macro, concrete ABI, or diagnostic-remapping behavior. New
+native claims require an inventory row and a matching test before this table
+changes.
 
 Portable language fixtures are the long-term semantic source of those rows.
 The inventory links each portable fixture/test identity to at most one native

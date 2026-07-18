@@ -44,21 +44,21 @@ rejections such as redundant or non-exhaustive `case` patterns.
 ### Backend conformance contract
 
 Portable fixtures are the canonical semantic corpus, but they do not all have
-the same backend obligations. The support inventory will select one of three
+the same backend obligations. The support inventory selects one of three
 outcomes for each stable fixture/test identity in scope of native conformance:
 
-- `supported`: evaluate through the interpreter, compile the canonical source
-  through the native facade, and compare observable output structurally;
-- `intentionally-rejected`: pass through the interpreter when meaningful and
-  assert the documented Jisp diagnostic through native compilation;
+- `supported`: map the portable semantic contract to an interpreter/native
+  differential test that compares observable output structurally;
+- `intentionally-rejected`: map the portable semantic contract to a downstream
+  native-compilation test that asserts the documented Jisp diagnostic;
 - `interpreter-only`: run only the portable frontend/interpreter contract.
 
-The current harness registers individual portable tests with Cargo and checks
-cross-syntax equivalence. Native differential coverage is still maintained in
-separate fixtures while this linkage is implemented. The planned migration is
-documented in `.agents/plans/0024-native-conformance-and-examples.md`; target
-selection must remain explicit in the inventory, never guessed from source
-forms.
+The harness registers individual portable tests with Cargo and checks
+cross-syntax equivalence. `native_contract.rs` verifies that every linked ID
+exists and is linked at most once. Native differential and compile-fail tests
+may retain dedicated integration fixtures for proc-macro, ABI, or diagnostic
+coverage; the inventory makes that relationship explicit. Target selection is
+never guessed from source forms.
 
 ## Portable UI scenarios
 
@@ -132,13 +132,15 @@ push and pull request.
 
 `docs/native-support.json` is the machine-checked native support inventory.
 `crates/jisp-macros/tests/native_contract.rs` checks that every row names an
-existing fixture, an owning test, and a row in `docs/NATIVE.md`.
+existing fixture, owning test, portable-test ID when applicable, backend
+obligation, and row in `docs/NATIVE.md`.
 
-The inventory is also the planned bridge from portable language fixtures to
-native conformance. Semantic rows will name a stable portable fixture/test ID;
-the test harness will then derive interpreter/native parity or native rejection
-coverage from the row. Native-only fixtures remain appropriate for proc-macro,
-ABI, and generated-diagnostic integration checks.
+The inventory is the bridge from portable language fixtures to native
+conformance. A linked semantic row names a stable portable fixture/test ID and
+one backend obligation. The contract test validates the link; it does not
+infer native eligibility or generate a test from source syntax. Native-only
+fixtures remain appropriate for proc-macro, ABI, and generated-diagnostic
+integration checks.
 
 `crates/jisp-macros/tests/native_differential.rs` compiles one representative
 Jisp module through `jisp_macros::lisp_file!` and compares its native exports
