@@ -92,14 +92,15 @@ fn generate_fixture_tests(
         let mut function_names = HashMap::new();
         for test in tests {
             let function = unique_ident(&mut function_names, &test.function);
+            let test_id_const = format!("TEST_ID_{}", function.to_ascii_uppercase());
             output.push_str(&format!(
-                "    const TEST_ID_{function}: &str = \"{}\";\n\n",
+                "    const {test_id_const}: &str = \"{}\";\n\n",
                 escape_rust_string(&test.id)
             ));
             output.push_str("    #[test]\n");
             output.push_str(&format!("    fn {function}() {{\n"));
             output.push_str(&format!(
-                "        crate::{runner}::run_portable_test(FILE, SOURCE, {}, \"{}\", TEST_ID_{function});\n",
+                "        crate::{runner}::run_portable_test(FILE, SOURCE, {}, \"{}\", {test_id_const});\n",
                 test.index,
                 escape_rust_string(&test.name)
             ));

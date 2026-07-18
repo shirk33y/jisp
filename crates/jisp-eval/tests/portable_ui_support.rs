@@ -5,8 +5,14 @@ use jisp_syntax_ws::WsParser;
 use jisp_syntax_yaml::YamlParser;
 use jisp_ui::testing::{run_ui_tests, split_ui_tests, UiTestSuite};
 
-pub fn run_portable_test(file: &str, source: &str, test_index: usize, test_name: &str) {
-    let context = format!("{file}: {test_name}");
+pub fn run_portable_test(
+    file: &str,
+    source: &str,
+    test_index: usize,
+    test_name: &str,
+    test_id: &str,
+) {
+    let context = format!("{test_id} ({file}: {test_name})");
     let nodes = parse_fixture(file, source)
         .unwrap_or_else(|error| panic!("{context}: parse failed: {error}"));
     let expanded = jisp_expand::expand_module(&nodes)
