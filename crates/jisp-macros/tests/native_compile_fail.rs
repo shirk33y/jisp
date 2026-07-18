@@ -123,7 +123,7 @@ fn bigint_native_values_compile_in_downstream_macro_crates() {
 fn fixture_dir(name: &str) -> PathBuf {
     let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("../../target/jisp-macro-compile-fail")
-        .join(format!("{name}-{}", std::process::id()));
+        .join(name);
     if dir.exists() {
         fs::remove_dir_all(&dir).unwrap();
     }

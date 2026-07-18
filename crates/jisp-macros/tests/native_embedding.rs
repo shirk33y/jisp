@@ -78,7 +78,7 @@ fn fixture_dir(name: &str) -> PathBuf {
 fn copied_fixture_dir(name: &str) -> PathBuf {
     let directory = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("../../target/jisp-downstream-embedding")
-        .join(format!("{name}-{}", std::process::id()));
+        .join(name);
     if directory.exists() {
         fs::remove_dir_all(&directory).unwrap();
     }
