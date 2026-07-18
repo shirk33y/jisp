@@ -23,6 +23,10 @@
   (fn (value)
     (> value 1)))
 
+(def negative
+  (fn (value)
+    (< value 0)))
+
 (def sum
   (fn (total value)
     (+ total value)))
@@ -384,3 +388,61 @@
 (export dict-map-values-entry
   (fn ()
     (list.fold sum 0 (map.values (map.cat (map "a" 40) (map "b" 2))))))
+
+(export list-get-boundary-entry
+  (fn ()
+    (+
+      (case (list.get (list 40) 0)
+        ((ok value) value)
+        ((err _) 0))
+      (case (list.get (list 40) 2)
+        ((ok _) 0)
+        ((err _) 2)))))
+
+(export list-slice-boundary-entry
+  (fn ()
+    (+
+      (case (list.slice (list 40) 0 1)
+        ((ok values) (list.len values))
+        ((err _) 0))
+      (case (list.slice (list 40) 0 2)
+        ((ok _) 0)
+        ((err _) 2)))))
+
+(export empty-list-callback-entry
+  (fn ()
+    (let (empty (list.filter negative (list 1 2))
+          mapped (list.map increment empty))
+      (+ (list.len empty) (list.len mapped)))))
+
+(export object-view-helpers-entry
+  (fn ()
+    (let (record (obj "first" 40 "second" 2)
+          as-map (obj.to-map record))
+      (+
+        (obj.len record)
+        (+
+          (if (obj.has record "first") 40 0)
+          (+
+            (list.len (obj.keys record))
+            (+
+              (list.len (obj.values record))
+              (case (map.get as-map "second")
+                ((ok value) value)
+                ((err _) 0)))))))))
+
+(export map-view-helpers-entry
+  (fn ()
+    (let (original (map "first" 40 "second" 2)
+          merged (map.cat original (map "third" 1)))
+      (+
+        (map.len merged)
+        (+
+          (if (map.has merged "second") 40 0)
+          (+ (list.len (map.keys merged)) (list.len (map.values merged))))))))
+
+(export pattern-fallback-entry
+  (fn ()
+    (case (list 3 40)
+      ((list (or 1 2) value) (+ value 2))
+      (_ 42))))

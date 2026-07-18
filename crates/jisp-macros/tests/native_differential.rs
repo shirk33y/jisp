@@ -213,6 +213,54 @@ pub fn native_homogeneous_maps_match_the_interpreter() {
     assert_matches_interpreter("dict-map-values-entry", Value::Int(dict_map_values_entry()));
 }
 
+#[test]
+pub fn native_list_get_boundary_matches_the_interpreter() {
+    assert_matches_interpreter(
+        "list-get-boundary-entry",
+        Value::Int(list_get_boundary_entry()),
+    );
+}
+
+#[test]
+pub fn native_list_slice_boundary_matches_the_interpreter() {
+    assert_matches_interpreter(
+        "list-slice-boundary-entry",
+        Value::Int(list_slice_boundary_entry()),
+    );
+}
+
+#[test]
+pub fn native_empty_list_callbacks_match_the_interpreter() {
+    assert_matches_interpreter(
+        "empty-list-callback-entry",
+        Value::Int(empty_list_callback_entry()),
+    );
+}
+
+#[test]
+pub fn native_object_view_helpers_match_the_interpreter() {
+    assert_matches_interpreter(
+        "object-view-helpers-entry",
+        Value::Int(object_view_helpers_entry()),
+    );
+}
+
+#[test]
+pub fn native_map_view_helpers_match_the_interpreter() {
+    assert_matches_interpreter(
+        "map-view-helpers-entry",
+        Value::Int(map_view_helpers_entry()),
+    );
+}
+
+#[test]
+pub fn native_pattern_fallback_matches_the_interpreter() {
+    assert_matches_interpreter(
+        "pattern-fallback-entry",
+        Value::Int(pattern_fallback_entry()),
+    );
+}
+
 fn assert_matches_interpreter(export: &str, native: Value) {
     let interpreted = interpreter_export(export);
     assert!(

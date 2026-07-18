@@ -155,6 +155,11 @@ including an inline closed object and dynamic reads on homogeneous closed
 objects, `option` cases, and `result.try`,
 `result.map`, `result.map-err`, and `result.recover` callbacks that change the
 concrete success or error layout.
+The same fixture separately proves `list.get` and `list.slice` success/error
+boundaries, empty typed callback pipelines, closed-object views (`len`, `has`,
+keys, values, `to-map`), ordered map views (`cat`, `len`, `has`, keys, values),
+and a nested-pattern fallback branch. These are native-only integration rows:
+they exercise generated concrete layouts rather than a portable fixture ID.
 Add an export and a matching structural comparison here whenever native codegen
 gains a supported value shape or intrinsic.
 

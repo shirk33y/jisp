@@ -17,6 +17,12 @@ backend obligation in this table.
 | collection-snapshots | differential.lisp | objects-ui: immutable set/delete | supported | immutable snapshots |
 | homogeneous-dynamic-objects | differential.lisp | objects-ui: homogeneous dynamic map | supported | key dispatch over one field type |
 | maps | differential.lisp | objects-ui: stable keys/values | supported | `IndexMap<String, A>` |
+| list-get-boundaries | differential.lisp | — native-only | supported | concrete `ok`/`err` result branches |
+| list-slice-boundaries | differential.lisp | — native-only | supported | valid and out-of-bounds ranges |
+| empty-list-callbacks | differential.lisp | — native-only | supported | typed empty list after filter/map |
+| object-view-helpers | differential.lisp | — native-only | supported | `len`, `has`, keys, values, `to-map` |
+| map-view-helpers | differential.lisp | — native-only | supported | `cat`, `len`, `has`, keys, values |
+| pattern-fallback | differential.lisp | — native-only | supported | failed nested alternative reaches `_` |
 | functions-closures | differential.lisp | functions-scope: closures | supported | typed concrete calls/closures |
 | variadics | differential.lisp | functions-scope: rest list | supported | concrete `Vec<T>` rest values |
 | imports | imports/main.lisp | — native-only | supported | resolved, Cargo-tracked imports |

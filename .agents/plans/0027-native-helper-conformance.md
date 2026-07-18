@@ -81,6 +81,19 @@ slice.
 - Any added unsupported shape fails with a Jisp diagnostic at the source.
 - Existing user changes stay unstaged and all required checks pass.
 
+## Execution ledger
+
+| Boundary | Proof after this slice | Disposition |
+| --- | --- | --- |
+| `list.get` | present and out-of-bounds result branches | added native-only differential row |
+| `list.slice` | valid and out-of-bounds result branches | added native-only differential row |
+| list callbacks | filter creates empty typed list, then `map` preserves it | added native-only differential row |
+| object views | `len`, `has`, keys, values, and `to-map` | added native-only differential row |
+| map views | `cat`, `len`, `has`, keys, and values | added native-only differential row |
+| nested `case` | failed alternative reaches wildcard fallback | added native-only differential row |
+| result error paths | map-err/recover/try | existing differential row remains sufficient |
+| concrete ABI rejections | UI values, heterogeneous dynamic access, open-row polymorphism | existing downstream compile-fail rows remain the honest boundaries; no new restriction added |
+
 ## Cut line
 
 Stop after the selected helper families and record uncovered helpers.  Remote

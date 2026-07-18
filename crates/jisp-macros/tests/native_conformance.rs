@@ -51,6 +51,22 @@ fn run_obligation(row: &InventoryRow) {
             native_differential::native_dynamic_reads_on_homogeneous_closed_objects_match_the_interpreter()
         }
         "maps" => native_differential::native_homogeneous_maps_match_the_interpreter(),
+        "list-get-boundaries" => {
+            native_differential::native_list_get_boundary_matches_the_interpreter()
+        }
+        "list-slice-boundaries" => {
+            native_differential::native_list_slice_boundary_matches_the_interpreter()
+        }
+        "empty-list-callbacks" => {
+            native_differential::native_empty_list_callbacks_match_the_interpreter()
+        }
+        "object-view-helpers" => {
+            native_differential::native_object_view_helpers_match_the_interpreter()
+        }
+        "map-view-helpers" => {
+            native_differential::native_map_view_helpers_match_the_interpreter()
+        }
+        "pattern-fallback" => native_differential::native_pattern_fallback_matches_the_interpreter(),
         "functions-closures" => native_differential::native_local_closures_match_the_interpreter(),
         "variadics" => native_differential::native_variadic_functions_match_the_interpreter(),
         "imports" => native_import::imported_native_output_matches_the_interpreter(),
