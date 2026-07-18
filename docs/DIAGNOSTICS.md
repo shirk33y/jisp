@@ -35,7 +35,9 @@ expression before falling back to the enclosing item.
 Regression tests treat diagnostics as a contract. Frontend cases cover type,
 macro-origin, imported-module, and runtime failures: code, source path, primary
 range, and evaluation context must survive. LSP cases cover parser EOF errors,
-multiline positions, and UTF-16 offsets after Unicode text. Native remapping
-covers `JISP-RUST`, generated-span remapping, macro-origin labels, and rejection
-of errors from unrelated Rust files. Message wording may improve, but these
-anchors must not drift silently.
+multiline positions, UTF-16 offsets after Unicode text, and the framed protocol
+path for versioned incremental edits. Invalid or stale LSP edits preserve the
+last accepted document, so their diagnostics cannot replace current editor
+state. Native remapping covers `JISP-RUST`, generated-span remapping,
+macro-origin labels, and rejection of errors from unrelated Rust files. Message
+wording may improve, but these anchors must not drift silently.

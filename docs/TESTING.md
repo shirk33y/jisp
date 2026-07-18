@@ -75,6 +75,15 @@ data, Unicode/escaping, quote/unquote macro expansion, and a portable type
 error. UI fixtures remain on their renderer-aware runner and are outside this
 language-only parity gate.
 
+## LSP protocol conformance
+
+The CLI LSP test suite drives framed JSON-RPC through the real server loop. It
+checks incremental UTF-16 edits, ordered multi-change notifications, full-text
+replacements, document versions, stale and invalid edits, diagnostics,
+hover/definition after edits, close cleanup, session lifecycle, JSON-RPC
+request errors, and malformed frame handling. The server keeps only open
+in-memory documents; it does not watch files or maintain a workspace index.
+
 ## Portable UI scenarios
 
 `tests/ui/*.lisp` are the canonical UI scenarios and generate matching JSON,

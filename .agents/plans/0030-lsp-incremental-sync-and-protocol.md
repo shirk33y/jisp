@@ -1,6 +1,6 @@
 # Plan: LSP session, incremental sync, and protocol conformance (3 hours)
 
-**Status:** proposed. **Estimate:** 3 hours. This hardens the experimental
+**Status:** completed. **Estimate:** 3 hours. This hardens the experimental
 editor endpoint; it changes neither Jisp source semantics nor the compiler
 pipeline.
 
@@ -138,3 +138,14 @@ Do not add completion ranking, rename, references, semantic tokens, code
 actions, file watching, multi-root workspaces, package resolution over LSP,
 document overlays for unsaved imports, or native-code diagnostics. Those need
 separate protocol and performance contracts.
+
+## Execution ledger
+
+| Boundary | Proof |
+| --- | --- |
+| Session lifecycle | testable `uninitialized`/`running`/`shutdown` server state; requests receive JSON-RPC errors before init and after shutdown |
+| Incremental text | versioned open documents apply ordered UTF-16 ranges atomically; whole-document replacement remains supported |
+| Editor safety | stale versions and malformed ranges leave the prior accepted document unchanged |
+| Current semantic view | protocol hover and definition after a change use the updated stored document; close clears it |
+| Wire contract | framed `Content-Length` input/output is exercised, including unknown request/notification and malformed header/JSON paths |
+| Documentation | README, diagnostics, and testing docs state the incremental, in-memory contract and protocol coverage |

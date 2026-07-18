@@ -15,6 +15,8 @@ use jisp_syntax_lisp::LispParser;
 use jisp_syntax_yaml::YamlParser;
 use sha2::{Digest, Sha256};
 
+mod lsp;
+
 #[derive(Parser)]
 #[command(name = "jisp", version, about = "Jisp language toolkit")]
 struct Cli {
@@ -734,116 +736,7 @@ fn render_lockfile(
 }
 
 fn lsp() -> Result<()> {
-    let stdin = io::stdin();
-    let mut input = stdin.lock();
-    let stdout = io::stdout();
-    let mut output = stdout.lock();
-    let mut documents = HashMap::new();
-    while let Some(message) = read_lsp_message(&mut input)? {
-        let method = message["method"].as_str();
-        match method {
-            Some("initialize") => write_lsp_message(
-                &mut output,
-                &serde_json::json!({
-                    "jsonrpc": "2.0",
-                    "id": message["id"],
-                    "result": { "capabilities": {
-                        "textDocumentSync": 1,
-                        "completionProvider": { "triggerCharacters": ["(", "."] },
-                        "hoverProvider": true,
-                        "definitionProvider": true
-                    } }
-                }),
-            )?,
-            Some("textDocument/completion") => write_lsp_message(
-                &mut output,
-                &serde_json::json!({
-                    "jsonrpc": "2.0",
-                    "id": message["id"],
-                    "result": lsp_completion_items()
-                }),
-            )?,
-            Some("textDocument/didOpen") | Some("textDocument/didChange") => {
-                let document = &message["params"]["textDocument"];
-                let uri = document["uri"].as_str().unwrap_or("untitled.lisp");
-                let text = if method == Some("textDocument/didOpen") {
-                    document["text"].as_str().unwrap_or("")
-                } else {
-                    message["params"]["contentChanges"]
-                        .as_array()
-                        .and_then(|changes| changes.last())
-                        .and_then(|change| change["text"].as_str())
-                        .unwrap_or("")
-                };
-                documents.insert(uri.to_owned(), text.to_owned());
-                write_lsp_message(
-                    &mut output,
-                    &serde_json::json!({
-                        "jsonrpc": "2.0",
-                        "method": "textDocument/publishDiagnostics",
-                        "params": { "uri": uri, "diagnostics": lsp_diagnostics(uri, text) }
-                    }),
-                )?;
-            }
-            Some("textDocument/didClose") => {
-                let uri = message["params"]["textDocument"]["uri"]
-                    .as_str()
-                    .unwrap_or("untitled.lisp");
-                documents.remove(uri);
-                write_lsp_message(
-                    &mut output,
-                    &serde_json::json!({
-                        "jsonrpc": "2.0",
-                        "method": "textDocument/publishDiagnostics",
-                        "params": { "uri": uri, "diagnostics": [] }
-                    }),
-                )?;
-            }
-            Some("textDocument/hover") => {
-                let uri = message["params"]["textDocument"]["uri"]
-                    .as_str()
-                    .unwrap_or_default();
-                let position = &message["params"]["position"];
-                let result = documents.get(uri).and_then(|text| {
-                    lsp_hover(
-                        uri,
-                        text,
-                        position["line"].as_u64()? as usize,
-                        position["character"].as_u64()? as usize,
-                    )
-                });
-                write_lsp_message(
-                    &mut output,
-                    &serde_json::json!({ "jsonrpc": "2.0", "id": message["id"], "result": result }),
-                )?;
-            }
-            Some("textDocument/definition") => {
-                let uri = message["params"]["textDocument"]["uri"]
-                    .as_str()
-                    .unwrap_or_default();
-                let position = &message["params"]["position"];
-                let result = documents.get(uri).and_then(|text| {
-                    lsp_definition(
-                        uri,
-                        text,
-                        position["line"].as_u64()? as usize,
-                        position["character"].as_u64()? as usize,
-                    )
-                });
-                write_lsp_message(
-                    &mut output,
-                    &serde_json::json!({ "jsonrpc": "2.0", "id": message["id"], "result": result }),
-                )?;
-            }
-            Some("shutdown") => write_lsp_message(
-                &mut output,
-                &serde_json::json!({ "jsonrpc": "2.0", "id": message["id"], "result": null }),
-            )?,
-            Some("exit") => break,
-            _ => {}
-        }
-    }
-    Ok(())
+    lsp::stdio()
 }
 
 fn lsp_hover(uri: &str, text: &str, line: usize, character: usize) -> Option<serde_json::Value> {
@@ -1214,42 +1107,6 @@ fn lsp_completion_items() -> Vec<serde_json::Value> {
             })
         }))
         .collect()
-}
-
-fn read_lsp_message(input: &mut impl BufRead) -> Result<Option<serde_json::Value>> {
-    let mut length = None;
-    loop {
-        let mut line = String::new();
-        if input.read_line(&mut line)? == 0 {
-            return Ok(None);
-        }
-        let line = line.trim_end_matches(['\r', '\n']);
-        if line.is_empty() {
-            break;
-        }
-        if let Some(value) = line.strip_prefix("Content-Length:") {
-            length = Some(
-                value
-                    .trim()
-                    .parse::<usize>()
-                    .context("parse LSP Content-Length")?,
-            );
-        }
-    }
-    let length = length.context("missing LSP Content-Length")?;
-    let mut bytes = vec![0; length];
-    input.read_exact(&mut bytes)?;
-    Ok(Some(
-        serde_json::from_slice(&bytes).context("parse LSP JSON")?,
-    ))
-}
-
-fn write_lsp_message(output: &mut impl Write, message: &serde_json::Value) -> Result<()> {
-    let body = serde_json::to_vec(message)?;
-    write!(output, "Content-Length: {}\r\n\r\n", body.len())?;
-    output.write_all(&body)?;
-    output.flush()?;
-    Ok(())
 }
 
 fn lsp_diagnostics(uri: &str, text: &str) -> Vec<serde_json::Value> {
