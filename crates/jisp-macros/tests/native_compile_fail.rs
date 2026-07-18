@@ -1,7 +1,7 @@
 use std::{env, fs, path::PathBuf, process::Command};
 
 #[test]
-fn ui_html_native_values_fail_during_downstream_macro_expansion() {
+pub fn ui_html_native_values_fail_during_downstream_macro_expansion() {
     assert_downstream_compile_fails(
         "ui-html",
         "tests/fixtures/unsupported_ui_html.lisp",
@@ -10,7 +10,7 @@ fn ui_html_native_values_fail_during_downstream_macro_expansion() {
 }
 
 #[test]
-fn heterogeneous_dynamic_object_access_fails_during_downstream_macro_expansion() {
+pub fn heterogeneous_dynamic_object_access_fails_during_downstream_macro_expansion() {
     assert_downstream_compile_fails(
         "heterogeneous-dynamic-object",
         "../../examples/collection-toolbox/unsupported.lisp",
@@ -19,7 +19,7 @@ fn heterogeneous_dynamic_object_access_fails_during_downstream_macro_expansion()
 }
 
 #[test]
-fn polymorphic_open_row_definition_fails_during_downstream_macro_expansion() {
+pub fn polymorphic_open_row_definition_fails_during_downstream_macro_expansion() {
     assert_downstream_compile_fails(
         "open-row-polymorphism",
         "../../examples/collection-toolbox/open-row.lisp",

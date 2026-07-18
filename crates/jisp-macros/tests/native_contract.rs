@@ -12,6 +12,7 @@ use serde::Deserialize;
 #[serde(deny_unknown_fields)]
 struct InventoryRow {
     id: String,
+    runner: String,
     area: String,
     source_fixture: String,
     portable_test_id: Option<String>,
@@ -49,6 +50,11 @@ fn native_inventory_is_backed_by_fixtures_tests_and_docs() {
     let mut linked_portable_tests = HashSet::new();
 
     for row in inventory {
+        assert!(
+            !row.runner.is_empty(),
+            "{} has no conformance runner",
+            row.id
+        );
         assert!(!row.area.is_empty(), "{} has no area", row.id);
         assert!(
             !row.interpreter_result.is_empty(),

@@ -13,7 +13,7 @@ fn lisp_file_compiles_native_imports() {
 }
 
 #[test]
-fn imported_native_output_matches_the_interpreter() {
+pub fn imported_native_output_matches_the_interpreter() {
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/imports/main.lisp");
     let text = fs::read_to_string(&path).unwrap();
     let module = jisp::evaluate(&path, &text).unwrap();

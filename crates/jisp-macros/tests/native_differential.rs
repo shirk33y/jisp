@@ -10,14 +10,14 @@ jisp_macros::lisp_file!("tests/fixtures/differential.lisp");
 const FIXTURE: &str = "tests/fixtures/differential.lisp";
 
 #[test]
-fn native_scalars_match_the_interpreter() {
+pub fn native_scalars_match_the_interpreter() {
     assert_matches_interpreter("scalar-entry", Value::Int(scalar_entry()));
     assert_matches_interpreter("object-field-entry", Value::Int(object_field_entry()));
     assert_matches_interpreter("boolean-entry", Value::Bool(boolean_entry()));
 }
 
 #[test]
-fn native_static_object_get_matches_the_interpreter() {
+pub fn native_static_object_get_matches_the_interpreter() {
     assert_matches_interpreter(
         "object-get-discarded-entry",
         Value::Int(object_get_discarded_entry()),
@@ -30,7 +30,7 @@ fn native_static_object_get_matches_the_interpreter() {
 }
 
 #[test]
-fn native_result_helpers_match_the_interpreter() {
+pub fn native_result_helpers_match_the_interpreter() {
     assert_matches_interpreter("result-map-entry", Value::Int(result_map_entry()));
     assert_matches_interpreter("result-map-err-entry", Value::Int(result_map_err_entry()));
     assert_matches_interpreter("result-try-entry", Value::Int(result_try_entry()));
@@ -38,12 +38,12 @@ fn native_result_helpers_match_the_interpreter() {
 }
 
 #[test]
-fn native_option_cases_match_the_interpreter() {
+pub fn native_option_cases_match_the_interpreter() {
     assert_matches_interpreter("option-case-entry", Value::Int(option_case_entry()));
 }
 
 #[test]
-fn native_strings_and_lists_match_the_interpreter() {
+pub fn native_strings_and_lists_match_the_interpreter() {
     assert_matches_interpreter("string-entry", Value::string(string_entry()));
     assert_matches_interpreter(
         "list-entry",
@@ -52,7 +52,7 @@ fn native_strings_and_lists_match_the_interpreter() {
 }
 
 #[test]
-fn native_callbacks_and_list_higher_order_helpers_match_the_interpreter() {
+pub fn native_callbacks_and_list_higher_order_helpers_match_the_interpreter() {
     assert_matches_interpreter(
         "map-entry",
         Value::List(map_entry().into_iter().map(Value::Int).collect()),
@@ -72,7 +72,7 @@ fn native_callbacks_and_list_higher_order_helpers_match_the_interpreter() {
 }
 
 #[test]
-fn native_variadic_functions_match_the_interpreter() {
+pub fn native_variadic_functions_match_the_interpreter() {
     assert_matches_interpreter("variadic-empty-entry", Value::Int(variadic_empty_entry()));
     assert_matches_interpreter("variadic-many-entry", Value::Int(variadic_many_entry()));
     assert_matches_interpreter("variadic-local-entry", Value::Int(variadic_local_entry()));
@@ -87,7 +87,7 @@ fn native_variadic_functions_match_the_interpreter() {
 }
 
 #[test]
-fn native_local_closures_match_the_interpreter() {
+pub fn native_local_closures_match_the_interpreter() {
     assert_matches_interpreter("local-function-entry", Value::Int(local_function_entry()));
     assert_matches_interpreter(
         "immediate-lambda-entry",
@@ -127,12 +127,12 @@ fn native_local_closures_match_the_interpreter() {
 }
 
 #[test]
-fn native_enum_cases_match_the_interpreter() {
+pub fn native_enum_cases_match_the_interpreter() {
     assert_matches_interpreter("enum-case-entry", Value::Int(enum_case_entry()));
 }
 
 #[test]
-fn native_bigints_match_the_interpreter() {
+pub fn native_bigints_match_the_interpreter() {
     assert_matches_interpreter("bigint-sum-entry", Value::BigInt(bigint_sum_entry()));
     assert_matches_interpreter("bigint-floor-entry", Value::BigInt(bigint_floor_entry()));
     assert_matches_interpreter("bigint-modulo-entry", Value::BigInt(bigint_modulo_entry()));
@@ -149,7 +149,7 @@ fn native_bigints_match_the_interpreter() {
 }
 
 #[test]
-fn native_dynamic_reads_on_homogeneous_closed_objects_match_the_interpreter() {
+pub fn native_dynamic_reads_on_homogeneous_closed_objects_match_the_interpreter() {
     assert_matches_interpreter("dynamic-field-entry", Value::Int(dynamic_field_entry()));
     assert_matches_interpreter(
         "dynamic-object-get-entry",
@@ -178,7 +178,7 @@ fn native_dynamic_reads_on_homogeneous_closed_objects_match_the_interpreter() {
 }
 
 #[test]
-fn native_nested_alternative_patterns_match_the_interpreter() {
+pub fn native_nested_alternative_patterns_match_the_interpreter() {
     assert_matches_interpreter(
         "nested-alternative-list-entry",
         Value::Int(nested_alternative_list_entry()),
@@ -190,7 +190,7 @@ fn native_nested_alternative_patterns_match_the_interpreter() {
 }
 
 #[test]
-fn native_collection_updates_preserve_their_inputs() {
+pub fn native_collection_updates_preserve_their_inputs() {
     assert_matches_interpreter(
         "collection-updates-immutable-entry",
         Value::Int(collection_updates_immutable_entry()),
@@ -198,12 +198,12 @@ fn native_collection_updates_preserve_their_inputs() {
 }
 
 #[test]
-fn native_values_remain_reusable_after_non_mutating_operations() {
+pub fn native_values_remain_reusable_after_non_mutating_operations() {
     assert_matches_interpreter("reused-values-entry", Value::Int(reused_values_entry()));
 }
 
 #[test]
-fn native_homogeneous_maps_match_the_interpreter() {
+pub fn native_homogeneous_maps_match_the_interpreter() {
     assert_matches_interpreter("dict-map-entry", Value::Int(dict_map_entry()));
     assert_matches_interpreter(
         "dict-map-missing-entry",

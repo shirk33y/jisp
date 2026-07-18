@@ -50,7 +50,7 @@ fn rust_embedded_report_matches_the_interpreter() {
 }
 
 #[test]
-fn macro_normalizer_matches_the_interpreter() {
+pub fn macro_normalizer_matches_the_interpreter() {
     assert_matches_interpreter(
         "examples/macro-normalizer/main.lisp",
         Value::Int(macro_normalizer::main()),

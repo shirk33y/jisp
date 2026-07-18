@@ -57,7 +57,8 @@ Every `supported` row has a differential test: evaluate its fixture with the
 interpreter, invoke its native export, and compare structural output. Every
 `intentionally-rejected` row has a downstream proc-macro compile-fail test.
 The inventory verifies the fixture, named test, stable portable ID (when one
-exists), and one-to-one portable mapping before the suite runs. A portable ID
+exists), one-to-one portable mapping, and a concrete runner before the suite
+runs. The runner executes every declared native obligation. A portable ID
 anchors the semantic contract; a native integration fixture may remain distinct
 when it proves proc-macro, concrete ABI, or diagnostic-remapping behavior. New
 native claims require an inventory row and a matching test before this table

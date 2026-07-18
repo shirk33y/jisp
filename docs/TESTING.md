@@ -137,10 +137,11 @@ obligation, and row in `docs/NATIVE.md`.
 
 The inventory is the bridge from portable language fixtures to native
 conformance. A linked semantic row names a stable portable fixture/test ID and
-one backend obligation. The contract test validates the link; it does not
-infer native eligibility or generate a test from source syntax. Native-only
-fixtures remain appropriate for proc-macro, ABI, and generated-diagnostic
-integration checks.
+one backend obligation plus a concrete conformance runner. The contract test
+validates the link, and `native_conformance.rs` runs every declared runner; it
+does not infer native eligibility from source syntax. Native-only fixtures
+remain appropriate for proc-macro, ABI, and generated-diagnostic integration
+checks.
 
 `crates/jisp-macros/tests/native_differential.rs` compiles one representative
 Jisp module through `jisp_macros::lisp_file!` and compares its native exports

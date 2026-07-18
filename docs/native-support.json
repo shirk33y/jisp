@@ -1,6 +1,7 @@
 [
   {
     "id": "scalars",
+    "runner": "scalars",
     "area": "values",
     "source_fixture": "crates/jisp-macros/tests/fixtures/differential.lisp",
     "portable_test_id": "tests/language/core-control.lisp::let bindings are sequential and inner scopes shadow",
@@ -14,6 +15,7 @@
   },
   {
     "id": "strings-lists",
+    "runner": "strings-lists",
     "area": "collections",
     "source_fixture": "crates/jisp-macros/tests/fixtures/differential.lisp",
     "portable_test_id": "tests/language/lists.lisp::list concatenation prepend and append preserve order",
@@ -27,6 +29,7 @@
   },
   {
     "id": "list-callbacks",
+    "runner": "list-callbacks",
     "area": "collections",
     "source_fixture": "crates/jisp-macros/tests/fixtures/differential.lisp",
     "portable_test_id": "tests/language/list-pipeline.lisp::map, filter, and fold compose",
@@ -40,6 +43,7 @@
   },
   {
     "id": "closed-objects",
+    "runner": "closed-objects",
     "area": "collections",
     "source_fixture": "crates/jisp-macros/tests/fixtures/differential.lisp",
     "portable_test_id": "tests/language/objects-ui.lisp::field access reads statically known object keys",
@@ -53,6 +57,7 @@
   },
   {
     "id": "collection-snapshots",
+    "runner": "collection-snapshots",
     "area": "collections",
     "source_fixture": "crates/jisp-macros/tests/fixtures/differential.lisp",
     "portable_test_id": "tests/language/objects-ui.lisp::object set and delete are immutable data transforms",
@@ -66,6 +71,7 @@
   },
   {
     "id": "homogeneous-dynamic-objects",
+    "runner": "homogeneous-dynamic-objects",
     "area": "collections",
     "source_fixture": "crates/jisp-macros/tests/fixtures/differential.lisp",
     "portable_test_id": "tests/language/objects-ui.lisp::homogeneous objects convert explicitly to dynamic maps",
@@ -79,6 +85,7 @@
   },
   {
     "id": "maps",
+    "runner": "maps",
     "area": "collections",
     "source_fixture": "crates/jisp-macros/tests/fixtures/differential.lisp",
     "portable_test_id": "tests/language/objects-ui.lisp::object keys and values preserve insertion order",
@@ -92,6 +99,7 @@
   },
   {
     "id": "functions-closures",
+    "runner": "functions-closures",
     "area": "functions",
     "source_fixture": "crates/jisp-macros/tests/fixtures/differential.lisp",
     "portable_test_id": "tests/language/functions-scope.lisp::closures capture lexical bindings",
@@ -105,6 +113,7 @@
   },
   {
     "id": "variadics",
+    "runner": "variadics",
     "area": "functions",
     "source_fixture": "crates/jisp-macros/tests/fixtures/differential.lisp",
     "portable_test_id": "tests/language/functions-scope.lisp::variadic functions bind remaining arguments as a list",
@@ -118,6 +127,7 @@
   },
   {
     "id": "imports",
+    "runner": "imports",
     "area": "modules",
     "source_fixture": "crates/jisp-macros/tests/fixtures/imports/main.lisp",
     "portable_test_id": null,
@@ -131,6 +141,7 @@
   },
   {
     "id": "macros",
+    "runner": "macros",
     "area": "modules",
     "source_fixture": "examples/macro-normalizer/main.lisp",
     "portable_test_id": "tests/language/macros-quote.lisp::portable runner expands quote and user macros before lowering",
@@ -144,6 +155,7 @@
   },
   {
     "id": "result-helpers",
+    "runner": "result-helpers",
     "area": "control-flow",
     "source_fixture": "crates/jisp-macros/tests/fixtures/differential.lisp",
     "portable_test_id": "tests/language/results-options.lisp::result map transforms ok and preserves err",
@@ -157,6 +169,7 @@
   },
   {
     "id": "option-case",
+    "runner": "option-case",
     "area": "control-flow",
     "source_fixture": "crates/jisp-macros/tests/fixtures/differential.lisp",
     "portable_test_id": "tests/language/results-options.lisp::option constructors participate in exhaustive case",
@@ -170,6 +183,7 @@
   },
   {
     "id": "enum-case",
+    "runner": "enum-case",
     "area": "control-flow",
     "source_fixture": "crates/jisp-macros/tests/fixtures/differential.lisp",
     "portable_test_id": "tests/language/case-patterns.lisp::variant case binds payload fields",
@@ -183,6 +197,7 @@
   },
   {
     "id": "patterns",
+    "runner": "patterns",
     "area": "control-flow",
     "source_fixture": "crates/jisp-macros/tests/fixtures/differential.lisp",
     "portable_test_id": "tests/language/case-patterns.lisp::list patterns can nest and bind rest",
@@ -196,6 +211,7 @@
   },
   {
     "id": "bigint",
+    "runner": "bigint",
     "area": "values",
     "source_fixture": "crates/jisp-macros/tests/fixtures/differential.lisp",
     "portable_test_id": "tests/language/bigint.lisp::bigint arithmetic stays arbitrary precision",
@@ -209,6 +225,7 @@
   },
   {
     "id": "ui-values",
+    "runner": "ui-values",
     "area": "native-boundary",
     "source_fixture": "crates/jisp-macros/tests/fixtures/unsupported_ui_html.lisp",
     "portable_test_id": "tests/language/ui.lisp::ui.result rejects raw objects in the command list",
@@ -222,6 +239,7 @@
   },
   {
     "id": "heterogeneous-dynamic-objects",
+    "runner": "heterogeneous-dynamic-objects",
     "area": "native-boundary",
     "source_fixture": "examples/collection-toolbox/unsupported.lisp",
     "portable_test_id": null,
@@ -235,6 +253,7 @@
   },
   {
     "id": "open-row-polymorphism",
+    "runner": "open-row-polymorphism",
     "area": "native-boundary",
     "source_fixture": "examples/collection-toolbox/open-row.lisp",
     "portable_test_id": null,
