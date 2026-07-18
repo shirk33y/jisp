@@ -143,6 +143,14 @@ does not infer native eligibility from source syntax. Native-only fixtures
 remain appropriate for proc-macro, ABI, and generated-diagnostic integration
 checks.
 
+## Offline package determinism
+
+Package tests cover local registry indexing, stable sorted lockfiles, verified
+cache reuse after the registry disappears, checksum and malformed-index
+failures, rollback of provisional lock/cache writes, cache-name collision
+avoidance, and rejection of escaped lockfile sources. Remote registry URLs are
+local failures; no test or command selects a network path.
+
 `crates/jisp-macros/tests/native_differential.rs` compiles one representative
 Jisp module through `jisp_macros::lisp_file!` and compares its native exports
 with the interpreter. The fixture covers scalars, strings, lists,

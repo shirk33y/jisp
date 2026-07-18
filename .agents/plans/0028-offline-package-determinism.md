@@ -95,6 +95,19 @@ deliberately untested remote-registry behaviour.
 - Remote URL input remains a local rejection; no network capability is added.
 - Documentation, tests, and resolver behaviour agree.
 
+## Execution ledger
+
+| Boundary | Proof |
+| --- | --- |
+| Stable sorted lock | a local two-package registry locks byte-identically twice and orders registry rows by name |
+| Registry removal | the same project runs from its verified cache after the registry directory is deleted |
+| Failed lock transaction | a frontend error restores the prior lock and removes new cache artifacts |
+| Index validation | bad checksum, missing `source`, missing `checksum`, and manifest/index disagreement leave no lock/cache |
+| Cache names | colliding sanitized package/version spelling produces distinct deterministic cache files |
+| Cache integrity | existing facade tests cover cache-byte, lock-version, and manifest/lock checksum mismatches |
+| Lock source trust | `..` source escapes are rejected before read/checksum use |
+| Local/no-network policy | existing tests cover local-path precedence and both remote URL schemes as local rejections |
+
 ## Cut line
 
 No semver solver, archive format, registry downloads, signatures, credentials,

@@ -1,5 +1,5 @@
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{BTreeMap, HashMap, HashSet},
     fs,
     io::{self, BufRead, Write},
     path::{Path, PathBuf},
@@ -191,6 +191,15 @@ fn init_project(path: &Path) -> Result<()> {
 }
 
 fn lock_project(path: &Path) -> Result<()> {
+    let transaction = LockTransaction::begin(path)?;
+    let result = lock_project_inner(path);
+    if result.is_err() {
+        transaction.rollback()?;
+    }
+    result
+}
+
+fn lock_project_inner(path: &Path) -> Result<()> {
     let entry = package_entry(path)?;
     let manifest_path = path.join("jisp.toml");
     let manifest = fs::read_to_string(&manifest_path)
@@ -365,18 +374,116 @@ fn registry_lock_entry_from_local_index(
 }
 
 fn registry_cache_file_name(package: &str, version: &str, source: &Path) -> String {
-    let mut name = format!("{package}-{version}")
+    let raw_name = format!("{package}-{version}");
+    let mut name = raw_name
         .chars()
         .map(|character| match character {
             'a'..='z' | 'A'..='Z' | '0'..='9' | '.' | '_' | '-' => character,
             _ => '_',
         })
         .collect::<String>();
+    if name != raw_name {
+        let digest = Sha256::digest(raw_name.as_bytes());
+        name.push('-');
+        for byte in digest.iter().take(6) {
+            name.push_str(&format!("{byte:02x}"));
+        }
+    }
     if let Some(extension) = source.extension().and_then(|extension| extension.to_str()) {
         name.push('.');
         name.push_str(extension);
     }
     name
+}
+
+struct LockTransaction {
+    lock_path: PathBuf,
+    original_lock: Option<Vec<u8>>,
+    cache_dir: PathBuf,
+    original_cache: Option<BTreeMap<PathBuf, Vec<u8>>>,
+}
+
+impl LockTransaction {
+    fn begin(project: &Path) -> Result<Self> {
+        let lock_path = project.join("jisp.lock");
+        let original_lock = match fs::read(&lock_path) {
+            Ok(bytes) => Some(bytes),
+            Err(error) if error.kind() == io::ErrorKind::NotFound => None,
+            Err(error) => {
+                return Err(error).with_context(|| format!("read {}", lock_path.display()))
+            }
+        };
+        let cache_dir = project.join(".jisp/cache");
+        let original_cache = if cache_dir.is_dir() {
+            let mut files = BTreeMap::new();
+            for entry in
+                fs::read_dir(&cache_dir).with_context(|| format!("read {}", cache_dir.display()))?
+            {
+                let entry = entry?;
+                if entry.file_type()?.is_file() {
+                    files.insert(entry.file_name().into(), fs::read(entry.path())?);
+                }
+            }
+            Some(files)
+        } else {
+            None
+        };
+        Ok(Self {
+            lock_path,
+            original_lock,
+            cache_dir,
+            original_cache,
+        })
+    }
+
+    fn rollback(self) -> Result<()> {
+        match self.original_lock {
+            Some(bytes) => fs::write(&self.lock_path, bytes)
+                .with_context(|| format!("restore {}", self.lock_path.display()))?,
+            None => match fs::remove_file(&self.lock_path) {
+                Ok(()) => {}
+                Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+                Err(error) => {
+                    return Err(error)
+                        .with_context(|| format!("remove {}", self.lock_path.display()))
+                }
+            },
+        }
+        match self.original_cache {
+            Some(files) => {
+                for entry in fs::read_dir(&self.cache_dir)
+                    .with_context(|| format!("read {}", self.cache_dir.display()))?
+                {
+                    let entry = entry?;
+                    let name = PathBuf::from(entry.file_name());
+                    if entry.file_type()?.is_file() && !files.contains_key(&name) {
+                        fs::remove_file(entry.path())?;
+                    }
+                }
+                for (name, bytes) in files {
+                    fs::write(self.cache_dir.join(name), bytes)?;
+                }
+            }
+            None => {
+                if self.cache_dir.is_dir() {
+                    for entry in fs::read_dir(&self.cache_dir)? {
+                        let entry = entry?;
+                        if entry.file_type()?.is_file() {
+                            fs::remove_file(entry.path())?;
+                        }
+                    }
+                }
+                if self.cache_dir.is_dir() && fs::read_dir(&self.cache_dir)?.next().is_none() {
+                    fs::remove_dir(&self.cache_dir)?;
+                    let parent = self.cache_dir.parent().unwrap();
+                    if parent.is_dir() && fs::read_dir(parent)?.next().is_none() {
+                        fs::remove_dir(parent)?;
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
 }
 
 fn quoted_assignment(text: &str, key: &str) -> Option<String> {
@@ -1963,3 +2070,5 @@ mod tests {
 
 #[cfg(test)]
 mod lsp_test;
+#[cfg(test)]
+mod package_test;

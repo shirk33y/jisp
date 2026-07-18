@@ -73,6 +73,11 @@ pub enum Error {
         requirement: String,
         locked: String,
     },
+    #[error("registry dependency `{dependency}` lockfile source `{lock_source}` escapes the package directory")]
+    RegistryDependencySourceOutsideProject {
+        dependency: String,
+        lock_source: String,
+    },
     #[error(
         "registry dependency `{dependency}` checksum mismatch for `{source_path}`: expected {expected}, got {actual}"
     )]
@@ -1345,7 +1350,32 @@ fn registry_dependency_path(
             });
         }
     }
-    let source_path = directory.join(entry.source);
+    let source = Path::new(entry.source);
+    if source.is_absolute()
+        || source
+            .components()
+            .any(|component| matches!(component, std::path::Component::ParentDir))
+    {
+        return Err(Error::RegistryDependencySourceOutsideProject {
+            dependency: dependency.to_owned(),
+            lock_source: entry.source.to_owned(),
+        });
+    }
+    let source_path = directory.join(source);
+    let source_path = source_path.canonicalize().map_err(|source| Error::Read {
+        path: source_path.display().to_string(),
+        source,
+    })?;
+    let project_root = directory.canonicalize().map_err(|source| Error::Read {
+        path: directory.display().to_string(),
+        source,
+    })?;
+    if !source_path.starts_with(&project_root) {
+        return Err(Error::RegistryDependencySourceOutsideProject {
+            dependency: dependency.to_owned(),
+            lock_source: entry.source.to_owned(),
+        });
+    }
     let bytes = fs::read(&source_path).map_err(|source| Error::Read {
         path: source_path.display().to_string(),
         source,

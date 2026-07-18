@@ -66,6 +66,10 @@ mismatches are hard errors. `registry` and `package` are recorded for
 auditability and future index/fetch tooling; current resolution is intentionally
 driven by the locked source and checksum.
 
+A locked `source` must resolve inside the package directory. Absolute paths,
+parent-directory escapes, and symlink targets outside that directory are
+rejected before the cache is read.
+
 `jisp lock` preserves and normalizes registry entries that are already present,
 valid, and used by the import graph. If `registry` points to a local directory,
 `jisp lock` can also populate `.jisp/cache` from a file registry index:
@@ -83,7 +87,10 @@ source = "math-1.2.3.lisp"
 checksum = "sha256:<hex-encoded digest>"
 ```
 
-The copied cache file is recorded in `jisp.lock` as `.jisp/cache/<package>-<version>.<ext>`.
+The copied cache file is recorded in `jisp.lock` as a deterministic
+`.jisp/cache/<package>-<version>.<ext>` name. Unsafe package/version spelling
+is normalized and receives a short stable digest suffix, so distinct registry
+coordinates cannot collide in the cache.
 Both the manifest checksum and index checksum must match the copied source
 bytes.
 

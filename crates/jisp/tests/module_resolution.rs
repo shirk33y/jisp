@@ -123,6 +123,40 @@ fn sibling_module_wins_over_package_dependency_with_the_same_name() {
 }
 
 #[test]
+fn registry_lock_sources_cannot_escape_the_package_directory() {
+    let dir = fixture_dir("registry-lock-source-escape");
+    let app = dir.join("app");
+    fs::create_dir_all(&app).unwrap();
+    fs::write(
+        dir.join("outside.lisp"),
+        "(export inc (fn (value) (+ value 1)))\n",
+    )
+    .unwrap();
+    fs::write(
+        app.join("jisp.toml"),
+        "[package]\nname = \"app\"\nentry = \"main.lisp\"\n\n[dependencies]\nmath = { registry = \"jisp\", version = \"1.2.3\", checksum = \"sha256:04d7a7c591eb34cfc76a5446b45ccb8edfe1d6f13da96e841c93f823afad524d\" }\n",
+    )
+    .unwrap();
+    fs::write(
+        app.join("jisp.lock"),
+        "version = 1\n\n[registry.math]\nversion = \"1.2.3\"\nsource = \"../outside.lisp\"\nchecksum = \"sha256:04d7a7c591eb34cfc76a5446b45ccb8edfe1d6f13da96e841c93f823afad524d\"\n",
+    )
+    .unwrap();
+    let main = app.join("main.lisp");
+    let text = "(import math \"math\")\n(export main (fn () (math.inc 41)))\n";
+
+    let error = match jisp::check_detailed(&main, text) {
+        Ok(_) => panic!("escaped registry source unexpectedly resolved"),
+        Err(error) => error,
+    };
+    assert!(matches!(
+        error.error,
+        jisp::Error::RegistryDependencySourceOutsideProject { ref dependency, ref lock_source }
+            if dependency == "math" && lock_source == "../outside.lisp"
+    ));
+}
+
+#[test]
 fn type_errors_in_imports_render_the_imported_source() {
     let dir = fixture_dir("imported-type-diagnostics");
     let main = dir.join("main.lisp");
