@@ -186,6 +186,18 @@ deferred. See
 Useful examples live in [examples](examples/): a basic hello program, a native
 codegen fixture, static object helpers, legacy structural UI data for native
 codegen coverage, and declarative [UI components](examples/ui_components.lisp).
+
+Five maintained examples run through both the interpreter and native proc-macro
+path in `crates/jisp-macros/tests/native_examples.rs`:
+
+| Example | What it demonstrates |
+| --- | --- |
+| [task-pipeline](examples/task-pipeline/) | imports, a named result type, list folding, and rejection |
+| [pricing-rules](examples/pricing-rules/) | modules, variadic input, pricing rules, and invalid quotes |
+| [rust-embedded-report](examples/rust-embedded-report/) | downstream-style embedding, callbacks, and result cases |
+| [macro-normalizer](examples/macro-normalizer/) | hygienic template macro expansion before typing/codegen |
+| [collection-toolbox](examples/collection-toolbox/) | immutable lists/maps plus documented native rejections |
+
 Try the browser-only [UI playground](https://shirk33y.github.io/jisp/) for a
 small, explicitly documented update-driven preview subset.
 
