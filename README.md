@@ -1,3 +1,5 @@
+<!-- project-index-summary: Jisp is an experimental, statically oriented Lisp for JSON-shaped programs. Lisp, indentation-based ws , canonical JSON, and a restricted YAML-like. -->
+
 # Jisp
 
 Jisp is an experimental, statically oriented Lisp for JSON-shaped programs.
